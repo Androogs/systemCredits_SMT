@@ -1,6 +1,8 @@
 # Desarrollo Créditos
 
-Proyecto de financiación de créditos con frontend en React + TypeScript + Vite y backend en Python + FastAPI.
+Plataforma de financiación de créditos con **frontend en React + TypeScript + Vite** y
+**backend en Python + FastAPI**. Incluye el módulo de originación **SOCIP**
+(dashboard, solicitudes, simulación y detalle) integrado en la misma SPA.
 
 ## Requisitos previos
 
@@ -8,7 +10,7 @@ Proyecto de financiación de créditos con frontend en React + TypeScript + Vite
 - Node.js 20+
 - PostgreSQL 15+ (probado con PostgreSQL 18)
 
-## Estructura
+## Estructura del proyecto
 
 ```text
 .env.example
@@ -19,7 +21,8 @@ package.json
 package-lock.json
 .husky/
 README.md
-backend/
+
+backend/                      # API FastAPI
   main.py
   config.py
   requirements.txt
@@ -33,19 +36,43 @@ backend/
   models/
   middlewares/
   tests/
-frontend/
+
+frontend/                     # SPA React + Vite (Feature-Sliced Design)
   .env.example
   eslint.config.js
   .prettierrc.json
   .prettierignore
   package.json
   vite.config.ts
+  postcss.config.js
+  tailwind.config.js
+  tsconfig*.json
+  index.html
   public/
+    brand/                    # Única fuente de logos (iconográfico + Pacífico)
   src/
-    env.ts
-    App.tsx
-    main.tsx
+    app/                      # Configuración global
+      routing/                # React Router (público/protegido)
+      styles/                 # Estilos globales, Tailwind base
+    pages/                    # Vistas (Login, Dashboard, Clientes, etc.)
+    widgets/                  # Composición de features
+      app-shell/              # Layout, Sidebar único, Header
+    features/                 # Acciones de usuario
+      credit-origination/     # Flujo SOCIP: dashboard, solicitudes, simulación
+    entities/                 # Modelos de negocio
+      credit/
+        model/                # Tipos y estado (LoanStatus, InterestRate)
+        ui/                   # Componentes mínimos (CreditRow, StatusBadge)
+    shared/                   # Reutilizable sin lógica de negocio
+      api/                    # Cliente HTTP, interceptores
+      lib/                    # Formatters (currency, dates, interés)
+      styles/
+      ui/                     # UI Kit (Button, Input, Modal, Table…)
 ```
+
+> **Regla FSD:** una capa superior puede importar de capas inferiores, nunca al revés
+> (`app → pages → widgets → features → entities → shared`). Esto evita dependencias
+> circulares y facilita auditorías.
 
 ## Variables de entorno
 
@@ -65,7 +92,9 @@ APP_TITLE=Creditos API
 APP_VERSION=0.2.0
 ```
 
-El backend valida `DATABASE_URL`, `CORS_ORIGINS`, `APP_TITLE` y `APP_VERSION` con Pydantic Settings (`backend/config.py`). El frontend valida `VITE_API_URL` con Zod (`frontend/src/env.ts`).
+- **Backend:** valida `DATABASE_URL`, `CORS_ORIGINS`, `APP_TITLE`, `APP_VERSION` con
+  Pydantic Settings (`backend/config.py`).
+- **Frontend:** valida `VITE_API_URL` con Zod (`frontend/src/env.ts`).
 
 ## Calidad de código
 
@@ -75,7 +104,8 @@ Desde la raíz (una vez):
 npm install
 ```
 
-Esto instala Husky. En cada commit, `lint-staged` ejecuta ESLint y Prettier sobre los archivos de `frontend`.
+Esto instala **Husky**. En cada commit, `lint-staged` ejecuta ESLint y Prettier
+sobre los archivos de `frontend`.
 
 Desde `frontend`:
 
@@ -96,7 +126,7 @@ python -m venv .venv
 python -m pip install -r backend\requirements.txt
 ```
 
-Asegúrate de que la base de datos exista en PostgreSQL:
+Asegúrate de que la base de datos exista:
 
 ```sql
 CREATE DATABASE "DB";
@@ -108,13 +138,11 @@ Aplica las migraciones:
 alembic upgrade head
 ```
 
-Carga los datos iniciales (solo la primera vez, requiere que las tablas ya existan):
+Carga datos iniciales (solo la primera vez):
 
 ```powershell
 & "C:\Program Files\PostgreSQL\<versión>\bin\psql.exe" -U postgres -h localhost -d DB -f backend\database\insert.sql
 ```
-
-Ajusta `<versión>` (por ejemplo, `18`). También puedes cargar `insert.sql` desde pgAdmin Query Tool.
 
 Inicia el backend:
 
@@ -132,42 +160,95 @@ npm install
 npm run dev
 ```
 
-El frontend queda en `http://localhost:5173` y la documentación interactiva de la API en `http://localhost:8000/api-docs` (ruta personalizada; FastAPI por defecto usa `/docs`). Las peticiones a `/api` se redirigen automáticamente al backend durante el desarrollo.
+- Frontend: <http://localhost:5173>
+- Docs interactivas API: <http://localhost:8000/api-docs> (ruta personalizada)
 
-`GET /api/health` funciona sin PostgreSQL. El resto de rutas requieren `DATABASE_URL` válida.
+Las peticiones a `/api` se redirigen al backend durante el desarrollo.
+`GET /api/health` funciona sin PostgreSQL; el resto de rutas requieren
+`DATABASE_URL` válida.
+
+## Navegación principal
+
+El **sidebar único** (en `widgets/app-shell`) agrupa todas las secciones:
+
+- **Dashboard**
+- **Originación (SOCIP):** solicitudes, simulación y detalle
+- **Clientes**
+- **Reportes**
+- **Configuración**
+
+No hay barras laterales duplicadas: el flujo SOCIP reutiliza el mismo
+`DashboardLayout`.
+
+## Recursos de marca
+
+Todos los logos viven en `frontend/public/brand/`:
+
+```text
+logo-iconografico.svg
+pacifico-azules.png
+pacifico-blancos.png
+```
+
+`dist/` es la salida generada por `npm run build` (Vite copia `public/` allí
+automáticamente). No se edita a mano; se regenera.
 
 ## Pruebas
 
-Desde la raíz del proyecto, con el venv activo:
+Desde la raíz, con el venv activo:
 
 ```powershell
 python -m pytest backend/tests -q
 ```
 
-Configura `VITE_API_URL` en **Settings > Environment variables** del proyecto Pages con la URL pública del backend (por ejemplo `https://tu-backend.onrender.com`). Sin esta variable, el build usa `http://localhost:8000` por defecto y no funcionará en producción.
+## Despliegue
 
-El backend FastAPI no se puede publicar como contenido estático de Pages. Publícalo como servicio Python (Render, Railway o Fly.io):
+### Frontend (Cloudflare Pages)
+
+Configura `VITE_API_URL` en **Settings → Environment variables** con la URL
+pública del backend (ej. `https://tu-backend.onrender.com`). Sin esta variable,
+el build usa `http://localhost:8000` y no funcionará en producción.
+
+### Backend (Render / Railway / Fly.io)
+
+FastAPI no se puede publicar como contenido estático. Publícalo como servicio
+Python:
 
 ```text
 uvicorn backend.main:app --host 0.0.0.0 --port $PORT
 ```
 
-Configura `CORS_ORIGINS` con el dominio de Pages, por ejemplo `https://desarrollo-creditos.pages.dev`. El endpoint de comprobación será `https://TU-BACKEND/api/health`.
+Configura `CORS_ORIGINS` con el dominio de Pages
+(p. ej. `https://desarrollo-creditos.pages.dev`). Health check:
+`https://TU-BACKEND/api/health`.
 
 ## Migraciones de base de datos
 
-La revisión `0001_baseline` ejecuta `backend/database/schema.sql`. Para crear una nueva migración después de cambiar los modelos:
+La revisión `0001_baseline` ejecuta `backend/database/schema.sql`. Para crear
+una nueva migración tras cambiar los modelos:
 
 ```powershell
 alembic revision --autogenerate -m "descripción del cambio"
 alembic upgrade head
 ```
 
-Comandos útiles desde la raíz (con venv activo):
+Comandos útiles desde la raíz (venv activo):
 
 ```powershell
-alembic current   # muestra la revisión aplicada
-alembic history   # lista las revisiones disponibles
+alembic current   # revisión aplicada
+alembic history   # revisiones disponibles
 ```
 
-Los datos iniciales se cargan por separado con `backend/database/insert.sql` (ver arriba).
+Los datos iniciales se cargan aparte con `backend/database/insert.sql`.
+
+## Convenciones de código
+
+- **Rutas:** `kebab-case` para carpetas (`credit-origination`, `app-shell`).
+- **Componentes:** `PascalCase` (`DashboardLayout.tsx`).
+- **Imports:** siempre con alias `@/…` apuntando a `src/` (configurado en
+  `tsconfig.app.json` y `vite.config.ts`).
+- **Estilos:** Tailwind con la paleta Pacífico centralizada en
+  `tailwind.config.js` (no usar colores hardcodeados).
+- **Sin código muerto:** antes de mergear, verificar que no queden archivos
+  sueltos en `features/*/ui/` que no estén importados desde `pages/` o
+  `widgets/`.

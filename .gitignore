@@ -1,4 +1,6 @@
+# ─────────────────────────────────────────────
 # Logs and runtime output
+# ─────────────────────────────────────────────
 logs/
 *.log
 npm-debug.log*
@@ -8,52 +10,35 @@ pnpm-debug.log*
 lerna-debug.log*
 .eslintcache
 
+# ─────────────────────────────────────────────
 # Dependencies and build output
+# ─────────────────────────────────────────────
 node_modules/
 dist/
 dist-ssr/
+build/
 *.local
 *.tsbuildinfo
 
 # Cloudflare Wrangler
 .wrangler/
 
+# ─────────────────────────────────────────────
 # Environment files
+# ─────────────────────────────────────────────
 .env
 .env.*
 !.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
 
-<<<<<<< HEAD
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-Thumbs.db
-
-=======
->>>>>>> fb57f4a (Actualiozación sobre el motor propio sin uso de preselecta)
-# Project-specific
-Informes Pacifico/
-
-# Python environments and caches
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-**/.venv/
-**/__pycache__/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-*.egg-info/
-.coverage
-.coverage.*
-htmlcov/
-coverage.xml
-
-# Editor directories and files
+# ─────────────────────────────────────────────
+# IDE / Editors
+# ─────────────────────────────────────────────
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
@@ -66,24 +51,56 @@ coverage.xml
 *.sw?
 .history/
 
-<<<<<<< HEAD
-# Frontend
-frontend/dist
-
-=======
->>>>>>> fb57f4a (Actualiozación sobre el motor propio sin uso de preselecta)
+# ─────────────────────────────────────────────
 # OS files
+# ─────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# Local certificates and secrets
+# ─────────────────────────────────────────────
+# Project-specific
+# ─────────────────────────────────────────────
+Informes Pacifico/
+docs/private/
 certs/*.key
 certs/*.pem
 certs/*.crt
 
+# ─────────────────────────────────────────────
+# Python environments and caches
+# ─────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+**/.venv/
+**/__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.eggs/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# ─────────────────────────────────────────────
+# Frontend específico
+# ─────────────────────────────────────────────
+frontend/dist/
+frontend/node_modules/
+frontend/.vite/
+
+# ─────────────────────────────────────────────
 # Temporary and patch files
+# ─────────────────────────────────────────────
 *.bak
 *.tmp
 *.orig
 *.rej
+*.pid
+*.seed
+*.tgz
