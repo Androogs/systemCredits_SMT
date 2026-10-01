@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
+import Boton from '../../../shared/ui/Boton'
+import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import './PreparacionConsulta.css'
 
 export interface DatosConsulta {
@@ -16,47 +19,6 @@ interface PreparacionConsultaProps {
   /** Si vienen del flujo real, se muestran los datos capturados. */
   inicial?: Partial<DatosConsulta>
 }
-
-const pasos = [
-  {
-    number: '01',
-    label: 'Validación Inicial',
-    detail: 'Datos básicos y filtros',
-  },
-  {
-    number: '02',
-    label: 'Tratamiento de Datos',
-    detail: 'Habeas data y consentimiento',
-  },
-  {
-    number: '03',
-    label: 'Captura de Cédula',
-    detail: 'Anverso y reverso de ID',
-  },
-  {
-    number: '04',
-    label: 'Procesamiento OCR',
-    detail: 'Extracción y biometría',
-  },
-  {
-    number: '05',
-    label: 'Verificación de Datos',
-    detail: 'Confirmación de campos',
-  },
-  {
-    number: '06',
-    label: 'Resultado Validación',
-    detail: 'Resumen y radicación',
-  },
-  { number: '07', label: 'Creación Solicitud', detail: 'Datos financieros' },
-  { number: '08', label: 'Preparación Consulta', detail: 'Autorización buró' },
-  { number: '09', label: 'Consulta en Curso', detail: 'Datacrédito API' },
-  { number: '10', label: 'Informe Crediticio', detail: 'Análisis de score' },
-  { number: '11', label: 'Evaluación Integral', detail: 'Motor de políticas' },
-  { number: '12', label: 'Resultado Final', detail: 'Firma y desembolso' },
-] as const
-
-const PASO_ACTUAL = 8
 
 const valoresIniciales: DatosConsulta = {
   nombreCompleto: 'CARLOS MARIO RESTREPO ALVAREZ',
@@ -127,36 +89,7 @@ function PreparacionConsulta({
         </aside>
       </header>
 
-      <ol
-        className="consulta__steps"
-        aria-label="Etapas del proceso de originación"
-      >
-        {pasos.map((paso, indice) => {
-          const posicion = indice + 1
-          const estado =
-            posicion < PASO_ACTUAL
-              ? 'is-done'
-              : posicion === PASO_ACTUAL
-                ? 'is-active'
-                : 'is-pending'
-
-          return (
-            <li
-              key={paso.number}
-              className={`consulta__step ${estado}`}
-              aria-current={posicion === PASO_ACTUAL ? 'step' : undefined}
-            >
-              <span className="consulta__step-number" aria-hidden="true">
-                {posicion < PASO_ACTUAL ? '✓' : paso.number}
-              </span>
-              <span className="consulta__step-copy">
-                <strong>{paso.label}</strong>
-                <small>{paso.detail}</small>
-              </span>
-            </li>
-          )
-        })}
-      </ol>
+      <SeguimientoOriginacion pasoActual={8} />
 
       <div className="consulta__grid">
         {/* ---------- Columna izquierda: identidad a consultar ---------- */}
@@ -340,14 +273,16 @@ function PreparacionConsulta({
       <div className="consulta__actions">
         <div className="consulta__actions-left">
           {onBack && (
-            <button
-              className="consulta__back"
+            <Boton
+              variante="secundario"
+              tamano="compacto"
+              iconoInicio={<ArrowLeft size={14} aria-hidden="true" />}
               type="button"
               onClick={onBack}
               disabled={enviando || iniciada}
             >
-              ← Modificar Solicitud
-            </button>
+              Modificar solicitud
+            </Boton>
           )}
           <p className="consulta__actions-note">
             <span className="consulta__dot" aria-hidden="true" />
@@ -357,18 +292,23 @@ function PreparacionConsulta({
           </p>
         </div>
 
-        <button
-          className="consulta__submit"
+        <Boton
           type="button"
           onClick={handleIniciar}
           disabled={enviando || iniciada}
+          cargando={enviando}
+          iconoFin={
+            !enviando && !iniciada ? (
+              <ArrowRight size={15} aria-hidden="true" />
+            ) : undefined
+          }
         >
           {enviando
             ? 'Iniciando consulta…'
             : iniciada
               ? 'Consulta en curso'
               : 'Iniciar Consulta Datacrédito'}
-        </button>
+        </Boton>
       </div>
     </div>
   )

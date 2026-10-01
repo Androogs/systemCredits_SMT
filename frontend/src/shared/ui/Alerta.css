@@ -1,0 +1,57 @@
+.alerta {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid;
+  border-radius: 0.55rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.alerta__icono {
+  flex: 0 0 auto;
+  margin-top: 0.05rem;
+}
+
+.alerta__contenido {
+  min-width: 0;
+}
+
+.alerta__titulo {
+  display: block;
+  margin-bottom: 0.15rem;
+  font-weight: 700;
+}
+
+.alerta__contenido p {
+  margin: 0.25rem 0;
+}
+
+.alerta__contenido small {
+  font-size: 0.68rem;
+}
+
+.alerta--informacion {
+  border-color: #b8ddeb;
+  background: #f2f9fc;
+  color: #075e7c;
+}
+
+.alerta--exito {
+  border-color: #b8dfca;
+  background: #f2faf5;
+  color: #176b46;
+}
+
+.alerta--advertencia {
+  border-color: #e9c36b;
+  background: #fffaf0;
+  color: #9b6412;
+}
+
+.alerta--error {
+  border-color: #e8b4b0;
+  background: #fff5f4;
+  color: #a4231a;
+}

@@ -1,4 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
+import Boton from '../../../shared/ui/Boton'
+import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import './RevisionDatos.css'
 
 export interface DatosRevisados {
@@ -16,41 +19,6 @@ interface RevisionDatosProps {
   onContinue?: (datos: DatosRevisados) => void
   onBack?: () => void
 }
-
-const pasos = [
-  {
-    number: '01',
-    label: 'Validación Inicial',
-    detail: 'Datos básicos y filtros',
-  },
-  {
-    number: '02',
-    label: 'Tratamiento de Datos',
-    detail: 'Habeas data y consentimiento',
-  },
-  {
-    number: '03',
-    label: 'Captura de Cédula',
-    detail: 'Anverso y reverso de ID',
-  },
-  {
-    number: '04',
-    label: 'Procesamiento OCR',
-    detail: 'Extracción y biometría',
-  },
-  {
-    number: '05',
-    label: 'Verificación de Datos',
-    detail: 'Confirmación de campos',
-  },
-  {
-    number: '06',
-    label: 'Resultado Validación',
-    detail: 'Resumen y radicación',
-  },
-] as const
-
-const PASO_ACTUAL = 5
 
 const CONFIANZA_BASE = 98.4
 const CONFIANZA_MAXIMA = 100
@@ -241,36 +209,7 @@ function RevisionDatos({ onContinue, onBack }: RevisionDatosProps) {
         </aside>
       </header>
 
-      <ol
-        className="revision__steps"
-        aria-label="Etapas del proceso de originación"
-      >
-        {pasos.map((paso, indice) => {
-          const posicion = indice + 1
-          const estado =
-            posicion < PASO_ACTUAL
-              ? 'is-done'
-              : posicion === PASO_ACTUAL
-                ? 'is-active'
-                : 'is-pending'
-
-          return (
-            <li
-              key={paso.number}
-              className={`revision__step ${estado}`}
-              aria-current={posicion === PASO_ACTUAL ? 'step' : undefined}
-            >
-              <span className="revision__step-number" aria-hidden="true">
-                {posicion < PASO_ACTUAL ? '✓' : paso.number}
-              </span>
-              <span className="revision__step-copy">
-                <strong>{paso.label}</strong>
-                <small>{paso.detail}</small>
-              </span>
-            </li>
-          )
-        })}
-      </ol>
+      <SeguimientoOriginacion pasoActual={5} />
 
       <form className="revision__form" onSubmit={handleSubmit} noValidate>
         <div className="revision__form-head">
@@ -281,7 +220,7 @@ function RevisionDatos({ onContinue, onBack }: RevisionDatosProps) {
               obligatorios.
             </p>
           </div>
-          <span className="revision__chip">Paso 5 de 6</span>
+          <span className="revision__chip">Paso 5 de 12</span>
         </div>
 
         <div className="revision__confianza" role="note">
@@ -431,8 +370,9 @@ function RevisionDatos({ onContinue, onBack }: RevisionDatosProps) {
                     <div className="revision__aviso-body">
                       <p>{campo.ayudaDudoso}</p>
                       {dudosoPendiente ? (
-                        <button
-                          className="revision__confirmar"
+                        <Boton
+                          variante="terciario"
+                          tamano="compacto"
                           type="button"
                           onClick={() =>
                             setDudososConfirmados((prev) => ({
@@ -442,7 +382,7 @@ function RevisionDatos({ onContinue, onBack }: RevisionDatosProps) {
                           }
                         >
                           Confirmar campo
-                        </button>
+                        </Boton>
                       ) : (
                         <span className="revision__confirmado">
                           <svg viewBox="0 0 24 24" focusable="false">
@@ -475,9 +415,14 @@ function RevisionDatos({ onContinue, onBack }: RevisionDatosProps) {
         <div className="revision__actions">
           <div className="revision__actions-left">
             {onBack && (
-              <button className="revision__back" type="button" onClick={onBack}>
-                ← Volver al paso anterior
-              </button>
+              <Boton
+                variante="secundario"
+                tamano="compacto"
+                iconoInicio={<ArrowLeft size={14} aria-hidden="true" />}
+                onClick={onBack}
+              >
+                Volver al paso anterior
+              </Boton>
             )}
             <p className="revision__actions-note">
               <span className="revision__dot" aria-hidden="true" />
@@ -486,9 +431,12 @@ function RevisionDatos({ onContinue, onBack }: RevisionDatosProps) {
                 : `${dudososPendientes.length} campo(s) dudoso(s) por confirmar.`}
             </p>
           </div>
-          <button className="revision__submit" type="submit">
+          <Boton
+            type="submit"
+            iconoFin={<ArrowRight size={15} aria-hidden="true" />}
+          >
             Confirmar y Continuar
-          </button>
+          </Boton>
         </div>
       </form>
     </div>

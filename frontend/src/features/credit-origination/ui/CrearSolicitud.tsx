@@ -1,4 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
+import Boton from '../../../shared/ui/Boton'
+import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import './CrearSolicitud.css'
 
 export interface DatosSolicitud {
@@ -18,46 +21,6 @@ interface CrearSolicitudProps {
   /** Datos pre-cargados desde los pasos anteriores. */
   inicial?: Partial<DatosSolicitud>
 }
-
-const pasos = [
-  {
-    number: '01',
-    label: 'Validación Inicial',
-    detail: 'Datos básicos y filtros',
-  },
-  {
-    number: '02',
-    label: 'Tratamiento de Datos',
-    detail: 'Habeas data y consentimiento',
-  },
-  {
-    number: '03',
-    label: 'Captura de Cédula',
-    detail: 'Anverso y reverso de ID',
-  },
-  {
-    number: '04',
-    label: 'Procesamiento OCR',
-    detail: 'Extracción y biometría',
-  },
-  {
-    number: '05',
-    label: 'Verificación de Datos',
-    detail: 'Confirmación de campos',
-  },
-  {
-    number: '06',
-    label: 'Resultado Validación',
-    detail: 'Resumen y radicación',
-  },
-  {
-    number: '07',
-    label: 'Registro de Solicitud',
-    detail: 'Producto y perfil económico',
-  },
-] as const
-
-const PASO_ACTUAL = 7
 
 const lineasCredito = [
   'Inversiones Pacífico',
@@ -245,36 +208,7 @@ function CrearSolicitud({ onContinue, onBack, inicial }: CrearSolicitudProps) {
         </aside>
       </header>
 
-      <ol
-        className="solicitud__steps"
-        aria-label="Etapas del proceso de originación"
-      >
-        {pasos.map((paso, indice) => {
-          const posicion = indice + 1
-          const estado =
-            posicion < PASO_ACTUAL
-              ? 'is-done'
-              : posicion === PASO_ACTUAL
-                ? 'is-active'
-                : 'is-pending'
-
-          return (
-            <li
-              key={paso.number}
-              className={`solicitud__step ${estado}`}
-              aria-current={posicion === PASO_ACTUAL ? 'step' : undefined}
-            >
-              <span className="solicitud__step-number" aria-hidden="true">
-                {posicion < PASO_ACTUAL ? '✓' : paso.number}
-              </span>
-              <span className="solicitud__step-copy">
-                <strong>{paso.label}</strong>
-                <small>{paso.detail}</small>
-              </span>
-            </li>
-          )
-        })}
-      </ol>
+      <SeguimientoOriginacion pasoActual={7} />
 
       <form className="solicitud__form" onSubmit={handleSubmit} noValidate>
         {registrado && (
@@ -721,14 +655,15 @@ function CrearSolicitud({ onContinue, onBack, inicial }: CrearSolicitudProps) {
         <div className="solicitud__actions">
           <div className="solicitud__actions-left">
             {onBack && (
-              <button
-                className="solicitud__back"
-                type="button"
+              <Boton
+                variante="secundario"
+                tamano="compacto"
+                iconoInicio={<ArrowLeft size={15} aria-hidden="true" />}
                 onClick={onBack}
                 disabled={enviando || registrado}
               >
-                ← Volver a Paso 6
-              </button>
+                Volver al paso 6
+              </Boton>
             )}
             <p className="solicitud__actions-note">
               <span className="solicitud__dot" aria-hidden="true" />
@@ -737,17 +672,22 @@ function CrearSolicitud({ onContinue, onBack, inicial }: CrearSolicitudProps) {
                 : 'Verifica los datos antes de registrar.'}
             </p>
           </div>
-          <button
-            className="solicitud__submit"
+          <Boton
             type="submit"
+            cargando={enviando}
             disabled={enviando || registrado}
+            iconoFin={
+              !enviando && !registrado ? (
+                <ArrowRight size={16} aria-hidden="true" />
+              ) : undefined
+            }
           >
             {enviando
               ? 'Registrando…'
               : registrado
                 ? 'Solicitud registrada'
                 : 'Registrar Solicitud'}
-          </button>
+          </Boton>
         </div>
       </form>
     </div>

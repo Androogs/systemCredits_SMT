@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
+import Boton from '../../../shared/ui/Boton'
+import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import './AutorizacionDatos.css'
 
 export interface DatosAutorizacion {
@@ -11,41 +14,6 @@ interface AutorizacionDatosProps {
   onContinue?: (datos: DatosAutorizacion) => void
   onBack?: () => void
 }
-
-const pasos = [
-  {
-    number: '01',
-    label: 'Validación Inicial',
-    detail: 'Datos básicos y filtros',
-  },
-  {
-    number: '02',
-    label: 'Tratamiento de Datos',
-    detail: 'Habeas data y consentimiento',
-  },
-  {
-    number: '03',
-    label: 'Captura de Cédula',
-    detail: 'Anverso y reverso de ID',
-  },
-  {
-    number: '04',
-    label: 'Procesamiento OCR',
-    detail: 'Extracción y biometría',
-  },
-  {
-    number: '05',
-    label: 'Verificación de Datos',
-    detail: 'Confirmación de campos',
-  },
-  {
-    number: '06',
-    label: 'Resultado Validación',
-    detail: 'Resumen y radicación',
-  },
-] as const
-
-const PASO_ACTUAL = 2
 
 const REGISTRO_AUDITORIA = {
   fecha: '2026-03-04 15:34:10 COT',
@@ -128,36 +96,7 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
         </aside>
       </header>
 
-      <ol
-        className="autorizacion__steps"
-        aria-label="Etapas del proceso de originación"
-      >
-        {pasos.map((paso, indice) => {
-          const posicion = indice + 1
-          const estado =
-            posicion < PASO_ACTUAL
-              ? 'is-done'
-              : posicion === PASO_ACTUAL
-                ? 'is-active'
-                : 'is-pending'
-
-          return (
-            <li
-              key={paso.number}
-              className={`autorizacion__step ${estado}`}
-              aria-current={posicion === PASO_ACTUAL ? 'step' : undefined}
-            >
-              <span className="autorizacion__step-number" aria-hidden="true">
-                {posicion < PASO_ACTUAL ? '✓' : paso.number}
-              </span>
-              <span className="autorizacion__step-copy">
-                <strong>{paso.label}</strong>
-                <small>{paso.detail}</small>
-              </span>
-            </li>
-          )
-        })}
-      </ol>
+      <SeguimientoOriginacion pasoActual={2} />
 
       <form className="autorizacion__form" onSubmit={handleSubmit} noValidate>
         <div className="autorizacion__form-head">
@@ -168,7 +107,7 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
               de continuar.
             </p>
           </div>
-          <span className="autorizacion__chip">Paso 2 de 6</span>
+          <span className="autorizacion__chip">Paso 2 de 12</span>
         </div>
 
         {registrado && (
@@ -320,22 +259,26 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
         <div className="autorizacion__actions">
           <div className="autorizacion__actions-left">
             {onBack && (
-              <button
-                className="autorizacion__back"
-                type="button"
+              <Boton
+                variante="secundario"
+                tamano="compacto"
+                iconoInicio={<ArrowLeft size={14} aria-hidden="true" />}
                 onClick={onBack}
               >
-                ← Volver al paso anterior
-              </button>
+                Volver al paso anterior
+              </Boton>
             )}
             <p className="autorizacion__actions-note">
               <span className="autorizacion__dot" aria-hidden="true" />
               Paso anterior guardado automáticamente
             </p>
           </div>
-          <button className="autorizacion__submit" type="submit">
-            Registrar y Continuar
-          </button>
+          <Boton
+            type="submit"
+            iconoFin={<ArrowRight size={15} aria-hidden="true" />}
+          >
+            Registrar y continuar
+          </Boton>
         </div>
       </form>
     </div>

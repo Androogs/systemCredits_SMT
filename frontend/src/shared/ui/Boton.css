@@ -1,0 +1,101 @@
+.boton {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 650;
+  line-height: 1.2;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.boton > svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.boton--normal {
+  padding: 0.65rem 1rem;
+}
+
+.boton--compacto {
+  min-height: 2.25rem;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.75rem;
+}
+
+.boton--primario {
+  background: #087ead;
+  color: #fff;
+}
+
+.boton--primario:hover:not(:disabled) {
+  background: #06678f;
+}
+
+.boton--secundario {
+  border-color: #d5dde5;
+  background: #fff;
+  color: #344054;
+}
+
+.boton--secundario:hover:not(:disabled) {
+  background: #f5f7f9;
+}
+
+.boton--terciario {
+  background: transparent;
+  color: #087ead;
+}
+
+.boton--terciario:hover:not(:disabled) {
+  background: #edf8fc;
+}
+
+.boton--peligro {
+  background: #b42318;
+  color: #fff;
+}
+
+.boton--peligro:hover:not(:disabled) {
+  background: #912018;
+}
+
+.boton:focus-visible {
+  outline: 3px solid #9ddcf0;
+  outline-offset: 2px;
+}
+
+.boton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.boton__indicador-carga {
+  animation: boton-girar 1s linear infinite;
+}
+
+@keyframes boton-girar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boton {
+    transition: none;
+  }
+
+  .boton__indicador-carga {
+    animation: none;
+  }
+}

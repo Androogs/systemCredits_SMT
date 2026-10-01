@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
+import Boton from '../../../shared/ui/Boton'
+import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import './CapturaCedula.css'
 
 export interface ResultadoBiometrico {
@@ -30,41 +33,6 @@ interface CapturaCedulaProps {
    */
   lanzarSDK?: (modo: Modo) => Promise<ResultadoBiometrico>
 }
-
-const pasos = [
-  {
-    number: '01',
-    label: 'Validación Inicial',
-    detail: 'Datos básicos y filtros',
-  },
-  {
-    number: '02',
-    label: 'Tratamiento de Datos',
-    detail: 'Habeas data y consentimiento',
-  },
-  {
-    number: '03',
-    label: 'Captura de Cédula',
-    detail: 'Anverso y reverso de ID',
-  },
-  {
-    number: '04',
-    label: 'Procesamiento OCR',
-    detail: 'Extracción y biometría',
-  },
-  {
-    number: '05',
-    label: 'Verificación de Datos',
-    detail: 'Confirmación de campos',
-  },
-  {
-    number: '06',
-    label: 'Resultado Validación',
-    detail: 'Resumen y radicación',
-  },
-] as const
-
-const PASO_ACTUAL = 3
 
 const requisitos = [
   {
@@ -242,37 +210,7 @@ function CapturaCedula({ onContinue, onBack, lanzarSDK }: CapturaCedulaProps) {
         </aside>
       </header>
 
-      {/* ---------- Stepper ---------- */}
-      <ol
-        className="captura__steps"
-        aria-label="Etapas del proceso de originación"
-      >
-        {pasos.map((paso, indice) => {
-          const posicion = indice + 1
-          const estado =
-            posicion < PASO_ACTUAL
-              ? 'is-done'
-              : posicion === PASO_ACTUAL
-                ? 'is-active'
-                : 'is-pending'
-
-          return (
-            <li
-              key={paso.number}
-              className={`captura__step ${estado}`}
-              aria-current={posicion === PASO_ACTUAL ? 'step' : undefined}
-            >
-              <span className="captura__step-number" aria-hidden="true">
-                {posicion < PASO_ACTUAL ? '✓' : paso.number}
-              </span>
-              <span className="captura__step-copy">
-                <strong>{paso.label}</strong>
-                <small>{paso.detail}</small>
-              </span>
-            </li>
-          )
-        })}
-      </ol>
+      <SeguimientoOriginacion pasoActual={3} />
 
       {/* ---------- Tarjeta principal ---------- */}
       <div className="captura__form">
@@ -284,7 +222,7 @@ function CapturaCedula({ onContinue, onBack, lanzarSDK }: CapturaCedulaProps) {
               capturar el teléfono del cliente.
             </p>
           </div>
-          <span className="captura__chip">Paso 3 de 6</span>
+          <span className="captura__chip">Paso 3 de 12</span>
         </div>
 
         {/* Selector de modo */}
@@ -444,26 +382,27 @@ function CapturaCedula({ onContinue, onBack, lanzarSDK }: CapturaCedulaProps) {
               </ol>
             </div>
 
-            <button
+            <Boton
               type="button"
-              className="captura__launch"
               onClick={() => iniciar('tablet')}
+              iconoInicio={
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <rect
+                    x="5"
+                    y="3"
+                    width="14"
+                    height="18"
+                    rx="2"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                  />
+                  <circle cx="12" cy="18" r="1" fill="currentColor" />
+                </svg>
+              }
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <rect
-                  x="5"
-                  y="3"
-                  width="14"
-                  height="18"
-                  rx="2"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                />
-                <circle cx="12" cy="18" r="1" fill="currentColor" />
-              </svg>
               Iniciar Verificación Biométrica
-            </button>
+            </Boton>
           </div>
         )}
 
@@ -517,13 +456,9 @@ function CapturaCedula({ onContinue, onBack, lanzarSDK }: CapturaCedulaProps) {
               </div>
 
               <div className="captura__handoff-actions">
-                <button
-                  type="button"
-                  className="captura__launch"
-                  onClick={() => iniciar('handoff')}
-                >
+                <Boton type="button" onClick={() => iniciar('handoff')}>
                   Simular que el cliente terminó
-                </button>
+                </Boton>
                 <button
                   type="button"
                   className="captura__modo-cambiar"
@@ -722,13 +657,14 @@ function CapturaCedula({ onContinue, onBack, lanzarSDK }: CapturaCedulaProps) {
                   'El proveedor rechazó la solicitud. Puedes reintentar o cambiar de dispositivo.'}
               </p>
               <div className="captura__error-actions">
-                <button
+                <Boton
+                  variante="secundario"
+                  tamano="compacto"
                   type="button"
-                  className="captura__retry"
                   onClick={() => iniciar()}
                 >
                   Reintentar verificación
-                </button>
+                </Boton>
                 <button
                   type="button"
                   className="captura__modo-cambiar"
@@ -749,14 +685,16 @@ function CapturaCedula({ onContinue, onBack, lanzarSDK }: CapturaCedulaProps) {
         <div className="captura__actions">
           <div className="captura__actions-left">
             {onBack && (
-              <button
-                className="captura__back"
+              <Boton
+                variante="secundario"
+                tamano="compacto"
+                iconoInicio={<ArrowLeft size={14} aria-hidden="true" />}
                 type="button"
                 onClick={onBack}
                 disabled={bloqueado}
               >
-                ← Volver al paso anterior
-              </button>
+                Volver al paso anterior
+              </Boton>
             )}
             <p className="captura__actions-note">
               <span
@@ -780,13 +718,13 @@ function CapturaCedula({ onContinue, onBack, lanzarSDK }: CapturaCedulaProps) {
           </div>
 
           {fase === 'completado' && (
-            <button
-              className="captura__submit"
+            <Boton
               type="button"
               onClick={handleContinuar}
+              iconoFin={<ArrowRight size={15} aria-hidden="true" />}
             >
               Continuar a Procedimiento
-            </button>
+            </Boton>
           )}
 
           {bloqueado && (

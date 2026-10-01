@@ -1,0 +1,88 @@
+.cabecera-etapa {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 21rem);
+  align-items: start;
+  gap: 1.5rem;
+}
+
+.cabecera-etapa__texto > p {
+  margin: 0 0 0.55rem;
+  color: #087ead;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.cabecera-etapa__texto h1 {
+  margin: 0;
+  color: #1d2939;
+  font-size: 1.65rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.cabecera-etapa__texto > span {
+  display: block;
+  max-width: 46rem;
+  margin-top: 0.5rem;
+  color: #667085;
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.cabecera-etapa__contexto {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #e4eaf0;
+  border-radius: 0.7rem;
+  background: #fff;
+}
+
+.cabecera-etapa__contexto dl {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.cabecera-etapa__contexto dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.cabecera-etapa__contexto dt {
+  color: #7b8794;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.cabecera-etapa__contexto dd {
+  margin: 0;
+  color: #1d2939;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: right;
+}
+
+.cabecera-etapa__servidor {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #566575;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.cabecera-etapa__servidor span {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 50%;
+  background: #d69b27;
+}
+
+@media (max-width: 900px) {
+  .cabecera-etapa {
+    grid-template-columns: 1fr;
+  }
+}

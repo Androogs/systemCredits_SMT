@@ -1,0 +1,88 @@
+import { Check } from 'lucide-react'
+import {
+  etapasOriginacion,
+  type PasoOriginacion,
+} from '../../model/etapas-originacion'
+import './SeguimientoOriginacion.css'
+
+interface SeguimientoOriginacionProps {
+  pasoActual: PasoOriginacion
+}
+
+function SeguimientoOriginacion({ pasoActual }: SeguimientoOriginacionProps) {
+  const fases = [
+    { titulo: 'Identidad y solicitud', etapas: etapasOriginacion.slice(0, 6) },
+    { titulo: 'Consulta y decisión', etapas: etapasOriginacion.slice(6) },
+  ] as const
+
+  return (
+    <nav className="seguimiento" aria-label="Progreso de la solicitud">
+      <div className="seguimiento__resumen">
+        <span>Originación de crédito</span>
+        <strong>Etapa {String(pasoActual).padStart(2, '0')} de 12</strong>
+        <div
+          className="seguimiento__progreso"
+          role="progressbar"
+          aria-label="Progreso de originación"
+          aria-valuemin={1}
+          aria-valuemax={12}
+          aria-valuenow={pasoActual}
+        >
+          <span
+            style={{
+              width: `${(pasoActual / etapasOriginacion.length) * 100}%`,
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="seguimiento__fases">
+        {fases.map((fase, faseIndice) => (
+          <section className="seguimiento__fase" key={fase.titulo}>
+            <h2>
+              <span>0{faseIndice + 1}</span>
+              {fase.titulo}
+            </h2>
+            <ol
+              className="seguimiento__etapas"
+              aria-label={`Etapas ${faseIndice * 6 + 1} a ${faseIndice * 6 + 6}`}
+              start={faseIndice * 6 + 1}
+            >
+              {fase.etapas.map((etapa, indice) => {
+                const posicion = faseIndice * 6 + indice + 1
+                const estado =
+                  posicion < pasoActual
+                    ? 'completada'
+                    : posicion === pasoActual
+                      ? 'actual'
+                      : 'pendiente'
+
+                return (
+                  <li
+                    className={`seguimiento__etapa seguimiento__etapa--${estado}`}
+                    key={etapa.titulo}
+                    aria-current={estado === 'actual' ? 'step' : undefined}
+                  >
+                    <span className="seguimiento__marcador" aria-hidden="true">
+                      {estado === 'completada' ? (
+                        <Check size={14} strokeWidth={2.5} />
+                      ) : (
+                        String(posicion).padStart(2, '0')
+                      )}
+                    </span>
+                    <span className="seguimiento__texto">
+                      <strong>{etapa.titulo}</strong>
+                      <small>{etapa.detalle}</small>
+                    </span>
+                  </li>
+                )
+              })}
+            </ol>
+          </section>
+        ))}
+      </div>
+    </nav>
+  )
+}
+
+export default SeguimientoOriginacion

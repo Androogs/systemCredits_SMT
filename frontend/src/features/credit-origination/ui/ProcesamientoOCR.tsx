@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
+import Boton from '../../../shared/ui/Boton'
+import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import './ProcesamientoOCR.css'
 
 export interface ResultadoOCR {
@@ -17,41 +20,6 @@ interface ProcesamientoOCRProps {
   /** Si es true, simula el procesamiento automáticamente al montar. */
   autoStart?: boolean
 }
-
-const pasos = [
-  {
-    number: '01',
-    label: 'Validación Inicial',
-    detail: 'Datos básicos y filtros',
-  },
-  {
-    number: '02',
-    label: 'Tratamiento de Datos',
-    detail: 'Habeas data y consentimiento',
-  },
-  {
-    number: '03',
-    label: 'Captura de Cédula',
-    detail: 'Anverso y reverso de ID',
-  },
-  {
-    number: '04',
-    label: 'Procesamiento OCR',
-    detail: 'Extracción y biometría',
-  },
-  {
-    number: '05',
-    label: 'Verificación de Datos',
-    detail: 'Confirmación de campos',
-  },
-  {
-    number: '06',
-    label: 'Resultado Validación',
-    detail: 'Resumen y radicación',
-  },
-] as const
-
-const PASO_ACTUAL = 4
 
 type EstadoTarea = 'pendiente' | 'en-proceso' | 'completada'
 
@@ -196,33 +164,7 @@ function ProcesamientoOCR({
         </aside>
       </header>
 
-      <ol className="ocr__steps" aria-label="Etapas del proceso de originación">
-        {pasos.map((paso, indice) => {
-          const posicion = indice + 1
-          const estado =
-            posicion < PASO_ACTUAL
-              ? 'is-done'
-              : posicion === PASO_ACTUAL
-                ? 'is-active'
-                : 'is-pending'
-
-          return (
-            <li
-              key={paso.number}
-              className={`ocr__step ${estado}`}
-              aria-current={posicion === PASO_ACTUAL ? 'step' : undefined}
-            >
-              <span className="ocr__step-number" aria-hidden="true">
-                {posicion < PASO_ACTUAL ? '✓' : paso.number}
-              </span>
-              <span className="ocr__step-copy">
-                <strong>{paso.label}</strong>
-                <small>{paso.detail}</small>
-              </span>
-            </li>
-          )
-        })}
-      </ol>
+      <SeguimientoOriginacion pasoActual={4} />
 
       <div className="ocr__grid">
         {/* Columna izquierda: estado del procesamiento */}
@@ -367,9 +309,14 @@ function ProcesamientoOCR({
       <div className="ocr__actions">
         <div className="ocr__actions-left">
           {onBack && (
-            <button className="ocr__back" type="button" onClick={onBack}>
-              ← Volver al paso anterior
-            </button>
+            <Boton
+              variante="secundario"
+              tamano="compacto"
+              iconoInicio={<ArrowLeft size={14} aria-hidden="true" />}
+              onClick={onBack}
+            >
+              Volver al paso anterior
+            </Boton>
           )}
           {!completado ? (
             <p className="ocr__actions-note">
@@ -386,22 +333,18 @@ function ProcesamientoOCR({
 
         <div className="ocr__actions-right">
           {completado && (
-            <button
-              className="ocr__secondary"
-              type="button"
-              onClick={reiniciar}
-            >
+            <Boton variante="secundario" type="button" onClick={reiniciar}>
               Reprocesar
-            </button>
+            </Boton>
           )}
-          <button
-            className="ocr__submit"
+          <Boton
             type="button"
             onClick={handleContinuar}
             disabled={!completado}
+            iconoFin={<ArrowRight size={15} aria-hidden="true" />}
           >
             Continuar a Verificación
-          </button>
+          </Boton>
         </div>
       </div>
     </div>

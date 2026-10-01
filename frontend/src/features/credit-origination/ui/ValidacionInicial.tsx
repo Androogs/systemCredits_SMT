@@ -1,4 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
+import { ArrowRight } from 'lucide-react'
+import Boton from '../../../shared/ui/Boton'
+import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import './ValidacionInicial.css'
 
 export interface DatosValidacion {
@@ -15,39 +18,6 @@ interface ValidacionInicialProps {
 
 const MIN_EDAD = 18
 const MAX_EDAD = 75
-
-const pasos = [
-  {
-    number: '01',
-    label: 'Validación Inicial',
-    detail: 'Datos básicos y filtros',
-  },
-  {
-    number: '02',
-    label: 'Tratamiento de Datos',
-    detail: 'Habeas data y consentimiento',
-  },
-  {
-    number: '03',
-    label: 'Captura de Cédula',
-    detail: 'Anverso y reverso de ID',
-  },
-  {
-    number: '04',
-    label: 'Procesamiento OCR',
-    detail: 'Extracción y biometría',
-  },
-  {
-    number: '05',
-    label: 'Verificación de Datos',
-    detail: 'Confirmación de campos',
-  },
-  {
-    number: '06',
-    label: 'Resultado Validación',
-    detail: 'Resumen y radicación',
-  },
-] as const
 
 type Campo = 'numeroDocumento' | 'edad' | 'multas'
 
@@ -146,26 +116,7 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
         </aside>
       </header>
 
-      <ol
-        className="validacion__steps"
-        aria-label="Etapas del proceso de originación"
-      >
-        {pasos.map((paso, indice) => (
-          <li
-            key={paso.number}
-            className={`validacion__step${indice === 0 ? ' is-active' : ' is-pending'}`}
-            aria-current={indice === 0 ? 'step' : undefined}
-          >
-            <span className="validacion__step-number" aria-hidden="true">
-              {paso.number}
-            </span>
-            <span className="validacion__step-copy">
-              <strong>{paso.label}</strong>
-              <small>{paso.detail}</small>
-            </span>
-          </li>
-        ))}
-      </ol>
+      <SeguimientoOriginacion pasoActual={1} />
 
       <form className="validacion__form" onSubmit={handleSubmit} noValidate>
         <div className="validacion__form-head">
@@ -176,7 +127,7 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
               obligatorios.
             </p>
           </div>
-          <span className="validacion__chip">Paso 1 de 6</span>
+          <span className="validacion__chip">Paso 1 de 12</span>
         </div>
 
         {resultado === 'ok' && (
@@ -386,9 +337,12 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
             Al continuar, el sistema registra la validación inicial y habilita
             el paso de tratamiento de datos.
           </p>
-          <button className="validacion__submit" type="submit">
-            Registrar y Continuar
-          </button>
+          <Boton
+            type="submit"
+            iconoFin={<ArrowRight size={15} aria-hidden="true" />}
+          >
+            Registrar y continuar
+          </Boton>
         </div>
       </form>
     </div>

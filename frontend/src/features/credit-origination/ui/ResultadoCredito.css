@@ -1,0 +1,224 @@
+.resultado-credito {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.resultado-credito__contenido {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(16rem, 0.8fr);
+  align-items: stretch;
+  gap: 1rem;
+}
+
+.resultado-credito__oferta,
+.resultado-credito__estados {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  padding: 1.15rem;
+  border: 1px solid #e2e9ef;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.resultado-credito__oferta {
+  border: 2px solid #59bfe2;
+}
+
+.resultado-credito__oferta > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.resultado-credito__oferta h2,
+.resultado-credito__estados h2 {
+  margin: 0;
+  color: #1d3557;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.resultado-credito__oferta > header span {
+  padding: 0.32rem 0.5rem;
+  border-radius: 0.4rem;
+  background: #eaf8f0;
+  color: #168251;
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.resultado-credito__valores {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin: 0;
+}
+
+.resultado-credito__valores > div {
+  display: grid;
+  align-content: center;
+  gap: 0.4rem;
+  min-width: 0;
+  min-height: 4.2rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #e5ebf0;
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.resultado-credito__valores dt {
+  color: #667085;
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
+.resultado-credito__valores dd {
+  margin: 0;
+  color: #1d2939;
+  font-size: 0.84rem;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.resultado-credito__tasa {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.45rem;
+  background: #f5f7fa;
+  color: #596979;
+  font-size: 0.67rem;
+  line-height: 1.5;
+}
+
+.resultado-credito__tasa svg {
+  flex: 0 0 auto;
+  margin-top: 0.05rem;
+}
+
+.resultado-credito__condiciones strong {
+  color: #475467;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.resultado-credito__condiciones p {
+  margin: 0.35rem 0 0;
+  color: #667085;
+  font-size: 0.67rem;
+  line-height: 1.5;
+}
+
+.resultado-credito__estados > h2 {
+  color: #748397;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.resultado-credito__estado {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.8rem;
+  border-radius: 0.5rem;
+}
+
+.resultado-credito__estado strong {
+  font-size: 0.72rem;
+}
+
+.resultado-credito__estado p {
+  margin: 0;
+  font-size: 0.66rem;
+  line-height: 1.45;
+}
+
+.resultado-credito__estado--rechazo {
+  background: #fff1f0;
+  color: #a4231a;
+}
+
+.resultado-credito__estado--revision {
+  background: #fff8e8;
+  color: #9b6412;
+}
+
+.resultado-credito__inclusion {
+  align-self: end;
+  margin: 0;
+  color: #748397;
+  font-size: 0.63rem;
+  line-height: 1.5;
+}
+
+.resultado-credito__acciones {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.resultado-credito__secundario,
+.resultado-credito__primario {
+  display: inline-flex;
+  min-height: 2.65rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid #dce4ea;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.71rem;
+  font-weight: 650;
+}
+
+.resultado-credito__secundario {
+  background: #fff;
+  color: #475467;
+}
+
+.resultado-credito__primario {
+  border-color: #099dd7;
+  background: #099dd7;
+  color: #fff;
+}
+
+.resultado-credito__secundario:disabled,
+.resultado-credito__primario:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.resultado-credito__secundario:focus-visible,
+.resultado-credito__primario:focus-visible {
+  outline: 3px solid #9ddcf0;
+  outline-offset: 2px;
+}
+
+@media (max-width: 850px) {
+  .resultado-credito__contenido {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .resultado-credito__valores {
+    grid-template-columns: 1fr;
+  }
+
+  .resultado-credito__acciones {
+    display: grid;
+  }
+
+  .resultado-credito__acciones button {
+    width: 100%;
+  }
+}

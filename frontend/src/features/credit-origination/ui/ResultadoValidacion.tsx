@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
+import Boton from '../../../shared/ui/Boton'
+import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import './ResultadoValidacion.css'
 
 export interface ResultadoFinal {
@@ -13,41 +16,6 @@ interface ResultadoValidacionProps {
   onContinue?: (resultado: ResultadoFinal) => void
   onBack?: () => void
 }
-
-const pasos = [
-  {
-    number: '01',
-    label: 'Validación Inicial',
-    detail: 'Datos básicos y filtros',
-  },
-  {
-    number: '02',
-    label: 'Tratamiento de Datos',
-    detail: 'Habeas data y consentimiento',
-  },
-  {
-    number: '03',
-    label: 'Captura de Cédula',
-    detail: 'Anverso y reverso de ID',
-  },
-  {
-    number: '04',
-    label: 'Procesamiento OCR',
-    detail: 'Extracción y biometría',
-  },
-  {
-    number: '05',
-    label: 'Verificación de Datos',
-    detail: 'Confirmación de campos',
-  },
-  {
-    number: '06',
-    label: 'Resultado Validación',
-    detail: 'Resumen y radicación',
-  },
-] as const
-
-const PASO_ACTUAL = 6
 
 type EstadoCriterio = 'cumple' | 'revisar' | 'no-cumple'
 
@@ -158,36 +126,7 @@ function ResultadoValidacion({ onContinue, onBack }: ResultadoValidacionProps) {
         </aside>
       </header>
 
-      <ol
-        className="resultado__steps"
-        aria-label="Etapas del proceso de originación"
-      >
-        {pasos.map((paso, indice) => {
-          const posicion = indice + 1
-          const estado =
-            posicion < PASO_ACTUAL
-              ? 'is-done'
-              : posicion === PASO_ACTUAL
-                ? 'is-active'
-                : 'is-pending'
-
-          return (
-            <li
-              key={paso.number}
-              className={`resultado__step ${estado}`}
-              aria-current={posicion === PASO_ACTUAL ? 'step' : undefined}
-            >
-              <span className="resultado__step-number" aria-hidden="true">
-                {posicion < PASO_ACTUAL ? '✓' : paso.number}
-              </span>
-              <span className="resultado__step-copy">
-                <strong>{paso.label}</strong>
-                <small>{paso.detail}</small>
-              </span>
-            </li>
-          )
-        })}
-      </ol>
+      <SeguimientoOriginacion pasoActual={6} />
 
       <div className="resultado__hero" role="status">
         <span className="resultado__hero-icon" aria-hidden="true">
@@ -353,14 +292,16 @@ function ResultadoValidacion({ onContinue, onBack }: ResultadoValidacionProps) {
       <div className="resultado__actions">
         <div className="resultado__actions-left">
           {onBack && (
-            <button
-              className="resultado__back"
+            <Boton
+              variante="secundario"
+              tamano="compacto"
+              iconoInicio={<ArrowLeft size={14} aria-hidden="true" />}
               type="button"
               onClick={onBack}
               disabled={enviando || creado}
             >
-              ← Volver al paso anterior
-            </button>
+              Volver al paso anterior
+            </Boton>
           )}
           <p className="resultado__actions-note">
             <span className="resultado__dot" aria-hidden="true" />
@@ -370,18 +311,23 @@ function ResultadoValidacion({ onContinue, onBack }: ResultadoValidacionProps) {
           </p>
         </div>
 
-        <button
-          className="resultado__submit"
+        <Boton
           type="button"
           onClick={handleCrearSolicitud}
           disabled={!aprobado || enviando || creado}
+          cargando={enviando}
+          iconoFin={
+            !enviando && !creado ? (
+              <ArrowRight size={15} aria-hidden="true" />
+            ) : undefined
+          }
         >
           {enviando
             ? 'Creando solicitud…'
             : creado
               ? 'Solicitud creada'
               : 'Crear Solicitud de Crédito'}
-        </button>
+        </Boton>
       </div>
     </div>
   )
