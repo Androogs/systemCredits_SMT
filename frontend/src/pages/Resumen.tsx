@@ -24,9 +24,9 @@ import {
 } from 'recharts'
 
 const STATUS_COLORS = {
-  APROBADO: '#10b981',
-  RECHAZADO: '#ef4444',
-  REQUIERE_REVISION: '#f59e0b',
+  APROBADO: '#059669',          // emerald-600 - era 500, ahora más profundo
+  RECHAZADO: '#BE123C',         // rose-700 - era 600, ahora vino elegante
+  REQUIERE_REVISION: '#D97706', // amber-600 - era 500, ahora ámbar quemado
 }
 
 export default function Resumen() {
@@ -133,30 +133,64 @@ export default function Resumen() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Tarjeta>
-            <h3 className="font-semibold text-slate-900 mb-4">
-              Distribución por estado
-            </h3>
-            <div className="h-64">
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie
-                    data={byStatus}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={60}
-                    outerRadius={90}
-                    paddingAngle={3}
-                  >
-                    {byStatus.map((s) => (
-                      <Cell key={s.name} fill={s.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+        <Tarjeta className="!p-0 overflow-hidden border-zinc-200 w-full max-w-[620px]">
+          <div className="p-5 pb-0 flex items-center justify-between">
+            <h3 className="text-[13px] font-semibold tracking-tight uppercase">Distribución por estado</h3>
+            <span className="text-[11px] px-2 py-1 rounded-full bg-zinc-900 text-white">{byStatus.reduce((s, x) => s + x.value, 0)} total</span>
+          </div>
+
+          <div className="h-[260px] mt-2 relative">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={byStatus}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={65}
+                  outerRadius={95}
+                  paddingAngle={4}
+                  stroke="none"
+                  cornerRadius={6}
+                >
+                  {byStatus.map((s) => (
+                    <Cell key={s.name} fill={s.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    background: '#18181b',
+                    border: 'none',
+                    borderRadius: 10,
+                    color: '#fff',
+                    fontSize: 12,
+                    padding: '8px 12px'
+                  }}
+                  itemStyle={{ color: '#fff' }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+
+            <div className="absolute inset-0 grid place-items-center pointer-events-none">
+              <div className="text-center">
+                <p className="text-2xl font-semibold tracking-tight">{byStatus.reduce((s, x) => s + x.value, 0)}</p>
+                <p className="text-[11px] uppercase tracking-wide text-zinc-500 -mt-1">Solicitudes</p>
+              </div>
             </div>
-          </Tarjeta>
+          </div>
+
+          {/* LEYENDA MÁS GRANDE */}
+          <div className="grid grid-cols-3 gap-3 p-3.5 mx-3 mb-3 rounded-xl bg-zinc-50 border border-zinc-100">
+            {byStatus.map((s) => (
+              <div key={s.name} className="flex items-center gap-2.5">
+                <span className="h-3.5 w-3.5 rounded-full shrink-0" style={{ background: s.color }} />
+                <div className="min-w-0">
+                  <p className="text-[12.5px] font-medium text-zinc-700 leading-none truncate">{s.name}</p>
+                  <p className="text-[15px] font-bold leading-none mt-1.5">{s.value}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Tarjeta>
 
           <Tarjeta>
             <h3 className="font-semibold text-slate-900 mb-4">
