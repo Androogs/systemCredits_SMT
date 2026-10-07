@@ -6,13 +6,17 @@ import InsigniaEstado from '../entities/credit/ui/InsigniaEstado'
 import {
   ApiError,
   evaluarSolicitud,
+  listarAuditoriaSolicitud,
   listarBancos,
+  obtenerAuditoria,
   obtenerSolicitud,
   registrarDesembolso,
   seleccionarOferta,
+  type AuditoriaDetalleApi,
   type BancoApi,
   type SolicitudDetalleApi,
 } from '../features/credit-origination/api/originacionApi'
+import { cargarBorrador } from '../features/credit-origination/model/borrador'
 import {
   calcularCupoSugerido,
   TASA_MENSUAL_REFERENCIA,
@@ -35,6 +39,12 @@ import {
   BadgePercent,
   Landmark,
   XCircle,
+  CheckCircle2,
+  FileImage,
+  Video,
+  Database,
+  Eye,
+  Download,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -43,6 +53,16 @@ const CONTRATO_LABELS: Record<string, string> = {
   fijo: 'Término fijo',
   obra_labor: 'Obra o labor',
   no_aplica: 'No aplica',
+}
+
+const ETAPA_LABELS: Record<string, string> = {
+  filtros_duros: 'Filtros duros',
+  ingreso_final: 'Ingreso final',
+  exclusion_score: 'Exclusión de score',
+  perfil_score: 'Perfil de score',
+  perfil_ingreso: 'Perfil de ingreso',
+  matriz_decision: 'Matriz de decisión',
+  capacidad_pago: 'Capacidad de pago',
 }
 
 export default function DetalleSolicitud() {
@@ -63,6 +83,8 @@ export default function DetalleSolicitud() {
   const [plazoTomar, setPlazoTomar] = useState('')
   const [seleccionando, setSeleccionando] = useState(false)
   const [errorSeleccion, setErrorSeleccion] = useState<string | null>(null)
+  const [auditoria, setAuditoria] = useState<AuditoriaDetalleApi | null>(null)
+  const [jsonTab, setJsonTab] = useState<'resultado' | 'payload'>('resultado')
 
   function recargar() {
     if (!id) return
@@ -90,6 +112,29 @@ export default function DetalleSolicitud() {
       .then(setBancos)
       .catch(() => setBancos([]))
   }, [id])
+
+  const idEvaluacion = datos?.evaluacion?.id_evaluacion
+  useEffect(() => {
+    if (!datos || idEvaluacion == null) {
+      setAuditoria(null)
+      return
+    }
+    let cancelado = false
+    listarAuditoriaSolicitud(datos.id_solicitud)
+      .then((lista) =>
+        lista.length > 0 ? obtenerAuditoria(lista[0].evaluacion_id) : null,
+      )
+      .then((det) => {
+        if (!cancelado) setAuditoria(det)
+      })
+      .catch(() => {
+        if (!cancelado) setAuditoria(null)
+      })
+    return () => {
+      cancelado = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idEvaluacion, datos?.id_solicitud])
 
   if (cargando) {
     return (
@@ -128,6 +173,17 @@ export default function DetalleSolicitud() {
     datos.estado === 'aprobada' && ofertaSeleccionada != null
   const puedeSeleccionarOferta =
     datos.estado === 'aprobada' && !ofertaSeleccionada && ofertaElegible != null
+
+  const resultadoAuditoria = auditoria?.resultado ?? null
+  const borrador = cargarBorrador()
+  const cedulaBorrador = (
+    borrador?.contexto.validacion?.numeroDocumento ?? ''
+  ).replace(/\D/g, '')
+  const evidencia =
+    cedulaBorrador.length > 0 &&
+    cedulaBorrador === datos.num_cedula.replace(/\D/g, '')
+      ? (borrador?.contexto.biometria?.evidencia ?? null)
+      : null
 
   function confirmarSeleccionOferta() {
     if (!datos || !ofertaElegible) return
@@ -344,6 +400,58 @@ export default function DetalleSolicitud() {
           </Tarjeta>
         </div>
 
+        <Tarjeta>
+          <h3 className="font-semibold text-slate-900 mb-1 flex items-center gap-2">
+            <FileImage size={18} /> Documentos del solicitante
+          </h3>
+          {evidencia ? (
+            <>
+              <p className="text-xs text-slate-500 mb-4">
+                Evidencia biométrica capturada en este equipo durante la
+                radicación.
+              </p>
+              <div className="grid md:grid-cols-3 gap-6">
+                <EvidenciaImagen
+                  titulo="Cédula - Anverso"
+                  url={evidencia.anverso}
+                />
+                <EvidenciaImagen
+                  titulo="Cédula - Reverso"
+                  url={evidencia.reverso}
+                />
+                <EvidenciaImagen
+                  titulo="Selfie del titular"
+                  url={evidencia.selfie}
+                />
+              </div>
+              {evidencia.video && (
+                <div className="mt-6 space-y-2 max-w-md">
+                  <p className="text-xs uppercase text-slate-500 font-medium flex items-center gap-1">
+                    <Video size={14} /> Video de validación
+                  </p>
+                  <div className="rounded-xl overflow-hidden border border-slate-200 bg-black">
+                    <video
+                      controls
+                      className="w-full h-48 object-cover"
+                      src={evidencia.video}
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Evidencia de prueba de vida del cliente.
+                  </p>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-slate-500 mt-1">
+              Sin evidencia local registrada para esta solicitud. La captura
+              biométrica (cédula, selfie y prueba de vida) se guarda en el
+              equipo del asesor durante la radicación; el almacenamiento de
+              documentos en el backend aún no está integrado.
+            </p>
+          )}
+        </Tarjeta>
+
         {evaluacion && (
           <Tarjeta>
             <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -377,6 +485,152 @@ export default function DetalleSolicitud() {
                 highlight={visual === 'APROBADO'}
               />
             </dl>
+          </Tarjeta>
+        )}
+
+        {resultadoAuditoria && (
+          <div className="grid lg:grid-cols-2 gap-6">
+            <Tarjeta>
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <CreditCard size={18} /> Capacidad de pago
+              </h3>
+              <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm">
+                <Row
+                  k="Ingreso final"
+                  v={currency(Number(resultadoAuditoria.ingreso_final))}
+                />
+                <Row
+                  k="Fuente del ingreso"
+                  v={resultadoAuditoria.fuente_ingreso_final}
+                />
+                <Row
+                  k="Endeudamiento"
+                  v={`${Number(resultadoAuditoria.endeudamiento).toFixed(1)}%`}
+                />
+                <Row
+                  k="Disponible"
+                  v={currency(Number(resultadoAuditoria.disponible))}
+                  highlight
+                />
+                <Row
+                  k="Capacidad de pago"
+                  v={currency(Number(resultadoAuditoria.capacidad_pago))}
+                />
+                <Row
+                  k="Cuota sugerida"
+                  v={currency(Number(resultadoAuditoria.cuota_sugerida))}
+                />
+              </dl>
+            </Tarjeta>
+            <Tarjeta>
+              <h3 className="font-semibold mb-4">Trazabilidad del motor</h3>
+              <ul className="space-y-3">
+                {resultadoAuditoria.trazabilidad.map((paso) => (
+                  <li key={paso.etapa} className="flex gap-3 text-sm">
+                    {paso.causales.length > 0 ? (
+                      <XCircle
+                        size={18}
+                        className="shrink-0 mt-0.5 text-amber-600"
+                      />
+                    ) : (
+                      <CheckCircle2
+                        size={18}
+                        className="shrink-0 mt-0.5 text-emerald-600"
+                      />
+                    )}
+                    <div>
+                      <span className="font-medium text-slate-900">
+                        {ETAPA_LABELS[paso.etapa] ?? paso.etapa}
+                      </span>
+                      <p className="text-slate-600">{paso.resultado}</p>
+                      {paso.detalle.length > 0 && (
+                        <p className="text-xs text-slate-400">
+                          {paso.detalle.join(' · ')}
+                        </p>
+                      )}
+                      {paso.causales.length > 0 && (
+                        <p className="text-xs font-medium text-amber-700">
+                          Causales: {paso.causales.join(', ')}
+                        </p>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Tarjeta>
+          </div>
+        )}
+
+        {auditoria && (
+          <Tarjeta>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold flex items-center gap-2">
+                <Database size={18} /> Evaluación auditada - JSON
+              </h3>
+              <div className="flex bg-slate-100 rounded-full p-1 text-xs">
+                <button
+                  onClick={() => setJsonTab('resultado')}
+                  className={`px-3 py-1 rounded-full ${jsonTab === 'resultado' ? 'bg-white shadow font-medium' : 'text-slate-500'}`}
+                >
+                  Resultado del motor
+                </button>
+                <button
+                  onClick={() => setJsonTab('payload')}
+                  className={`px-3 py-1 rounded-full ${jsonTab === 'payload' ? 'bg-white shadow font-medium' : 'text-slate-500'}`}
+                >
+                  Payload enviado
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-slate-950 text-slate-100 p-4 overflow-auto max-h-[380px]">
+              <div className="flex justify-between items-center mb-2 text-[11px] text-slate-400">
+                <span>
+                  {jsonTab === 'resultado'
+                    ? 'resultado_motor.json'
+                    : 'solicitud_motor.json'}
+                </span>
+                <button
+                  onClick={() => {
+                    const blob = new Blob(
+                      [
+                        JSON.stringify(
+                          jsonTab === 'resultado'
+                            ? auditoria.resultado
+                            : auditoria.request,
+                          null,
+                          2,
+                        ),
+                      ],
+                      { type: 'application/json' },
+                    )
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `${datos.id_solicitud}_${jsonTab}.json`
+                    a.click()
+                    URL.revokeObjectURL(url)
+                  }}
+                  className="flex items-center gap-1 hover:text-white"
+                >
+                  <Download size={12} /> Descargar
+                </button>
+              </div>
+              <pre className="text-xs leading-relaxed whitespace-pre-wrap">
+                {JSON.stringify(
+                  jsonTab === 'resultado'
+                    ? auditoria.resultado
+                    : auditoria.request,
+                  null,
+                  2,
+                )}
+              </pre>
+            </div>
+            <p className="mt-2 text-[11px] text-slate-500">
+              Evaluación {auditoria.evaluacion_id} · origen{' '}
+              {auditoria.origen_datos} · {auditoria.tiempo_ms} ms ·{' '}
+              {dateShort(auditoria.fecha_evaluacion)}
+            </p>
           </Tarjeta>
         )}
 
@@ -698,6 +952,25 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
       <p className="text-xs uppercase text-slate-500">{label}</p>
       <p className="mt-2 text-xl font-bold">{value}</p>
     </Tarjeta>
+  )
+}
+
+function EvidenciaImagen({ titulo, url }: { titulo: string; url: string }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs uppercase text-slate-500 font-medium">{titulo}</p>
+      <div className="group relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
+        <img src={url} alt={titulo} className="w-full h-48 object-cover" />
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-sm gap-2 transition"
+        >
+          <Eye size={16} /> Ver ampliado
+        </a>
+      </div>
+    </div>
   )
 }
 

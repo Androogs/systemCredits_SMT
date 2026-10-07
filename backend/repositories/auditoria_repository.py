@@ -53,10 +53,13 @@ class AuditoriaRepository:
         limite: int = 50,
         numero_id: str | None = None,
         decision: str | None = None,
+        id_solicitud: str | None = None,
     ) -> list[EvaluacionAuditoria]:
         stmt = select(EvaluacionAuditoria).order_by(desc(EvaluacionAuditoria.fecha_evaluacion))
         if numero_id:
             stmt = stmt.where(EvaluacionAuditoria.numero_id == numero_id)
         if decision:
             stmt = stmt.where(EvaluacionAuditoria.decision == decision)
+        if id_solicitud:
+            stmt = stmt.where(EvaluacionAuditoria.id_solicitud == id_solicitud)
         return list(self.db.execute(stmt.limit(limite)).scalars().all())

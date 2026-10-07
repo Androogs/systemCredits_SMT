@@ -23,6 +23,7 @@ export interface CausalEvaluacionApi {
 export interface PasoTrazaApi {
   etapa: string
   resultado: string
+  causales: string[]
   detalle: string[]
 }
 
@@ -167,6 +168,38 @@ export function seleccionarOferta(
 
 export function listarEscenariosMock() {
   return request<Record<string, string>>('/api/motor/escenarios')
+}
+
+// ---------- Auditoría de evaluaciones ----------
+
+export interface AuditoriaResumenApi {
+  evaluacion_id: string
+  fecha_evaluacion: string
+  origen_datos: string
+  id_solicitud: string | null
+  numero_id: string
+  ocupacion: string
+  edad: number
+  decision: string
+  decision_interna: string
+  causales: Record<string, unknown>[]
+  tiempo_ms: number
+}
+
+export interface AuditoriaDetalleApi extends AuditoriaResumenApi {
+  ambiente: string
+  request: Record<string, unknown>
+  resultado: ResultadoMotorApi
+}
+
+export function listarAuditoriaSolicitud(idSolicitud: string) {
+  return request<AuditoriaResumenApi[]>(
+    `/api/auditoria?id_solicitud=${encodeURIComponent(idSolicitud)}`,
+  )
+}
+
+export function obtenerAuditoria(evaluacionId: string) {
+  return request<AuditoriaDetalleApi>(`/api/auditoria/${evaluacionId}`)
 }
 
 // ---------- Consulta de solicitudes persistidas (panel del asesor) ----------

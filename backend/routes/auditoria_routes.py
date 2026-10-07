@@ -50,10 +50,14 @@ def listar(
     limite: int = Query(50, ge=1, le=500),
     numero_id: str | None = None,
     decision: DecisionFinal | None = None,
+    id_solicitud: str | None = None,
     db: Session = Depends(get_db),
 ) -> list[EvaluacionResumen]:
     registros = AuditoriaRepository(db).listar(
-        limite=limite, numero_id=numero_id, decision=decision.value if decision else None
+        limite=limite,
+        numero_id=numero_id,
+        decision=decision.value if decision else None,
+        id_solicitud=id_solicitud,
     )
     return [_resumen(e) for e in registros]
 
