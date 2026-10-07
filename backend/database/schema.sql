@@ -156,6 +156,7 @@ CREATE TABLE cliente (
     tipo_documento VARCHAR(30) NOT NULL,
     num_cedula VARCHAR(40) NOT NULL UNIQUE,
     nombre_completo VARCHAR(200) NOT NULL,
+    primer_apellido VARCHAR(60),
     fecha_expedicion DATE,
     id_ciudad_expedicion BIGINT REFERENCES ciudad(id_ciudad),
     fecha_nacimiento DATE NOT NULL,
@@ -185,10 +186,14 @@ CREATE TABLE solicitud_credito (
     descripcion_estado TEXT,
     codigo_estado_externo VARCHAR(50),
     accion VARCHAR(100),
+    linea_credito VARCHAR(60),
+    destino_credito VARCHAR(80),
+    plazo_deseado_meses SMALLINT,
     fecha_hora_firma TIMESTAMPTZ,
     uuid_firma UUID UNIQUE,
     autenticacion VARCHAR(100),
-    CONSTRAINT ck_solicitud_moneda CHECK (moneda ~ '^[A-Z]{3}$')
+    CONSTRAINT ck_solicitud_moneda CHECK (moneda ~ '^[A-Z]{3}$'),
+    CONSTRAINT ck_solicitud_plazo_deseado CHECK (plazo_deseado_meses IS NULL OR plazo_deseado_meses > 0)
 );
 
 CREATE TABLE solicitud_estado_historial (
@@ -303,7 +308,7 @@ CREATE TABLE datos_laborales (
     id_solicitud UUID NOT NULL UNIQUE REFERENCES solicitud_credito(id_solicitud) ON DELETE CASCADE,
     tipo_contrato tipo_contrato,
     meses_continuidad INTEGER,
-    anos_camara_comercio NUMERIC(6,2),
+    anios_camara_comercio NUMERIC(6,2),
     ingreso_mensual NUMERIC(18,2),
     otros_ingresos NUMERIC(18,2) NOT NULL DEFAULT 0,
     nombre_empresa VARCHAR(200),
@@ -314,7 +319,7 @@ CREATE TABLE datos_laborales (
     cargo VARCHAR(120),
     actividad_comercial VARCHAR(180),
     CONSTRAINT ck_laboral_meses CHECK (meses_continuidad IS NULL OR meses_continuidad >= 0),
-    CONSTRAINT ck_laboral_camara CHECK (anos_camara_comercio IS NULL OR anos_camara_comercio >= 0),
+    CONSTRAINT ck_laboral_camara CHECK (anios_camara_comercio IS NULL OR anios_camara_comercio >= 0),
     CONSTRAINT ck_laboral_ingreso CHECK (ingreso_mensual IS NULL OR ingreso_mensual >= 0),
     CONSTRAINT ck_laboral_otros_ingresos CHECK (otros_ingresos >= 0)
 );
@@ -370,7 +375,7 @@ CREATE TABLE evaluacion_credito (
     fecha_evaluacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     origen_evaluacion VARCHAR(40) NOT NULL DEFAULT 'motor_pacifico',
     quanto NUMERIC(18,2),
-    quanto_3_medio NUMERIC(18,2),
+    quanto3_medio NUMERIC(18,2),
     valor_ingreso NUMERIC(18,2),
     ingreso_final NUMERIC(18,2),
     score NUMERIC(8,2),
@@ -395,6 +400,13 @@ CREATE TABLE evaluacion_credito (
     ingresos NUMERIC(18,2),
     meses_continuidad INTEGER,
     meses_antiguedad INTEGER,
+    -- Variables del motor de decisión propio (BRD-IMPL-111350 / PPT v4)
+    calificacion VARCHAR(5),
+    reportado_fallecido BOOLEAN NOT NULL DEFAULT FALSE,
+    score_codigo_exclusion VARCHAR(5),
+    perfil_score VARCHAR(10),
+    perfil_ingreso VARCHAR(10),
+    decision_interna VARCHAR(30),
     CONSTRAINT uq_evaluacion_version UNIQUE (id_solicitud, version),
     CONSTRAINT ck_evaluacion_version CHECK (version > 0),
     CONSTRAINT ck_evaluacion_conteos CHECK (
@@ -1012,3 +1024,31 @@ CREATE INDEX ix_oferta_aliado_fecha ON oferta_credito (id_aliado_producto, fecha
 CREATE INDEX ix_seguro_cotizacion_solicitud ON seguro_cotizacion (id_solicitud, fecha_cotizacion);
 CREATE INDEX ix_poliza_credito ON poliza (id_credito) WHERE id_credito IS NOT NULL;
 CREATE INDEX ix_auditoria_usuario_fecha ON auditoria_usuario (id_usuario, fecha_hora);
+-- =====================================================================
+-- Motor de decisión: auditoría de evaluaciones
+-- Una fila por evaluación ejecutada (sin respuestas completas del buró,
+-- que contienen datos personales de terceros).
+-- =====================================================================
+CREATE TABLE motor_evaluacion_auditoria (
+    id               SERIAL PRIMARY KEY,
+    evaluacion_id    VARCHAR(36)  NOT NULL UNIQUE,
+    fecha_evaluacion TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    ambiente         VARCHAR(20)  NOT NULL,
+    origen_datos     VARCHAR(40)  NOT NULL,
+    id_solicitud     VARCHAR(36),
+    tipo_id          VARCHAR(2)   NOT NULL,
+    numero_id        VARCHAR(20)  NOT NULL,
+    ocupacion        VARCHAR(30)  NOT NULL,
+    edad             INTEGER      NOT NULL,
+    decision         VARCHAR(20)  NOT NULL,
+    decision_interna VARCHAR(30)  NOT NULL,
+    causales         TEXT         NOT NULL,
+    tiempo_ms        INTEGER      NOT NULL DEFAULT 0,
+    request_json     TEXT         NOT NULL,
+    resultado_json   TEXT         NOT NULL
+);
+
+CREATE INDEX ix_motor_auditoria_fecha     ON motor_evaluacion_auditoria (fecha_evaluacion);
+CREATE INDEX ix_motor_auditoria_numero_id ON motor_evaluacion_auditoria (numero_id);
+CREATE INDEX ix_motor_auditoria_decision  ON motor_evaluacion_auditoria (decision);
+CREATE INDEX ix_motor_auditoria_solicitud ON motor_evaluacion_auditoria (id_solicitud);

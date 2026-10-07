@@ -1,39 +1,35 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
 import InsigniaEstado from '../entities/credit/ui/InsigniaEstado'
-import { listApplications } from '../entities/credit/model/mockStore'
 import { currency, dateShort } from '../shared/lib/formatters'
-import { Search } from 'lucide-react'
-import type { EstadoSolicitud } from '../entities/credit/model/underwritingEngine'
+import {
+  estadoVisual,
+  etiquetaSolicitud,
+  numero,
+  useSolicitudes,
+  type EstadoVisual,
+} from '../entities/credit/model/solicitudesPanel'
+import { Search, RefreshCw } from 'lucide-react'
 
 export default function Solicitudes() {
-  const apps = useMemo(() => listApplications(), [])
+  const {
+    datos: solicitudes,
+    cargando,
+    error,
+    recargar,
+  } = useSolicitudes({
+    limite: 200,
+  })
   const [q, setQ] = useState('')
-  const [status, setStatus] = useState<'' | EstadoSolicitud>('')
-  const [asesor, setAsesor] = useState('')
+  const [estado, setEstado] = useState<'' | EstadoVisual>('')
 
-  // saca asesores únicos del mock para no escribirlos a mano
-  const asesores = useMemo(() => {
-    return [
-      ...new Set(
-        apps
-          .map((app) => app.vendedor || app.asesor)
-          .filter((asesor): asesor is string => Boolean(asesor)),
-      ),
-    ]
-  }, [apps])
-
-  const filtered = apps.filter((a) => {
-    const doc = a.documento || a.cedula || ''
-    const ase = a.asesor || a.vendedor || ''
-    const searchText =
-      `${a.id} ${a.customer} ${doc} ${a.concesionario} ${ase}`.toLowerCase()
-
-    if (q && !searchText.includes(q.toLowerCase())) return false
-    if (status && a.status !== status) return false
-    if (asesor && ase !== asesor) return false
+  const filtradas = solicitudes.filter((s) => {
+    const texto =
+      `${s.num_solicitud} ${s.nombre_cliente} ${s.num_cedula} ${s.linea_credito ?? ''} ${s.destino_credito ?? ''}`.toLowerCase()
+    if (q && !texto.includes(q.toLowerCase())) return false
+    if (estado && estadoVisual(s) !== estado) return false
     return true
   })
 
@@ -42,116 +38,135 @@ export default function Solicitudes() {
       <Encabezado
         title="Solicitudes"
         subtitle="Consulta y filtra el histórico de evaluaciones"
+        actions={
+          <button onClick={recargar} className="btn-ghost">
+            <RefreshCw size={16} /> Actualizar
+          </button>
+        }
       />
       <div className="p-6 space-y-4 overflow-auto">
         <Tarjeta>
           <div className="grid sm:grid-cols-3 gap-3">
-            <div className="relative">
+            <div className="relative sm:col-span-2">
               <Search
                 size={16}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
               />
               <input
                 className="input-base pl-9"
-                placeholder="Buscar por ID, cliente, cédula, concesionario…"
+                placeholder="Buscar por número, cliente, cédula, línea…"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
               />
             </div>
             <select
               className="input-base"
-              value={status}
-              onChange={(e) =>
-                setStatus(e.target.value as '' | EstadoSolicitud)
-              }
+              value={estado}
+              onChange={(e) => setEstado(e.target.value as '' | EstadoVisual)}
             >
               <option value="">Todos los estados</option>
               <option value="APROBADO">Aprobado</option>
               <option value="RECHAZADO">Rechazado</option>
-              <option value="REQUIERE_REVISION">Requiere revisión</option>
-            </select>
-            <select
-              className="input-base"
-              value={asesor}
-              onChange={(e) => setAsesor(e.target.value)}
-            >
-              <option value="">Todos los asesores</option>
-              {asesores.map((nombre) => (
-                <option key={nombre} value={nombre}>
-                  {nombre}
-                </option>
-              ))}
+              <option value="REQUIERE_REVISION">En revisión</option>
+              <option value="PENDIENTE">Pendiente de evaluación</option>
             </select>
           </div>
         </Tarjeta>
+
+        {error && (
+          <Tarjeta className="border-red-200 bg-red-50/40 text-sm text-red-800">
+            No se pudieron cargar las solicitudes: {error}
+          </Tarjeta>
+        )}
 
         <Tarjeta className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-200">
-                  <th className="px-5 py-3">ID</th>
+                  <th className="px-5 py-3">N°</th>
                   <th className="px-5 py-3">Solicitante</th>
                   <th className="px-5 py-3">Documento</th>
-                  <th className="px-5 py-3">Teléfono</th>
-                  <th className="px-5 py-3">Concesionario</th>
-                  <th className="px-5 py-3">Asesor</th>
-                  <th className="px-5 py-3">Fecha De Solicitud</th>
+                  <th className="px-5 py-3">Línea / destino</th>
+                  <th className="px-5 py-3">Fecha de solicitud</th>
                   <th className="px-5 py-3">Score</th>
-                  <th className="px-5 py-3">Cuota</th>
                   <th className="px-5 py-3">Cupo sugerido</th>
                   <th className="px-5 py-3">Estado</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((a) => (
-                  <tr
-                    key={a.id}
-                    className="border-b border-slate-100 hover:bg-slate-50"
-                  >
-                    <td className="px-5 py-3 font-medium">
-                      <Link
-                        to={`/solicitudes/${a.id}`}
-                        className="text-brand-600 hover:underline"
-                      >
-                        {a.id}
-                      </Link>
-                    </td>
-                    <td className="px-5 py-3 whitespace-nowrap">
-                      {a.customer}
-                    </td>
-                    <td className="px-5 py-3">{a.documento || a.cedula}</td>
-                    <td className="px-5 py-3 whitespace-nowrap">
-                      {a.telefono}
-                    </td>
-                    <td className="px-5 py-3 whitespace-nowrap">
-                      {a.concesionario}
-                    </td>
-                    <td className="px-5 py-3 whitespace-nowrap">
-                      {a.asesor || a.vendedor}
-                    </td>
-                    <td className="px-5 py-3 text-slate-600 whitespace-nowrap">
-                      {dateShort(a.createdAt)}
-                    </td>
-                    <td className="px-5 py-3 font-medium">{a.creditScore}</td>
-                    <td className="px-5 py-3">
-                      {currency(a.requestedInstallment)}
-                    </td>
-                    <td className="px-5 py-3">
-                      {currency(a.suggestedCreditLimit)}
-                    </td>
-                    <td className="px-5 py-3">
-                      <InsigniaEstado status={a.status} />
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
+                {filtradas.map((s) => {
+                  const cupo = numero(s.evaluacion?.cupo_sugerido)
+                  const mostrarCupo =
+                    cupo != null && estadoVisual(s) === 'APROBADO'
+                  return (
+                    <tr
+                      key={s.id_solicitud}
+                      className="border-b border-slate-100 hover:bg-slate-50"
+                    >
+                      <td className="px-5 py-3 font-medium">
+                        <Link
+                          to={`/solicitudes/${s.id_solicitud}`}
+                          className="text-brand-600 hover:underline"
+                        >
+                          {etiquetaSolicitud(s)}
+                        </Link>
+                      </td>
+                      <td className="px-5 py-3 whitespace-nowrap">
+                        {s.nombre_cliente}
+                      </td>
+                      <td className="px-5 py-3">{s.num_cedula}</td>
+                      <td className="px-5 py-3 text-slate-600">
+                        {[s.linea_credito, s.destino_credito]
+                          .filter(Boolean)
+                          .join(' · ') || '—'}
+                      </td>
+                      <td className="px-5 py-3 text-slate-600 whitespace-nowrap">
+                        {dateShort(s.fecha_hora)}
+                      </td>
+                      <td className="px-5 py-3 font-medium">
+                        {s.evaluacion?.score != null
+                          ? Number(s.evaluacion.score)
+                          : '—'}
+                      </td>
+                      <td className="px-5 py-3">
+                        {mostrarCupo ? currency(cupo) : '—'}
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="inline-flex items-center gap-2">
+                          <InsigniaEstado status={estadoVisual(s)} />
+                          <span className="text-xs text-slate-600">
+                            {s.decision
+                              ? s.decision === 'perfil_gris'
+                                ? (s.evaluacion?.decision_interna ??
+                                  'Perfil gris')
+                                : s.decision
+                              : 'Pendiente'}
+                          </span>
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {!cargando && filtradas.length === 0 && !error && (
                   <tr>
                     <td
-                      colSpan={11}
+                      colSpan={8}
                       className="px-5 py-10 text-center text-slate-500"
                     >
-                      Sin resultados.
+                      {solicitudes.length === 0
+                        ? 'Aún no hay solicitudes registradas. Crea una desde Nueva solicitud.'
+                        : 'Sin resultados para los filtros aplicados.'}
+                    </td>
+                  </tr>
+                )}
+                {cargando && (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="px-5 py-10 text-center text-slate-500"
+                    >
+                      Cargando solicitudes…
                     </td>
                   </tr>
                 )}

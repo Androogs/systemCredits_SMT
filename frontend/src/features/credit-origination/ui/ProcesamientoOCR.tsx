@@ -19,6 +19,8 @@ interface ProcesamientoOCRProps {
   onBack?: () => void
   /** Si es true, simula el procesamiento automáticamente al montar. */
   autoStart?: boolean
+  /** Cédula digitada en el paso 1: el "OCR" debe extraer ese mismo número. */
+  numeroDocumento?: string
 }
 
 type EstadoTarea = 'pendiente' | 'en-proceso' | 'completada'
@@ -61,6 +63,7 @@ function ProcesamientoOCR({
   onContinue,
   onBack,
   autoStart = true,
+  numeroDocumento,
 }: ProcesamientoOCRProps) {
   const [estadoTareas, setEstadoTareas] = useState<Record<string, EstadoTarea>>(
     () => Object.fromEntries(tareas.map((t) => [t.id, 'pendiente'])),
@@ -114,9 +117,15 @@ function ProcesamientoOCR({
     setReinicio((n) => n + 1)
   }
 
+  const digitosDocumento = (numeroDocumento ?? '1032448900').replace(/\D/g, '')
+  const documentoLegible = digitosDocumento.replace(
+    /\B(?=(\d{3})+(?!\d))/g,
+    '.',
+  )
+
   const handleContinuar = () => {
     onContinue?.({
-      numeroDocumento: '1.032.448.900',
+      numeroDocumento: documentoLegible,
       nombres: 'CARLOS MARIO',
       apellidos: 'MENDOZA',
       fechaExpedicion: 'Palmira (Valle)',
@@ -273,7 +282,7 @@ function ProcesamientoOCR({
               <div className="ocr__doc-fields">
                 <div className="ocr__doc-field">
                   <span>Número / Number</span>
-                  <strong>1.032.448.900</strong>
+                  <strong>{documentoLegible}</strong>
                 </div>
                 <div className="ocr__doc-field">
                   <span>Nombres / Names</span>

@@ -7,7 +7,8 @@ export const EmploymentType = {
 
 export type EmploymentType =
   (typeof EmploymentType)[keyof typeof EmploymentType]
-export type EstadoSolicitud = 'APROBADO' | 'RECHAZADO' | 'REQUIERE_REVISION'
+export type EstadoSolicitud =
+  'APROBADO' | 'RECHAZADO' | 'REQUIERE_REVISION' | 'PENDIENTE'
 
 export const EMPLOYMENT_LABELS: Record<EmploymentType, string> = {
   empleado: 'Empleado',

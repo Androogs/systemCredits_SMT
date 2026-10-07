@@ -18,6 +18,8 @@ export interface DatosRevisados {
 interface RevisionDatosProps {
   onContinue?: (datos: DatosRevisados) => void
   onBack?: () => void
+  /** Valores extraídos por el OCR / digitados en el paso 1. */
+  inicial?: Partial<DatosRevisados>
 }
 
 const CONFIANZA_BASE = 98.4
@@ -93,8 +95,13 @@ const valoresIniciales: DatosRevisados = {
   ciudadExpedicion: 'Palmira, Valle del Cauca',
 }
 
-function RevisionDatos({ onContinue, onBack }: RevisionDatosProps) {
-  const [datos, setDatos] = useState<DatosRevisados>(valoresIniciales)
+function RevisionDatos({ onContinue, onBack, inicial }: RevisionDatosProps) {
+  const [datos, setDatos] = useState<DatosRevisados>(() => ({
+    ...valoresIniciales,
+    ...Object.fromEntries(
+      Object.entries(inicial ?? {}).filter(([, v]) => v !== undefined),
+    ),
+  }))
   const [dudososConfirmados, setDudososConfirmados] = useState<
     Record<string, boolean>
   >({})

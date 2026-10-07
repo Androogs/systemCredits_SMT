@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, CircleAlert, LoaderCircle, RotateCcw } from 'lucide-react'
+import type { ResultadoEvaluacionCredito } from '../model/resultado-evaluacion'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import './ConsultaEnCurso.css'
 
@@ -11,7 +12,15 @@ export interface ResultadoConsultaEnCurso {
 
 interface ConsultaEnCursoProps {
   solicitante?: string
-  onContinue?: (resultado: ResultadoConsultaEnCurso) => void
+  /**
+   * Consulta real al backend (creación + evaluación de la solicitud).
+   * Si no se pasa, el paso queda en modo demostración.
+   */
+  ejecutarConsulta?: () => Promise<ResultadoEvaluacionCredito>
+  onContinue?: (
+    resultado: ResultadoConsultaEnCurso,
+    evaluacion?: ResultadoEvaluacionCredito,
+  ) => void
   onBack?: () => void
 }
 
@@ -41,6 +50,7 @@ const tareas: TareaConsulta[] = [
 
 function ConsultaEnCurso({
   solicitante,
+  ejecutarConsulta,
   onContinue,
   onBack,
 }: ConsultaEnCursoProps) {
@@ -49,6 +59,11 @@ function ConsultaEnCurso({
   const [completada, setCompletada] = useState(false)
   const [canal, setCanal] = useState<'principal' | 'secundario'>('principal')
   const [reintentos, setReintentos] = useState(0)
+  const [resultadoApi, setResultadoApi] =
+    useState<ResultadoEvaluacionCredito | null>(null)
+  const [errorApi, setErrorApi] = useState<string | null>(null)
+  const [consultando, setConsultando] = useState(false)
+  const consultaDisparada = useRef(false)
 
   useEffect(() => {
     if (completada) return
@@ -69,6 +84,28 @@ function ConsultaEnCurso({
     }
   }, [canal, completada, reintentos])
 
+  const dispararConsulta = () => {
+    if (!ejecutarConsulta) return
+    setConsultando(true)
+    setErrorApi(null)
+    ejecutarConsulta()
+      .then(setResultadoApi)
+      .catch(() =>
+        setErrorApi(
+          'La evaluación en el backend no respondió. Puedes reintentar o continuar en modo demostración.',
+        ),
+      )
+      .finally(() => setConsultando(false))
+  }
+
+  useEffect(() => {
+    if (!consultaDisparada.current && ejecutarConsulta) {
+      consultaDisparada.current = true
+      dispararConsulta()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const reintentarCanalSecundario = () => {
     if (canal === 'secundario' && !completada) return
     setCanal('secundario')
@@ -80,11 +117,14 @@ function ConsultaEnCurso({
 
   const continuar = () => {
     if (!completada) return
-    onContinue?.({
-      canal,
-      reintentos,
-      finalizadaEn: new Date().toISOString(),
-    })
+    onContinue?.(
+      {
+        canal,
+        reintentos,
+        finalizadaEn: new Date().toISOString(),
+      },
+      resultadoApi ?? undefined,
+    )
   }
 
   return (
@@ -124,7 +164,12 @@ function ConsultaEnCurso({
             )}
           </dl>
           <span className="consulta-curso__modo">
-            <span aria-hidden="true" /> Modo de demostración
+            <span aria-hidden="true" />
+            {ejecutarConsulta
+              ? resultadoApi
+                ? ' Evaluación real · Motor integrado'
+                : ' Consultando motor integrado…'
+              : ' Modo de demostración'}
           </span>
         </aside>
       </header>
@@ -191,7 +236,27 @@ function ConsultaEnCurso({
         {completada && (
           <div className="consulta-curso__resultado" role="status">
             <Check size={17} aria-hidden="true" />
-            Consulta simulada finalizada por el canal {canal}.
+            {resultadoApi
+              ? `Evaluación completada por el motor (${resultadoApi.auditoria}).`
+              : consultando
+                ? 'Consulta lista; esperando respuesta del motor…'
+                : `Consulta finalizada por el canal ${canal}.`}
+          </div>
+        )}
+
+        {errorApi && (
+          <div className="consulta-curso__resultado" role="alert">
+            <CircleAlert size={17} aria-hidden="true" />
+            {errorApi}
+            <button
+              type="button"
+              className="consulta-curso__reintentar"
+              onClick={dispararConsulta}
+              disabled={consultando}
+            >
+              <RotateCcw size={14} aria-hidden="true" />
+              Reintentar
+            </button>
           </div>
         )}
       </section>
@@ -235,9 +300,11 @@ function ConsultaEnCurso({
           className="consulta-curso__continuar"
           type="button"
           onClick={continuar}
-          disabled={!completada}
+          disabled={!completada || consultando}
         >
-          Continuar al informe crediticio
+          {consultando
+            ? 'Esperando al motor…'
+            : 'Continuar al informe crediticio'}
         </button>
       </footer>
     </div>

@@ -193,3 +193,21 @@
     width: 100%;
   }
 }
+
+.informe-crediticio__indicador.is-alerta {
+  border-color: #f3c1c1;
+  background: #fdf3f3;
+}
+
+.informe-crediticio__indicador.is-alerta strong {
+  color: #b42318;
+}
+
+.informe-crediticio__puntaje-valor.is-alerta strong {
+  color: #b42318;
+}
+
+.informe-crediticio__puntaje-valor.is-alerta span {
+  background: #fdf3f3;
+  color: #b42318;
+}

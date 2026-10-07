@@ -1,4 +1,4 @@
-import { CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
+import { CheckCircle2, XCircle, AlertTriangle, Clock } from 'lucide-react'
 import type { EstadoSolicitud } from '../model/underwritingEngine'
 
 const CONFIG: Record<
@@ -23,6 +23,11 @@ const CONFIG: Record<
     Icon: AlertTriangle,
     className: 'bg-amber-500 text-white shadow-sm shadow-amber-500/20',
     label: 'Requiere revisión',
+  },
+  PENDIENTE: {
+    Icon: Clock,
+    className: 'bg-slate-400 text-white shadow-sm shadow-slate-400/20',
+    label: 'Pendiente de evaluación',
   },
 }
 

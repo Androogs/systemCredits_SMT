@@ -1,68 +1,1191 @@
 openapi: 3.1.0
 info:
   title: Creditos API
+  description: Plataforma de originación de crédito Inversiones Pacífico. Integra
+    el motor de decisión Prefiltro_Cliente (BRD + PPT v4) con integración DataCrédito
+    Experian.
   version: 0.2.0
 paths:
   /api/health:
     get:
-      summary: Health Check
-      operationId: health_check_api_health_get
+      tags:
+      - health
+      summary: Health
+      operationId: health_api_health_get
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
-              schema: {}
-  /api/datacredito/preselecta/decision:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /api/:
+    get:
+      tags:
+      - health
+      summary: Root
+      operationId: root_api__get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Root Api  Get
+  /api/motor/evaluar:
     post:
       tags:
-      - DatacrÃ©dito
-      summary: Consultar Preselecta
-      operationId: consultar_preselecta_api_datacredito_preselecta_decision_post
+      - motor
+      summary: Evaluar
+      description: Evalúa una solicitud enviada completa en el payload y la registra
+        en auditoría.
+      operationId: evaluar_api_motor_evaluar_post
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PreselectaRequest'
+              $ref: '#/components/schemas/EvaluarRequest'
         required: true
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/ResultadoMotorResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /api/datacredito/valor-ingreso:
+  /api/motor/ingreso:
     post:
       tags:
-      - DatacrÃ©dito
-      summary: Consultar Valor Ingreso
-      operationId: consultar_valor_ingreso_api_datacredito_valor_ingreso_post
+      - motor
+      summary: Ingreso Propio
+      description: Valor Ingreso calculado con los cotizantes almacenados de la solicitud.
+      operationId: ingreso_propio_api_motor_ingreso_post
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ValorIngresoRequest'
+              $ref: '#/components/schemas/IngresoPropioRequest'
         required: true
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
-              schema: {}
+              schema:
+                $ref: '#/components/schemas/IngresoPropioResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/motor/escenarios:
+    get:
+      tags:
+      - motor
+      summary: Escenarios
+      description: Escenarios ficticios disponibles en ambiente demo.
+      operationId: escenarios_api_motor_escenarios_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Escenarios Api Motor Escenarios Get
+  /api/motor/evaluar-con-archivos:
+    post:
+      tags:
+      - motor
+      summary: Evaluar Con Archivos
+      description: Evalúa una solicitud con reportes de Experian cargados como archivos.
+      operationId: evaluar_con_archivos_api_motor_evaluar_con_archivos_post
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_evaluar_con_archivos_api_motor_evaluar_con_archivos_post'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoMotorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/solicitudes:
+    get:
+      tags:
+      - solicitudes
+      summary: Listar
+      operationId: listar_api_solicitudes_get
+      parameters:
+      - name: estado
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Estado
+      - name: decision
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Decision
+      - name: busqueda
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Busqueda
+      - name: limite
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+          title: Limite
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SolicitudResumenResponse'
+                title: Response Listar Api Solicitudes Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - solicitudes
+      summary: Crear
+      operationId: crear_api_solicitudes_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearSolicitudRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrearSolicitudResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/solicitudes/{id_solicitud}:
+    get:
+      tags:
+      - solicitudes
+      summary: Detalle
+      operationId: detalle_api_solicitudes__id_solicitud__get
+      parameters:
+      - name: id_solicitud
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Id Solicitud
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SolicitudDetalleResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/solicitudes/{id_solicitud}/evaluar:
+    post:
+      tags:
+      - solicitudes
+      summary: Evaluar
+      operationId: evaluar_api_solicitudes__id_solicitud__evaluar_post
+      parameters:
+      - name: id_solicitud
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Id Solicitud
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluarSolicitudRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoMotorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/solicitudes/{id_solicitud}/ofertas:
+    get:
+      tags:
+      - solicitudes
+      summary: Ofertas
+      operationId: ofertas_api_solicitudes__id_solicitud__ofertas_get
+      parameters:
+      - name: id_solicitud
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Id Solicitud
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OfertaResponse'
+                title: Response Ofertas Api Solicitudes  Id Solicitud  Ofertas Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/solicitudes/{id_solicitud}/ofertas/seleccionar:
+    post:
+      tags:
+      - solicitudes
+      summary: Seleccionar Oferta
+      operationId: seleccionar_oferta_api_solicitudes__id_solicitud__ofertas_seleccionar_post
+      parameters:
+      - name: id_solicitud
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Id Solicitud
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeleccionarOfertaRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfertaResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/solicitudes/{id_solicitud}/desembolso:
+    post:
+      tags:
+      - solicitudes
+      summary: Registrar Desembolso
+      description: 'Formaliza el crédito sobre la oferta seleccionada y confirma el
+
+        desembolso a la cuenta de ahorros del cliente. Idempotente: si el
+
+        crédito ya tiene desembolso confirmado devuelve el existente.'
+      operationId: registrar_desembolso_api_solicitudes__id_solicitud__desembolso_post
+      parameters:
+      - name: id_solicitud
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Id Solicitud
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrarDesembolsoRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DesembolsoResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/auditoria:
+    get:
+      tags:
+      - auditoria
+      summary: Listar
+      operationId: listar_api_auditoria_get
+      parameters:
+      - name: limite
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          default: 50
+          title: Limite
+      - name: numero_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Numero Id
+      - name: decision
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/DecisionFinal'
+          - type: 'null'
+          title: Decision
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EvaluacionResumen'
+                title: Response Listar Api Auditoria Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/auditoria/{evaluacion_id}:
+    get:
+      tags:
+      - auditoria
+      summary: Detalle
+      operationId: detalle_api_auditoria__evaluacion_id__get
+      parameters:
+      - name: evaluacion_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Evaluacion Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Detalle Api Auditoria  Evaluacion Id  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/parametros:
+    get:
+      tags:
+      - parametros
+      summary: Obtener
+      operationId: obtener_api_parametros_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Obtener Api Parametros Get
+    put:
+      tags:
+      - parametros
+      summary: Actualizar
+      operationId: actualizar_api_parametros_put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParametrosUpdate'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Actualizar Api Parametros Put
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/parametros/reset:
+    post:
+      tags:
+      - parametros
+      summary: Restablecer
+      operationId: restablecer_api_parametros_reset_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Restablecer Api Parametros Reset Post
+  /api/productos:
+    get:
+      tags:
+      - catalogos
+      summary: Productos
+      operationId: productos_api_productos_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/ProductoResponse'
+                type: array
+                title: Response Productos Api Productos Get
+  /api/bancos:
+    get:
+      tags:
+      - catalogos
+      summary: Bancos
+      description: Bancos activos para la cuenta receptora del desembolso.
+      operationId: bancos_api_bancos_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/BancoResponse'
+                type: array
+                title: Response Bancos Api Bancos Get
 components:
   schemas:
+    BancoResponse:
+      properties:
+        id_banco:
+          type: integer
+          title: Id Banco
+        codigo_ach:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Codigo Ach
+        nombre:
+          type: string
+          title: Nombre
+      type: object
+      required:
+      - id_banco
+      - codigo_ach
+      - nombre
+      title: BancoResponse
+    Body_evaluar_con_archivos_api_motor_evaluar_con_archivos_post:
+      properties:
+        hdc_file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: Hdc File
+          description: JSON o PDF de Historia de Crédito+
+        income_file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: Income File
+          description: JSON o PDF de Valor Ingreso (opcional)
+        tipo_id:
+          type: string
+          title: Tipo Id
+        numero_id:
+          type: string
+          title: Numero Id
+        primer_apellido:
+          type: string
+          title: Primer Apellido
+        ocupacion:
+          type: string
+          title: Ocupacion
+        tipo_contrato:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tipo Contrato
+        antiguedad_meses:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Antiguedad Meses
+        anios_camara_comercio:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Anios Camara Comercio
+        fecha_nacimiento:
+          type: string
+          title: Fecha Nacimiento
+        ingresos_mensuales:
+          type: number
+          title: Ingresos Mensuales
+          default: 0
+        otros_ingresos:
+          type: number
+          title: Otros Ingresos
+          default: 0
+        saldo_financiar:
+          type: number
+          title: Saldo Financiar
+        plazo:
+          type: integer
+          title: Plazo
+        tasa:
+          type: number
+          title: Tasa
+      type: object
+      required:
+      - hdc_file
+      - tipo_id
+      - numero_id
+      - primer_apellido
+      - ocupacion
+      - fecha_nacimiento
+      - saldo_financiar
+      - plazo
+      - tasa
+      title: Body_evaluar_con_archivos_api_motor_evaluar_con_archivos_post
+    CausalDetalle:
+      properties:
+        codigo:
+          type: string
+          title: Codigo
+        descripcion:
+          type: string
+          title: Descripcion
+        tipo:
+          $ref: '#/components/schemas/Decision'
+        cantidad:
+          type: integer
+          title: Cantidad
+          default: 1
+      type: object
+      required:
+      - codigo
+      - descripcion
+      - tipo
+      title: CausalDetalle
+    CausalSolicitudResponse:
+      properties:
+        codigo:
+          type: string
+          title: Codigo
+        descripcion:
+          type: string
+          title: Descripcion
+        activa:
+          type: boolean
+          title: Activa
+      type: object
+      required:
+      - codigo
+      - descripcion
+      - activa
+      title: CausalSolicitudResponse
+    ClienteInput:
+      properties:
+        tipo_documento:
+          $ref: '#/components/schemas/TipoIdentificacion'
+        num_cedula:
+          type: string
+          maxLength: 40
+          minLength: 1
+          title: Num Cedula
+        nombre_completo:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Nombre Completo
+        primer_apellido:
+          type: string
+          maxLength: 60
+          minLength: 1
+          title: Primer Apellido
+        fecha_nacimiento:
+          type: string
+          format: date
+          title: Fecha Nacimiento
+        ocupacion:
+          $ref: '#/components/schemas/Ocupacion'
+        nacionalidad:
+          type: string
+          title: Nacionalidad
+          default: Colombia
+      type: object
+      required:
+      - tipo_documento
+      - num_cedula
+      - nombre_completo
+      - primer_apellido
+      - fecha_nacimiento
+      - ocupacion
+      title: ClienteInput
+    ContactoViviendaInput:
+      properties:
+        estrato:
+          anyOf:
+          - type: integer
+            maximum: 6.0
+            minimum: 0.0
+          - type: 'null'
+          title: Estrato
+        personas_a_cargo:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Personas A Cargo
+        tipo_vivienda:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tipo Vivienda
+      type: object
+      title: ContactoViviendaInput
+    CrearSolicitudRequest:
+      properties:
+        cliente:
+          $ref: '#/components/schemas/ClienteInput'
+        datos_laborales:
+          $ref: '#/components/schemas/DatosLaboralesInput'
+        contacto_vivienda:
+          $ref: '#/components/schemas/ContactoViviendaInput'
+          default: {}
+        moneda:
+          type: string
+          title: Moneda
+          default: COP
+        linea_credito:
+          anyOf:
+          - type: string
+            maxLength: 60
+          - type: 'null'
+          title: Linea Credito
+        destino_credito:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Destino Credito
+        plazo_deseado_meses:
+          anyOf:
+          - type: integer
+            minimum: 1.0
+          - type: 'null'
+          title: Plazo Deseado Meses
+      type: object
+      required:
+      - cliente
+      - datos_laborales
+      title: CrearSolicitudRequest
+    CrearSolicitudResponse:
+      properties:
+        id_solicitud:
+          type: string
+          format: uuid
+          title: Id Solicitud
+        num_solicitud:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Num Solicitud
+        estado:
+          type: string
+          title: Estado
+      type: object
+      required:
+      - id_solicitud
+      - num_solicitud
+      - estado
+      title: CrearSolicitudResponse
+    DatosLaboralesInput:
+      properties:
+        tipo_contrato:
+          anyOf:
+          - $ref: '#/components/schemas/TipoContrato'
+          - type: 'null'
+        meses_continuidad:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Meses Continuidad
+        ingreso_mensual:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Ingreso Mensual
+        otros_ingresos:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Otros Ingresos
+          default: '0'
+        anios_camara_comercio:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Anios Camara Comercio
+      type: object
+      title: DatosLaboralesInput
+    Decision:
+      type: string
+      enum:
+      - Aprobado
+      - Rechazado
+      - Estudio
+      - Requiere Codeudor
+      title: Decision
+      description: Estados de trabajo internos (prioridad Rechazo > Codeudor > Estudio
+        > Aprobado).
+    DecisionFinal:
+      type: string
+      enum:
+      - Aprobado
+      - Rechazado
+      title: DecisionFinal
+      description: Únicos estados que se entregan al usuario o a las integraciones.
+    DesembolsoResponse:
+      properties:
+        id_desembolso:
+          type: integer
+          title: Id Desembolso
+        num_desembolso:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Num Desembolso
+        id_credito:
+          type: integer
+          title: Id Credito
+        estado:
+          type: string
+          title: Estado
+        capital:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Capital
+        cuota:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Cuota
+        plazo:
+          type: integer
+          title: Plazo
+        tasa:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Tasa
+        emisor:
+          type: string
+          title: Emisor
+        receptor:
+          type: string
+          title: Receptor
+        referencia_pago:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Referencia Pago
+        fecha_desembolso:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Fecha Desembolso
+      type: object
+      required:
+      - id_desembolso
+      - num_desembolso
+      - id_credito
+      - estado
+      - capital
+      - cuota
+      - plazo
+      - tasa
+      - emisor
+      - receptor
+      - referencia_pago
+      - fecha_desembolso
+      title: DesembolsoResponse
+    EvaluacionResumen:
+      properties:
+        evaluacion_id:
+          type: string
+          title: Evaluacion Id
+        fecha_evaluacion:
+          type: string
+          title: Fecha Evaluacion
+        origen_datos:
+          type: string
+          title: Origen Datos
+        id_solicitud:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Id Solicitud
+        numero_id:
+          type: string
+          title: Numero Id
+        ocupacion:
+          type: string
+          title: Ocupacion
+        edad:
+          type: integer
+          title: Edad
+        decision:
+          type: string
+          title: Decision
+        decision_interna:
+          type: string
+          title: Decision Interna
+        causales:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Causales
+        tiempo_ms:
+          type: integer
+          title: Tiempo Ms
+      type: object
+      required:
+      - evaluacion_id
+      - fecha_evaluacion
+      - origen_datos
+      - id_solicitud
+      - numero_id
+      - ocupacion
+      - edad
+      - decision
+      - decision_interna
+      - causales
+      - tiempo_ms
+      title: EvaluacionResumen
+    EvaluacionResumenSolicitud:
+      properties:
+        id_evaluacion:
+          type: integer
+          title: Id Evaluacion
+        version:
+          type: integer
+          title: Version
+        score:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Score
+        perfil_score:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Perfil Score
+        perfil_ingreso:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Perfil Ingreso
+        decision_interna:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Decision Interna
+        endeudamiento:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Endeudamiento
+        capacidad_pago:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Capacidad Pago
+        cupo_sugerido:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Cupo Sugerido
+        plazo_cupo:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Plazo Cupo
+      type: object
+      required:
+      - id_evaluacion
+      - version
+      - score
+      - perfil_score
+      - perfil_ingreso
+      - decision_interna
+      - endeudamiento
+      - capacidad_pago
+      - cupo_sugerido
+      - plazo_cupo
+      title: EvaluacionResumenSolicitud
+      description: La evaluación vigente de la solicitud (una sola versión activa).
+    EvaluarRequest:
+      properties:
+        tipo_id:
+          $ref: '#/components/schemas/TipoIdentificacion'
+        numero_id:
+          type: string
+          maxLength: 20
+          minLength: 1
+          title: Numero Id
+        primer_apellido:
+          type: string
+          maxLength: 60
+          minLength: 1
+          title: Primer Apellido
+        ocupacion:
+          $ref: '#/components/schemas/Ocupacion'
+        tipo_contrato:
+          anyOf:
+          - $ref: '#/components/schemas/TipoContrato'
+          - type: 'null'
+        antiguedad_meses:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Antiguedad Meses
+        anios_camara_comercio:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Anios Camara Comercio
+        fecha_nacimiento:
+          type: string
+          format: date
+          title: Fecha Nacimiento
+        nacionalidad:
+          type: string
+          title: Nacionalidad
+          default: Colombia
+        tiene_multas_runt:
+          type: boolean
+          title: Tiene Multas Runt
+          default: false
+        ingresos_mensuales:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Ingresos Mensuales
+          default: '0'
+        otros_ingresos:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Otros Ingresos
+          default: '0'
+        saldo_financiar:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Saldo Financiar
+          description: Valor a financiar de la moto (COP).
+        plazo:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Plazo
+          description: Plazo en meses.
+        tasa:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Tasa
+          description: Tasa MENSUAL en porcentaje (ej. 2.0).
+        consultar_experian:
+          type: boolean
+          title: Consultar Experian
+          description: Consulta HDC+ y Valor Ingreso en línea (requiere credenciales
+            en .env).
+          default: false
+        escenario_mock:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Escenario Mock
+          description: 'Solo ambiente demo sin consulta en línea: ver /motor/escenarios.'
+      type: object
+      required:
+      - tipo_id
+      - numero_id
+      - primer_apellido
+      - ocupacion
+      - fecha_nacimiento
+      - saldo_financiar
+      - plazo
+      - tasa
+      title: EvaluarRequest
+      description: 'POST /motor/evaluar: solicitud completa en el payload.'
+    EvaluarSolicitudRequest:
+      properties:
+        saldo_financiar:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Saldo Financiar
+        plazo:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Plazo
+        tasa:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Tasa
+        primer_apellido:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Primer Apellido
+          description: Obligatorio si cliente.primer_apellido está vacío (HDC+ lo
+            exige).
+        tiene_multas_runt:
+          type: boolean
+          title: Tiene Multas Runt
+          default: false
+        consultar_experian:
+          type: boolean
+          title: Consultar Experian
+          default: false
+        escenario_mock:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Escenario Mock
+      type: object
+      required:
+      - saldo_financiar
+      - plazo
+      - tasa
+      title: EvaluarSolicitudRequest
+      description: 'POST /solicitudes/{id_solicitud}/evaluar: evalúa una solicitud
+        ya
+
+        existente en solicitud_credito (cliente, datos laborales). Los
+
+        datos del crédito (monto, plazo, tasa) no están en el esquema, por
+
+        eso se envían aquí.'
     HTTPValidationError:
       properties:
         detail:
@@ -72,71 +1195,1037 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
-    InquiryKeyValue:
+    HealthResponse:
       properties:
-        key:
+        status:
           type: string
-          title: Key
-        value:
+          const: ok
+          title: Status
+        environment:
           type: string
-          title: Value
+          title: Environment
+        version:
+          type: string
+          title: Version
       type: object
       required:
-      - key
-      - value
-      title: InquiryKeyValue
-    InquiryParameter:
+      - status
+      - environment
+      - version
+      title: HealthResponse
+    IngresoPropioRequest:
       properties:
-        paramType:
+        id_solicitud:
           type: string
-          title: Paramtype
-        keyvalue:
-          $ref: '#/components/schemas/InquiryKeyValue'
+          format: uuid
+          title: Id Solicitud
+        meses_a_promediar:
+          type: integer
+          maximum: 12.0
+          minimum: 1.0
+          title: Meses A Promediar
+          default: 3
       type: object
       required:
-      - paramType
-      - keyvalue
-      title: InquiryParameter
-    PreselectaRequest:
+      - id_solicitud
+      title: IngresoPropioRequest
+      description: 'POST /motor/ingreso: Valor Ingreso calculado sobre cotizante /
+
+        cotizante_ingreso_mensual ya almacenados para la solicitud.'
+    IngresoPropioResponse:
       properties:
-        idNumber:
+        id_solicitud:
           type: string
-          title: Idnumber
-        idType:
+          format: uuid
+          title: Id Solicitud
+        valor_ingreso:
           type: string
-          title: Idtype
-        firstLastName:
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Valor Ingreso
+        aportantes_considerados:
+          type: integer
+          title: Aportantes Considerados
+        meses_a_promediar:
+          type: integer
+          title: Meses A Promediar
+      type: object
+      required:
+      - id_solicitud
+      - valor_ingreso
+      - aportantes_considerados
+      - meses_a_promediar
+      title: IngresoPropioResponse
+    Ocupacion:
+      type: string
+      enum:
+      - Empleado
+      - Independiente
+      - Pensionado
+      - Fuerzas Militares
+      title: Ocupacion
+    OfertaResponse:
+      properties:
+        id_oferta:
+          type: integer
+          title: Id Oferta
+        id_aliado_producto:
+          type: integer
+          title: Id Aliado Producto
+        elegible:
+          type: boolean
+          title: Elegible
+        motivo_no_elegible:
           anyOf:
           - type: string
           - type: 'null'
-          title: Firstlastname
-        inquiryClientId:
-          type: string
-          title: Inquiryclientid
-        inquiryClientType:
-          type: string
-          title: Inquiryclienttype
-        inquiryUserId:
-          type: string
-          title: Inquiryuserid
-        inquiryUserType:
-          type: string
-          title: Inquiryusertype
-        inquiryParameters:
-          items:
-            $ref: '#/components/schemas/InquiryParameter'
-          type: array
-          title: Inquiryparameters
+          title: Motivo No Elegible
+        seleccionada:
+          type: boolean
+          title: Seleccionada
+        tasa_ofrecida:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Tasa Ofrecida
+        plazo_ofrecido:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Plazo Ofrecido
+        cuota_mensual:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Cuota Mensual
+        monto_aprobado:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Monto Aprobado
       type: object
       required:
-      - idNumber
-      - idType
-      - inquiryClientId
-      - inquiryClientType
-      - inquiryUserId
-      - inquiryUserType
-      - inquiryParameters
-      title: PreselectaRequest
+      - id_oferta
+      - id_aliado_producto
+      - elegible
+      - motivo_no_elegible
+      - seleccionada
+      title: OfertaResponse
+    ParametrosUpdate:
+      properties:
+        edad_minima_be:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Edad Minima Be
+        edad_maxima_be:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Edad Maxima Be
+        activar_exclusion_persona_juridica:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Activar Exclusion Persona Juridica
+        activar_exclusion_score_0:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Activar Exclusion Score 0
+        activar_exclusion_score_3_fallecido:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Activar Exclusion Score 3 Fallecido
+        activar_exclusion_score_4_codeudor:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Activar Exclusion Score 4 Codeudor
+        scores_exclusion:
+          anyOf:
+          - items:
+              type: integer
+            type: array
+          - type: 'null'
+          title: Scores Exclusion
+        saldo_mora_be:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Saldo Mora Be
+        estados_buro_embargo:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Estados Buro Embargo
+        estados_buro_cartera_castigada:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Estados Buro Cartera Castigada
+        estados_buro_dudoso_recaudo:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Estados Buro Dudoso Recaudo
+        estados_buro_pago_total:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Estados Buro Pago Total
+        evento_cancelacion_mal_manejo:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Evento Cancelacion Mal Manejo
+        calificaciones_negativas:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Calificaciones Negativas
+        codigos_reestructuracion:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Codigos Reestructuracion
+        tokens_reestructuracion:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Tokens Reestructuracion
+        score_ep_1:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Score Ep 1
+        score_ep_2:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Score Ep 2
+        score_ep_3:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Score Ep 3
+        score_ep_4:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Score Ep 4
+        score_if_1:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Score If 1
+        score_if_2:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Score If 2
+        score_if_3:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Score If 3
+        score_if_4:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Score If 4
+        score_piso_experiencia:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Score Piso Experiencia
+        codigos_score:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Codigos Score
+        quanto_factor:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Quanto Factor
+        ingreso_e_1:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Ingreso E 1
+        ingreso_e_2:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Ingreso E 2
+        ingreso_e_3:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Ingreso E 3
+        ingreso_pf_1:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Ingreso Pf 1
+        ingreso_pf_2:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Ingreso Pf 2
+        ingreso_pf_3:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Ingreso Pf 3
+        ingreso_i_1:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Ingreso I 1
+        ingreso_i_2:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Ingreso I 2
+        ingreso_i_3:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Ingreso I 3
+        ingreso_i_4:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Ingreso I 4
+        meses_cont_1:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Meses Cont 1
+        meses_cont_2:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Meses Cont 2
+        anios_cam_1:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Anios Cam 1
+        anios_cam_2:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Anios Cam 2
+        anios_cam_3:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Anios Cam 3
+        anios_cam_4:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Anios Cam 4
+        meses_ventana_buro:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Meses Ventana Buro
+        umbral_mora_30_historica:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Umbral Mora 30 Historica
+        umbral_mora_60_historica:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Umbral Mora 60 Historica
+        umbral_mora_90_historica:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Umbral Mora 90 Historica
+        umbral_reestructuraciones:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Umbral Reestructuraciones
+        gastos_personales_pct_bajo:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Gastos Personales Pct Bajo
+        gastos_personales_pct_medio:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Gastos Personales Pct Medio
+        gastos_personales_pct_alto:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Gastos Personales Pct Alto
+        gastos_personales_umbral_medio:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Gastos Personales Umbral Medio
+        gastos_personales_umbral_alto:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Gastos Personales Umbral Alto
+        gastos_personales_pct_quanto:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Gastos Personales Pct Quanto
+        endeu_1:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Endeu 1
+        endeu_2:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Endeu 2
+        capacidad_pago_pct:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Capacidad Pago Pct
+        cupo_sugerido_tasa_pct:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Cupo Sugerido Tasa Pct
+        cupo_sugerido_plazo_meses:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Cupo Sugerido Plazo Meses
+        cupo_sugerido_tope:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Cupo Sugerido Tope
+        tasa_gasto_financiero_pct:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Tasa Gasto Financiero Pct
+        plazo_rotativo_default_meses:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Plazo Rotativo Default Meses
+        max_aportantes:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Max Aportantes
+        meses_promedio_valor_ingreso:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Meses Promedio Valor Ingreso
+      additionalProperties: false
+      type: object
+      title: ParametrosUpdate
+    PasoTraza:
+      properties:
+        etapa:
+          type: string
+          title: Etapa
+        resultado:
+          type: string
+          title: Resultado
+        causales:
+          items:
+            type: string
+          type: array
+          title: Causales
+        detalle:
+          items:
+            type: string
+          type: array
+          title: Detalle
+      type: object
+      required:
+      - etapa
+      - resultado
+      title: PasoTraza
+      description: Una etapa evaluada por el motor, para auditoría.
+    PerfilIngreso:
+      type: string
+      enum:
+      - ALTO
+      - MEDIO
+      - BAJO
+      - GRIS
+      title: PerfilIngreso
+    PerfilScore:
+      type: string
+      enum:
+      - A
+      - B
+      - C
+      - D
+      title: PerfilScore
+    ProductoResponse:
+      properties:
+        id_aliado_producto:
+          type: integer
+          title: Id Aliado Producto
+        id_aliado:
+          type: integer
+          title: Id Aliado
+        nombre:
+          type: string
+          title: Nombre
+        aliado:
+          type: string
+          title: Aliado
+        tasa_min:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Tasa Min
+        tasa_max:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Tasa Max
+        plazo_min_meses:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Plazo Min Meses
+        plazo_max_meses:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Plazo Max Meses
+        monto_min:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Monto Min
+        monto_max:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Monto Max
+      type: object
+      required:
+      - id_aliado_producto
+      - id_aliado
+      - nombre
+      - aliado
+      - tasa_min
+      - tasa_max
+      - plazo_min_meses
+      - plazo_max_meses
+      - monto_min
+      - monto_max
+      title: ProductoResponse
+    RegistrarDesembolsoRequest:
+      properties:
+        codigo_ach_banco:
+          type: string
+          maxLength: 10
+          minLength: 1
+          title: Codigo Ach Banco
+        numero_cuenta_cliente:
+          type: string
+          maxLength: 40
+          minLength: 4
+          title: Numero Cuenta Cliente
+        titular_cuenta:
+          anyOf:
+          - type: string
+            maxLength: 180
+          - type: 'null'
+          title: Titular Cuenta
+        referencia_pago:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Referencia Pago
+        vehiculo:
+          anyOf:
+          - $ref: '#/components/schemas/VehiculoDesembolsoRequest'
+          - type: 'null'
+      type: object
+      required:
+      - codigo_ach_banco
+      - numero_cuenta_cliente
+      title: RegistrarDesembolsoRequest
+      description: 'Confirmación del desembolso: cuenta de ahorros del cliente
+
+        (receptor) y referencia de la transferencia del aliado.'
+    ResultadoMotorResponse:
+      properties:
+        evaluacion_id:
+          type: string
+          title: Evaluacion Id
+        fecha_evaluacion:
+          type: string
+          format: date-time
+          title: Fecha Evaluacion
+        ambiente:
+          type: string
+          title: Ambiente
+        id_solicitud:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Id Solicitud
+        decision:
+          $ref: '#/components/schemas/DecisionFinal'
+        decision_interna:
+          $ref: '#/components/schemas/Decision'
+        causales:
+          items:
+            $ref: '#/components/schemas/CausalDetalle'
+          type: array
+          title: Causales
+        score_consultado:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Score Consultado
+        score_tipo:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Score Tipo
+        perfil_score:
+          anyOf:
+          - $ref: '#/components/schemas/PerfilScore'
+          - type: 'null'
+        perfil_ingreso:
+          anyOf:
+          - $ref: '#/components/schemas/PerfilIngreso'
+          - type: 'null'
+        quanto_medio:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Quanto Medio
+        valor_ingreso:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Valor Ingreso
+        ingreso_final:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Ingreso Final
+        fuente_ingreso_final:
+          type: string
+          title: Fuente Ingreso Final
+        ingreso_final_smmlv:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Ingreso Final Smmlv
+        gastos_financieros_no_rotativos:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Gastos Financieros No Rotativos
+        gasto_financiero_rotativo:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Gasto Financiero Rotativo
+        gastos_personales:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Gastos Personales
+        endeudamiento:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Endeudamiento
+        disponible:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Disponible
+        capacidad_pago:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Capacidad Pago
+        cupo_sugerido:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Cupo Sugerido
+        cuota_sugerida:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Cuota Sugerida
+        cuota_moto:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Cuota Moto
+        indicadores_buro:
+          additionalProperties: true
+          type: object
+          title: Indicadores Buro
+        trazabilidad:
+          items:
+            $ref: '#/components/schemas/PasoTraza'
+          type: array
+          title: Trazabilidad
+        advertencias:
+          items:
+            type: string
+          type: array
+          title: Advertencias
+        tiempo_ms:
+          type: integer
+          title: Tiempo Ms
+        valor_ingreso_respuesta:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Valor Ingreso Respuesta
+      type: object
+      required:
+      - evaluacion_id
+      - fecha_evaluacion
+      - ambiente
+      - decision
+      - decision_interna
+      - causales
+      - quanto_medio
+      - valor_ingreso
+      - ingreso_final
+      - fuente_ingreso_final
+      - ingreso_final_smmlv
+      - gastos_financieros_no_rotativos
+      - gasto_financiero_rotativo
+      - gastos_personales
+      - endeudamiento
+      - disponible
+      - capacidad_pago
+      - cupo_sugerido
+      - cuota_sugerida
+      - cuota_moto
+      - indicadores_buro
+      - trazabilidad
+      - advertencias
+      - tiempo_ms
+      title: ResultadoMotorResponse
+      description: Respuesta pública del motor (sin las respuestas completas del buró).
+    SeleccionarOfertaRequest:
+      properties:
+        id_oferta:
+          type: integer
+          title: Id Oferta
+      type: object
+      required:
+      - id_oferta
+      title: SeleccionarOfertaRequest
+    SolicitudDetalleResponse:
+      properties:
+        id_solicitud:
+          type: string
+          format: uuid
+          title: Id Solicitud
+        num_solicitud:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Num Solicitud
+        fecha_hora:
+          type: string
+          format: date-time
+          title: Fecha Hora
+        estado:
+          type: string
+          title: Estado
+        decision:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Decision
+        nombre_cliente:
+          type: string
+          title: Nombre Cliente
+        num_cedula:
+          type: string
+          title: Num Cedula
+        tipo_documento:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tipo Documento
+        ocupacion:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Ocupacion
+        linea_credito:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Linea Credito
+        destino_credito:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Destino Credito
+        plazo_deseado_meses:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Plazo Deseado Meses
+        evaluacion:
+          anyOf:
+          - $ref: '#/components/schemas/EvaluacionResumenSolicitud'
+          - type: 'null'
+        datos_laborales:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Datos Laborales
+        contacto_vivienda:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Contacto Vivienda
+        causales:
+          items:
+            $ref: '#/components/schemas/CausalSolicitudResponse'
+          type: array
+          title: Causales
+        ofertas:
+          items:
+            $ref: '#/components/schemas/OfertaResponse'
+          type: array
+          title: Ofertas
+        desembolso:
+          anyOf:
+          - $ref: '#/components/schemas/DesembolsoResponse'
+          - type: 'null'
+      type: object
+      required:
+      - id_solicitud
+      - num_solicitud
+      - fecha_hora
+      - estado
+      - decision
+      - nombre_cliente
+      - num_cedula
+      - tipo_documento
+      - ocupacion
+      - linea_credito
+      - destino_credito
+      - plazo_deseado_meses
+      - evaluacion
+      - datos_laborales
+      - contacto_vivienda
+      - causales
+      - ofertas
+      title: SolicitudDetalleResponse
+    SolicitudResumenResponse:
+      properties:
+        id_solicitud:
+          type: string
+          format: uuid
+          title: Id Solicitud
+        num_solicitud:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Num Solicitud
+        fecha_hora:
+          type: string
+          format: date-time
+          title: Fecha Hora
+        estado:
+          type: string
+          title: Estado
+        decision:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Decision
+        nombre_cliente:
+          type: string
+          title: Nombre Cliente
+        num_cedula:
+          type: string
+          title: Num Cedula
+        tipo_documento:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tipo Documento
+        ocupacion:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Ocupacion
+        linea_credito:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Linea Credito
+        destino_credito:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Destino Credito
+        plazo_deseado_meses:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Plazo Deseado Meses
+        evaluacion:
+          anyOf:
+          - $ref: '#/components/schemas/EvaluacionResumenSolicitud'
+          - type: 'null'
+      type: object
+      required:
+      - id_solicitud
+      - num_solicitud
+      - fecha_hora
+      - estado
+      - decision
+      - nombre_cliente
+      - num_cedula
+      - tipo_documento
+      - ocupacion
+      - linea_credito
+      - destino_credito
+      - plazo_deseado_meses
+      - evaluacion
+      title: SolicitudResumenResponse
+    TipoContrato:
+      type: string
+      enum:
+      - Indefinido
+      - Fijo
+      - Obra o Labor
+      - NA
+      title: TipoContrato
+    TipoIdentificacion:
+      type: string
+      enum:
+      - '1'
+      - '2'
+      - '3'
+      - '4'
+      - '5'
+      - '6'
+      - '7'
+      - '8'
+      - '9'
+      title: TipoIdentificacion
     ValidationError:
       properties:
         loc:
@@ -163,52 +2252,44 @@ components:
       - msg
       - type
       title: ValidationError
-    ValorIngresoRequest:
+    VehiculoDesembolsoRequest:
       properties:
-        TipoIdentificacionUsuario:
+        producto_a_financiar:
           type: string
-          title: Tipoidentificacionusuario
-        IdentificacionUsuario:
-          type: string
-          title: Identificacionusuario
-        TipoIDSuscriptor:
-          type: string
-          title: Tipoidsuscriptor
-        NitSuscriptor:
-          type: string
-          title: Nitsuscriptor
-        NombreSuscriptor:
-          type: string
-          title: Nombresuscriptor
-        TipoIdBuscar:
-          type: string
-          title: Tipoidbuscar
-        IdentificacionBuscar:
-          type: string
-          title: Identificacionbuscar
-        IngresoValidar:
-          type: string
-          title: Ingresovalidar
-        ProductoId:
-          type: string
-          title: Productoid
-        CanalConsulta:
-          type: string
-          title: Canalconsulta
-        ProductoConsulta:
-          type: string
-          title: Productoconsulta
+          title: Producto A Financiar
+          default: Motocicleta
+        marca:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Marca
+        referencia:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Referencia
+        modelo:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Modelo
+        color:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Color
+        valor_moto_iva:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Valor Moto Iva
       type: object
-      required:
-      - TipoIdentificacionUsuario
-      - IdentificacionUsuario
-      - TipoIDSuscriptor
-      - NitSuscriptor
-      - NombreSuscriptor
-      - TipoIdBuscar
-      - IdentificacionBuscar
-      - IngresoValidar
-      - ProductoId
-      - CanalConsulta
-      - ProductoConsulta
-      title: ValorIngresoRequest
+      title: VehiculoDesembolsoRequest
+      description: 'Vehículo a financiar; solo es obligatorio la primera vez que se
+
+        formaliza la solicitud (las columnas NOT NULL del esquema ya vienen
+
+        de la oferta seleccionada).'

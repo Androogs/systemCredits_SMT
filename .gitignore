@@ -66,6 +66,8 @@ docs/private/
 certs/*.key
 certs/*.pem
 certs/*.crt
+# Reportes reales de buró / datos de solicitantes (PII)
+reportes/
 
 # ─────────────────────────────────────────────
 # Python environments and caches

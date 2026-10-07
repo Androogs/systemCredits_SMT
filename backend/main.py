@@ -1,51 +1,81 @@
+"""Punto de entrada FastAPI de la plataforma de originación de crédito.
+
+Expone bajo /api las rutas del motor de decisión (Gold), solicitudes,
+ofertas, parámetros y auditoría, con CORS habilitado para el frontend.
+"""
+
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import get_settings
-from backend.controllers.health_controller import (
-    router as health_router,
+from backend.db_models import session as db_session
+from backend.middlewares.error_middleware import registrar_manejadores
+from backend.routes import (
+    auditoria_routes,
+    catalogo_routes,
+    health_routes,
+    motor_routes,
+    parametros_routes,
+    solicitud_routes,
 )
-from backend.controllers.motor_controller import (
-    router as motor_router,
-)
-from backend.middlewares.error_middleware import (
-    register_error_handlers,
-)
+from backend.routes.dependencies import get_store
+from backend.utils.loggers import get_logger
+
+logger = get_logger("creditos.app")
 
 
-settings = get_settings()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings = get_settings()
+    logger.info(
+        "Iniciando plataforma | ambiente=%s | smmlv=%s",
+        settings.environment,
+        settings.smmlv,
+    )
+    get_store().cargar()  # falla temprano si parametros.json es incoherente
+    if settings.db_crear_tablas:
+        db_session.crear_tablas()
+    yield
+    logger.info("Plataforma detenida")
 
 
-app = FastAPI(
-    title=settings.app_title,
-    version=settings.app_version,
-    docs_url="/api-docs",
-    redoc_url="/redoc",
-    openapi_url="/api/openapi.json",
-)
+def crear_app() -> FastAPI:
+    settings = get_settings()
+    app = FastAPI(
+        title=settings.app_title,
+        description=(
+            "Plataforma de originación de crédito Inversiones Pacífico. "
+            "Integra el motor de decisión Prefiltro_Cliente (BRD + PPT v4) "
+            "con integración DataCrédito Experian."
+        ),
+        version=settings.app_version,
+        lifespan=lifespan,
+        docs_url="/api-docs",
+        redoc_url="/redoc",
+        openapi_url="/api/openapi.json",
+    )
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origin_list(),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    registrar_manejadores(app)
+    for modulo in (
+        health_routes,
+        motor_routes,
+        solicitud_routes,
+        auditoria_routes,
+        parametros_routes,
+        catalogo_routes,
+    ):
+        app.include_router(modulo.router, prefix="/api")
+    return app
 
 
-cors_origins = settings.cors_origin_list()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-app.include_router(
-    health_router,
-    prefix="/api",
-)
-
-
-app.include_router(
-    motor_router,
-    prefix="/api",
-)
-
-
-register_error_handlers(app)
+app = crear_app()

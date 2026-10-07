@@ -3,7 +3,6 @@ from backend.repositories.health_repository import HealthRepository
 
 
 class HealthService:
-
     def __init__(self) -> None:
         self.repository = HealthRepository()
 

@@ -22,20 +22,28 @@ package-lock.json
 .husky/
 README.md
 
-backend/                      # API FastAPI
-  main.py
-  config.py
+parametros.json               # Parámetros del motor (score, endeudamiento, SMMLV)
+tests/                        # Suite pytest del motor (unit/ + integration/)
+ejemplos/                     # Payloads de ejemplo (solicitud_ejemplo.json)
+reportes/                     # Reportes Experian de prueba (CLI evaluar_local)
+scripts/                      # evaluar_local.py, probar_api.py, probar_hdc.py…
+docs/motor_decision/          # Documentación funcional del motor (BRD/PPT v4)
+
+backend/                      # API FastAPI + motor de decisión integrado
+  main.py                     # App FastAPI (CORS, /api, lifespan)
+  config.py                   # Settings (.env): BD, Experian, SMMLV, CORS
   requirements.txt
   database/
-    schema.sql
-    insert.sql
-    session.py
-  controllers/
-  services/
-  repositories/
-  models/
+    schema.sql                # DDL canónico del esquema SUMOTO
+    insert.sql                # Catálogos + producto semilla
+  routes/                     # solicitudes, motor, parametros, auditoria, health
+  services/                   # motor, evaluación, elegibilidad, finanzas, reglas
+  repositories/               # acceso a solicitud/evaluación/auditoría
+  models/                     # DTOs Pydantic + enums de dominio
+  db_models/                  # ORM SQLAlchemy (models, auditoria, session)
+  integrations/datacredito/   # HDC+, Valor Ingreso, parsers, mock_buro
   middlewares/
-  tests/
+  utils/
 
 frontend/                     # SPA React + Vite (Feature-Sliced Design)
   .env.example
@@ -89,11 +97,16 @@ Edita `.env` en la raíz con tu contraseña de PostgreSQL:
 DATABASE_URL=postgresql+psycopg://postgres:TU_PASSWORD@localhost:5432/DB
 CORS_ORIGINS=http://localhost:5173
 APP_TITLE=Creditos API
-APP_VERSION=0.2.0
+APP_VERSION=1.0.0
+ENVIRONMENT=demo
+SMMLV=1750905
+DB_CREAR_TABLAS=false
 ```
 
-- **Backend:** valida `DATABASE_URL`, `CORS_ORIGINS`, `APP_TITLE`, `APP_VERSION` con
-  Pydantic Settings (`backend/config.py`).
+- **Backend:** valida todas las variables con Pydantic Settings
+  (`backend/config.py`), incluidas las credenciales de DataCrédito Experian
+  (`HDC_*`, `INCOME_*`, `OKTA_*` — ver `.env.example`). En `ENVIRONMENT=demo`
+  el motor corre contra escenarios mock sin consultar Experian.
 - **Frontend:** valida `VITE_API_URL` con Zod (`frontend/src/env.ts`).
 
 ## Calidad de código
@@ -198,8 +211,11 @@ automáticamente). No se edita a mano; se regenera.
 Desde la raíz, con el venv activo:
 
 ```powershell
-python -m pytest backend/tests -q
+python -m pytest tests -q
 ```
+
+La suite cubre el motor de decisión completo (unit) y los endpoints `/api`
+contra SQLite en memoria (integration).
 
 ## Despliegue
 

@@ -1,0 +1,65 @@
+{
+  "fecha": "7/16/2020 02:36:43 PM",
+  "consulta_id": "570cd3fc-e8a7-4e81-bede-ca3ed3ac44ec",
+  "respuesta_id": 4,
+  "tipo_identificacion_persona_natural_id": 1,
+  "numero_identificacion_persona_natural": "12345612",
+  "primer_nombre_persona_natural": "NOMBRE112",
+  "segundo_nombre_persona_natural": "NOMBRE212",
+  "primer_apellido_persona_natural": "APELLIDO112",
+  "segundo_apellido_persona_natural": "APELLIDO212",
+  "EPS": "EPSE212",
+  "AFP": "AFP",
+  "aportantes": [
+    {
+      "tipo_identificacion_aportante_id": 2,
+      "numero_identificacion_aportante": "432543",
+      "razon_social_aportante": "Empresa1",
+      "codigo_clase_aportante": "B",
+      "descripcion_clase_aportante": "B - MENOS DE 200 COTIZANTES",
+      "tipo_cotizante_persona_natural": 1,
+      "descripcion_cotizante_persona_natural": "Empleado",
+      "tiene_salario_integral_actualmente": true,
+      "tiene_salario_fijo_actualmente": false,
+      "tiene_salario_variable_actualmente": true,
+      "tiene_novedad_ingreso_actualmente_empleador": false,
+      "tiene_novedad_retiro_actualmente_empleado": false,
+      "ingreso_maximo_empleador": 1000000,
+      "ingreso_minimo_empleador": 1000000,
+      "promedio_ingresos": 1000000,
+      "media_ingresos": 1000000,
+      "tipo_planilla": "E",
+      "descripcion_tipo_planilla": "Empleados",
+      "actividad_aportante": "7820",
+      "resultado_pagos": [
+        {"ano_periodo_validado": 2020, "mes_periodo_validado": 6, "realizo_pago": true, "ingresos": 1000000},
+        {"ano_periodo_validado": 2020, "mes_periodo_validado": 5, "realizo_pago": true, "ingresos": 1000000},
+        {"ano_periodo_validado": 2020, "mes_periodo_validado": 4, "realizo_pago": true, "ingresos": 1000000},
+        {"ano_periodo_validado": 2020, "mes_periodo_validado": 3, "realizo_pago": false, "ingresos": 0},
+        {"ano_periodo_validado": 2020, "mes_periodo_validado": 2, "realizo_pago": false, "ingresos": 0}
+      ]
+    }
+  ],
+  "indicadores": {
+    "tiempo_sin_pago": 9,
+    "tiempo_total_laborado": 3,
+    "ingreso_total_ult_mes": 4000000,
+    "promedio_ult_tres_meses": 4333333,
+    "promedio_ult_doce_meses": 1083333
+  },
+  "resumen_general_ingresos": {
+    "promedio_ingresos_cotizante": 4333333.0,
+    "mediana_ingresos_cotizante": 4000000.0,
+    "desviacion_estandar": 471404.0,
+    "ingreso_minimo_cotizante": 4000000.0,
+    "ingreso_maximo_cotizante": 5000000.0,
+    "pendiente_ingresos": -500000.0,
+    "tendencia_ingresos": "Decreciente",
+    "meses_continuidad": 3,
+    "cantidad_fuentes_ingreso": 1,
+    "ultimo_periodo_cotizado": "06-2020",
+    "promedio_ultimos_tres_meses_sin_dic_jun": 828116,
+    "promedio_ultimos_seis_meses_sin_dic_jun": 828116,
+    "consecutivos_seis_meses": 3
+  }
+}

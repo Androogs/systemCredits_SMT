@@ -1,0 +1,100 @@
+{
+  "ReportHDCplus": {
+    "productResult": {
+      "securityCode": "XX00000",
+      "consultDate": "2023-07-07T10:43:22",
+      "responseCode": "13",
+      "responseDesc": "La consulta fue efectiva"
+    },
+    "identifyingAttributes": {
+      "personId": {
+        "personIdNumber": 1000000001,
+        "personIdType": 1
+      },
+      "personLastName": "APELLIDOUNO",
+      "tradeholderIndicator": true
+    },
+    "location": {
+      "nationalNatural": {
+        "names": "NOMBRE FICTICIO",
+        "firstLastName": "APELLIDOUNO",
+        "secondLastName": "APELLIDODOS",
+        "fullName": "NOMBRE FICTICIO APELLIDOUNO APELLIDODOS",
+        "gender": 4,
+        "citizenTaxRegistrationIndicator": true,
+        "officialSourceValidationStatus": true,
+        "age": {
+          "min": 66
+        }
+      }
+    },
+    "models": [
+      {
+        "modelCode": 67,
+        "modelDate": "2023-07-07",
+        "scoreValue": 700,
+        "population": 0,
+        "ScoreReason": [
+          {"reason": "00099"},
+          {"reason": "00000"}
+        ]
+      }
+    ],
+    "productValueList": [
+      {
+        "productCode": "62",
+        "value": 2816,
+        "value2": 1548,
+        "value3": 4083,
+        "valueSMLV": 4.7783,
+        "value2SMLV": 2.628,
+        "value3SMLV": 6.9285,
+        "reason": "0099"
+      }
+    ],
+    "liabilities": [
+      {
+        "account": {
+          "businessLineName": "BANCO FICTICIO",
+          "accountNumber": "000000001",
+          "accountOpeningDate": "2015-01-01",
+          "economicSector": 1,
+          "block": false
+        },
+        "features": {
+          "accountTypeDesc": "CAB"
+        },
+        "status": {},
+        "values": [
+          {
+            "rating": "A",
+            "debtBalance": 10531000,
+            "businessValueBalanceOverdue": 0,
+            "valueMonthlyPayment": 387000,
+            "initialValue": 13490000,
+            "delinquencyMaturation": 0,
+            "installmentsOverdue": 0
+          }
+        ]
+      }
+    ],
+    "CreditCardList": [],
+    "savings": [],
+    "checkingList": [],
+    "globalIndebtedness": [
+      {
+        "entity": {
+          "businessLineName": "BANCO FICTICIO",
+          "economicSector": 1
+        },
+        "quarterQualification": "A",
+        "typeOfCredit": "CNS",
+        "currencyType": "ML",
+        "quantityOfObligations": 1,
+        "capitalValue": 10793000,
+        "cutoffDate": "2023-06-30"
+      }
+    ],
+    "alerts": []
+  }
+}

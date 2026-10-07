@@ -1,25 +1,40 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
+import { calcularCupoSugerido } from '../model/resultado-evaluacion'
+import {
+  construirCrearSolicitudPayload,
+  type IdentidadSolicitante,
+} from '../model/mapeos-api'
+import { ApiError, crearSolicitud } from '../api/originacionApi'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import './CrearSolicitud.css'
 
 export interface DatosSolicitud {
   lineaCredito: string
-  montoSolicitado: number
   destinoCredito: string
   plazoMeses: number
   ocupacion: string
   empresa: string
+  mesesContinuidad: number
+  aniosCamara: number | null
   ingresosMensuales: number
   egresosMensuales: number
 }
 
+export interface ResultadoCrearSolicitud {
+  datos: DatosSolicitud
+  /** Presente cuando la solicitud quedó persistida en el backend. */
+  idSolicitud?: string
+}
+
 interface CrearSolicitudProps {
-  onContinue?: (datos: DatosSolicitud) => void
+  onContinue?: (resultado: ResultadoCrearSolicitud) => void
   onBack?: () => void
   /** Datos pre-cargados desde los pasos anteriores. */
   inicial?: Partial<DatosSolicitud>
+  /** Identidad capturada en los pasos 1-6 (habilita el POST real). */
+  identidad?: IdentidadSolicitante
 }
 
 const lineasCredito = [
@@ -49,11 +64,12 @@ const ocupaciones = [
 
 const valoresIniciales: DatosSolicitud = {
   lineaCredito: 'Inversiones Pacífico',
-  montoSolicitado: 15_000_000,
   destinoCredito: 'Financiamiento de Vehículos',
   plazoMeses: 36,
-  ocupacion: 'Empleado Término Indefinido',
+  ocupacion: '',
   empresa: '',
+  mesesContinuidad: 24,
+  aniosCamara: null,
   ingresosMensuales: 4_500_000,
   egresosMensuales: 1_800_000,
 }
@@ -79,7 +95,12 @@ function soloDigitos(valor: string) {
   return valor.replace(/[^\d]/g, '')
 }
 
-function CrearSolicitud({ onContinue, onBack, inicial }: CrearSolicitudProps) {
+function CrearSolicitud({
+  onContinue,
+  onBack,
+  inicial,
+  identidad,
+}: CrearSolicitudProps) {
   const [datos, setDatos] = useState<DatosSolicitud>({
     ...valoresIniciales,
     ...inicial,
@@ -88,20 +109,27 @@ function CrearSolicitud({ onContinue, onBack, inicial }: CrearSolicitudProps) {
   const [intentado, setIntentado] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [registrado, setRegistrado] = useState(false)
+  const [errorApi, setErrorApi] = useState<string | null>(null)
 
   const errores = useMemo(() => {
     const lista: Partial<Record<keyof DatosSolicitud, string>> = {}
     if (!datos.lineaCredito)
       lista.lineaCredito = 'Selecciona la línea de crédito.'
-    if (!datos.montoSolicitado || datos.montoSolicitado < 500_000)
-      lista.montoSolicitado = 'El monto mínimo es de $500.000 COP.'
-    if (datos.montoSolicitado > 500_000_000)
-      lista.montoSolicitado = 'El monto máximo es de $500.000.000 COP.'
     if (!datos.destinoCredito)
       lista.destinoCredito = 'Selecciona el destino del crédito.'
-    if (!datos.plazoMeses) lista.plazoMeses = 'Selecciona el plazo sugerido.'
+    if (!datos.plazoMeses) lista.plazoMeses = 'Selecciona el plazo deseado.'
     if (!datos.ocupacion) lista.ocupacion = 'Selecciona la ocupación principal.'
     if (!datos.empresa.trim()) lista.empresa = 'Ingresa la empresa o empleador.'
+    if (datos.mesesContinuidad < 0)
+      lista.mesesContinuidad = 'La continuidad no puede ser negativa.'
+    if (
+      datos.ocupacion === 'Independiente' &&
+      (datos.aniosCamara === null || datos.aniosCamara <= 0)
+    )
+      lista.aniosCamara =
+        'Requerido para independientes: el motor rechaza sin Cámara de Comercio (R16).'
+    else if (datos.aniosCamara !== null && datos.aniosCamara < 0)
+      lista.aniosCamara = 'Los años de Cámara no pueden ser negativos.'
     if (!datos.ingresosMensuales || datos.ingresosMensuales <= 0)
       lista.ingresosMensuales = 'Ingresa los ingresos mensuales.'
     if (datos.egresosMensuales < 0)
@@ -124,35 +152,40 @@ function CrearSolicitud({ onContinue, onBack, inicial }: CrearSolicitudProps) {
   }
 
   // ---------- Métricas derivadas ----------
+  const disponibleMensual = Math.max(
+    0,
+    datos.ingresosMensuales - datos.egresosMensuales,
+  )
+
   const capacidadEndeudamiento = useMemo(() => {
     if (datos.ingresosMensuales <= 0) return 0
-    const disponible = datos.ingresosMensuales - datos.egresosMensuales
-    return Math.max(0, Math.round((disponible / datos.ingresosMensuales) * 100))
-  }, [datos.ingresosMensuales, datos.egresosMensuales])
-
-  const cuotaEstimada = useMemo(() => {
-    // Cálculo simplificado: tasa nominal mensual 1.8 % (demo).
-    const tasaMensual = 0.018
-    const n = datos.plazoMeses || 1
-    const m = datos.montoSolicitado
-    if (m <= 0) return 0
-    return Math.round(
-      (m * tasaMensual * Math.pow(1 + tasaMensual, n)) /
-        (Math.pow(1 + tasaMensual, n) - 1),
+    return Math.max(
+      0,
+      Math.round((disponibleMensual / datos.ingresosMensuales) * 100),
     )
-  }, [datos.montoSolicitado, datos.plazoMeses])
+  }, [datos.ingresosMensuales, disponibleMensual])
 
-  const ratioCuotaIngreso = useMemo(() => {
-    if (datos.ingresosMensuales <= 0) return 0
-    return cuotaEstimada / datos.ingresosMensuales
-  }, [cuotaEstimada, datos.ingresosMensuales])
+  const cupoReferencial = useMemo(
+    () =>
+      calcularCupoSugerido(
+        datos.ingresosMensuales,
+        datos.egresosMensuales,
+        datos.plazoMeses || 1,
+      ).monto,
+    [datos.ingresosMensuales, datos.egresosMensuales, datos.plazoMeses],
+  )
 
   const estadoCapacidad =
-    ratioCuotaIngreso <= 0.3
+    capacidadEndeudamiento >= 40
       ? 'alta'
-      : ratioCuotaIngreso <= 0.4
+      : capacidadEndeudamiento >= 20
         ? 'media'
         : 'baja'
+
+  const continuarDemo = () => {
+    setRegistrado(true)
+    onContinue?.({ datos })
+  }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -163,13 +196,29 @@ function CrearSolicitud({ onContinue, onBack, inicial }: CrearSolicitudProps) {
       return
     }
 
+    if (!identidad) {
+      continuarDemo()
+      return
+    }
+
     setEnviando(true)
-    // Simulación de radicación; en producción reemplaza por el POST real.
-    window.setTimeout(() => {
-      setEnviando(false)
-      setRegistrado(true)
-      onContinue?.(datos)
-    }, 900)
+    setErrorApi(null)
+    crearSolicitud(construirCrearSolicitudPayload(identidad, datos))
+      .then((respuesta) => {
+        setEnviando(false)
+        setRegistrado(true)
+        onContinue?.({ datos, idSolicitud: respuesta.id_solicitud })
+      })
+      .catch((err: unknown) => {
+        setEnviando(false)
+        const detalle =
+          err instanceof ApiError && err.detalle
+            ? ` (${typeof err.detalle === 'string' ? err.detalle : JSON.stringify(err.detalle)})`
+            : ''
+        setErrorApi(
+          `No se pudo registrar la solicitud en el backend${detalle}. Reintenta o continúa en modo demostración.`,
+        )
+      })
   }
 
   return (
@@ -178,12 +227,11 @@ function CrearSolicitud({ onContinue, onBack, inicial }: CrearSolicitudProps) {
         <div className="solicitud__header-copy">
           <p className="solicitud__eyebrow">Originación Individual · Paso 7</p>
           <h1>Crear Solicitud de Crédito</h1>
-          <p className="solicitud__subtitle">
-            Configuración de Producto y Perfil Económico
-          </p>
+          <p className="solicitud__subtitle">Producto y perfil económico</p>
           <p className="solicitud__lede">
-            Registra los datos del producto solicitado y la información
-            económica del solicitante para radicar la solicitud de crédito.
+            Registra el producto y la información económica del solicitante. Con
+            estos datos el motor evaluará la solicitud y sugerirá el cupo máximo
+            que el cliente podrá tomar.
           </p>
         </div>
 
@@ -224,6 +272,23 @@ function CrearSolicitud({ onContinue, onBack, inicial }: CrearSolicitudProps) {
           </div>
         )}
 
+        {errorApi && (
+          <div
+            className="solicitud__banner solicitud__banner--error"
+            role="alert"
+          >
+            <strong>Error de conexión.</strong>
+            <span>{errorApi}</span>
+            <button
+              type="button"
+              className="solicitud__banner-demo"
+              onClick={continuarDemo}
+            >
+              Continuar en modo demostración
+            </button>
+          </div>
+        )}
+
         {/* ------------ 1. Configuración de Producto Financiero ------------ */}
         <section
           className="solicitud__section"
@@ -235,7 +300,10 @@ function CrearSolicitud({ onContinue, onBack, inicial }: CrearSolicitudProps) {
             </span>
             <div>
               <h2 id="solicitud-sec-1">Configuración de Producto Financiero</h2>
-              <p>Selecciona las condiciones base de la línea de crédito.</p>
+              <p>
+                Línea, destino y plazo deseado. El monto lo sugiere el motor
+                tras la evaluación.
+              </p>
             </div>
           </header>
 
@@ -272,48 +340,6 @@ function CrearSolicitud({ onContinue, onBack, inicial }: CrearSolicitudProps) {
               {mostrarError('lineaCredito') && (
                 <p className="solicitud__error" role="alert">
                   {errores.lineaCredito}
-                </p>
-              )}
-            </div>
-
-            <div
-              className={`solicitud__field${
-                mostrarError('montoSolicitado') ? ' has-error' : ''
-              }`}
-            >
-              <label htmlFor="sol-monto">
-                Monto Solicitado (COP){' '}
-                <span className="solicitud__required" aria-hidden="true">
-                  *
-                </span>
-              </label>
-              <div className="solicitud__input-wrap solicitud__input-wrap--money">
-                <span className="solicitud__prefix" aria-hidden="true">
-                  $
-                </span>
-                <input
-                  id="sol-monto"
-                  type="text"
-                  inputMode="numeric"
-                  value={datos.montoSolicitado.toLocaleString('es-CO')}
-                  aria-invalid={mostrarError('montoSolicitado')}
-                  onChange={(e) => {
-                    const limpio = Number(soloDigitos(e.target.value))
-                    actualizar('montoSolicitado', limpio)
-                  }}
-                  onBlur={() => marcarTocado('montoSolicitado')}
-                />
-                <span className="solicitud__suffix" aria-hidden="true">
-                  COP
-                </span>
-              </div>
-              {mostrarError('montoSolicitado') ? (
-                <p className="solicitud__error" role="alert">
-                  {errores.montoSolicitado}
-                </p>
-              ) : (
-                <p className="solicitud__hint">
-                  Equivalente a {formatoCOP.format(datos.montoSolicitado)}
                 </p>
               )}
             </div>
@@ -360,7 +386,7 @@ function CrearSolicitud({ onContinue, onBack, inicial }: CrearSolicitudProps) {
               }`}
             >
               <label htmlFor="sol-plazo">
-                Plazo Sugerido{' '}
+                Plazo Deseado{' '}
                 <span className="solicitud__required" aria-hidden="true">
                   *
                 </span>
@@ -433,6 +459,9 @@ function CrearSolicitud({ onContinue, onBack, inicial }: CrearSolicitudProps) {
                   onChange={(e) => actualizar('ocupacion', e.target.value)}
                   onBlur={() => marcarTocado('ocupacion')}
                 >
+                  <option value="" disabled>
+                    Selecciona la ocupación…
+                  </option>
                   {ocupaciones.map((opcion) => (
                     <option key={opcion} value={opcion}>
                       {opcion}
@@ -477,6 +506,74 @@ function CrearSolicitud({ onContinue, onBack, inicial }: CrearSolicitudProps) {
                 </p>
               )}
             </div>
+
+            <div
+              className={`solicitud__field${
+                mostrarError('mesesContinuidad') ? ' has-error' : ''
+              }`}
+            >
+              <label htmlFor="sol-continuidad">
+                Meses de continuidad laboral{' '}
+                <span className="solicitud__required" aria-hidden="true">
+                  *
+                </span>
+              </label>
+              <input
+                id="sol-continuidad"
+                type="text"
+                inputMode="numeric"
+                value={datos.mesesContinuidad.toLocaleString('es-CO')}
+                aria-invalid={mostrarError('mesesContinuidad')}
+                onChange={(e) =>
+                  actualizar(
+                    'mesesContinuidad',
+                    Number(soloDigitos(e.target.value)),
+                  )
+                }
+                onBlur={() => marcarTocado('mesesContinuidad')}
+              />
+              {mostrarError('mesesContinuidad') && (
+                <p className="solicitud__error" role="alert">
+                  {errores.mesesContinuidad}
+                </p>
+              )}
+            </div>
+
+            {datos.ocupacion === 'Independiente' && (
+              <div
+                className={`solicitud__field${
+                  mostrarError('aniosCamara') ? ' has-error' : ''
+                }`}
+              >
+                <label htmlFor="sol-camara">
+                  Años con Cámara de Comercio{' '}
+                  <span className="solicitud__required" aria-hidden="true">
+                    *
+                  </span>
+                </label>
+                <input
+                  id="sol-camara"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Ej. 3.5"
+                  value={datos.aniosCamara ?? ''}
+                  aria-invalid={mostrarError('aniosCamara')}
+                  onChange={(e) => {
+                    const texto = e.target.value.replace(',', '.')
+                    actualizar(
+                      'aniosCamara',
+                      texto === '' ? null : Number(texto),
+                    )
+                  }}
+                  onBlur={() => marcarTocado('aniosCamara')}
+                />
+                {mostrarError('aniosCamara') && (
+                  <p className="solicitud__error" role="alert">
+                    {errores.aniosCamara}
+                  </p>
+                )}
+              </div>
+            )}
 
             <div
               className={`solicitud__field${
@@ -574,15 +671,17 @@ function CrearSolicitud({ onContinue, onBack, inicial }: CrearSolicitudProps) {
             <div className="solicitud__analisis-grid">
               <div className="solicitud__analisis-card">
                 <span className="solicitud__analisis-label">
-                  Cuota mensual estimada
+                  Disponible mensual
                 </span>
                 <strong className="solicitud__analisis-valor">
-                  {formatoCOP.format(cuotaEstimada)}
+                  {formatoCOP.format(disponibleMensual)}
                 </strong>
-                <small>Tasa nominal 1.8 % · {datos.plazoMeses} meses</small>
+                <small>Ingresos menos egresos declarados</small>
               </div>
 
-              <div className="solicitud__analisis-card">
+              <div
+                className={`solicitud__analisis-card solicitud__analisis-card--${estadoCapacidad}`}
+              >
                 <span className="solicitud__analisis-label">
                   Capacidad de endeudamiento
                 </span>
@@ -590,30 +689,22 @@ function CrearSolicitud({ onContinue, onBack, inicial }: CrearSolicitudProps) {
                   {capacidadEndeudamiento}%
                 </strong>
                 <small>
-                  Disponible:{' '}
-                  {formatoCOPCompacto(
-                    Math.max(
-                      0,
-                      datos.ingresosMensuales - datos.egresosMensuales,
-                    ),
-                  )}
-                </small>
-              </div>
-
-              <div
-                className={`solicitud__analisis-card solicitud__analisis-card--${estadoCapacidad}`}
-              >
-                <span className="solicitud__analisis-label">
-                  Relación cuota / ingreso
-                </span>
-                <strong className="solicitud__analisis-valor">
-                  {(ratioCuotaIngreso * 100).toFixed(1)}%
-                </strong>
-                <small>
                   {estadoCapacidad === 'alta' && 'Dentro del rango recomendado'}
                   {estadoCapacidad === 'media' &&
                     'Cercano al límite prudencial'}
-                  {estadoCapacidad === 'baja' && 'Supera el 40 % recomendado'}
+                  {estadoCapacidad === 'baja' && 'Capacidad limitada'}
+                </small>
+              </div>
+
+              <div className="solicitud__analisis-card">
+                <span className="solicitud__analisis-label">
+                  Cupo estimado referencial
+                </span>
+                <strong className="solicitud__analisis-valor">
+                  {formatoCOPCompacto(cupoReferencial)}
+                </strong>
+                <small>
+                  El monto final lo sugiere el motor tras la evaluación
                 </small>
               </div>
             </div>

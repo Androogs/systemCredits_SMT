@@ -3,9 +3,11 @@ import type { ReactNode } from 'react'
 import ContenedorPanel from '../../widgets/app-shell/ContenedorPanel'
 import IniciarSesion from '../../pages/IniciarSesion'
 import Resumen from '../../pages/Resumen'
-import NuevaSolicitud from '../../pages/NuevaSolicitud'
+import Simulador from '../../pages/Simulador'
+import PanelAsesor from '../../pages/PanelAsesor'
 import Solicitudes from '../../pages/Solicitudes'
 import DetalleSolicitud from '../../pages/DetalleSolicitud'
+import Resultado from '../../pages/Resultado'
 import Originacion from '../../pages/Originacion'
 import Clientes from '../../pages/Clientes'
 import Riesgo from '../../pages/Riesgo'
@@ -31,10 +33,20 @@ export default function RutasAplicacion() {
       >
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Resumen />} />
-        <Route path="nueva-simulacion" element={<NuevaSolicitud />} />
-        <Route path="originacion" element={<Originacion />} />
+        <Route path="asesor" element={<PanelAsesor />} />
+        <Route path="nueva-solicitud" element={<Originacion />} />
+        <Route
+          path="originacion"
+          element={<Navigate to="/nueva-solicitud" replace />}
+        />
+        <Route
+          path="nueva-simulacion"
+          element={<Navigate to="/simulador" replace />}
+        />
+        <Route path="simulador" element={<Simulador />} />
         <Route path="solicitudes" element={<Solicitudes />} />
         <Route path="solicitudes/:id" element={<DetalleSolicitud />} />
+        <Route path="solicitudes/:id/resultado" element={<Resultado />} />
         <Route path="clientes" element={<Clientes />} />
         <Route path="riesgo" element={<Riesgo />} />
         <Route path="estados" element={<Estados />} />

@@ -62,22 +62,57 @@ FROM aliado_financiero
 WHERE nit = '814005081'
 ON CONFLICT (id_aliado, nombre) DO NOTHING;
 
+-- Parametros comerciales del producto propio (alineados con la politica:
+-- plazo 12-48 meses, monto $500.000 - $20.000.000, tasa de referencia 1,85 % m.v.)
+UPDATE aliado_producto
+SET tasa_min = 1.5,
+    tasa_max = 2.2,
+    plazo_min_meses = 12,
+    plazo_max_meses = 48,
+    monto_min = 500000,
+    monto_max = 20000000
+WHERE nombre = 'Financiacion de motocicleta'
+  AND id_aliado = (SELECT id_aliado FROM aliado_financiero WHERE nit = '814005081');
+
+-- Catalogo de causales del motor de decision (PPT v4 + BRD).
+-- R* = rechazo, RC* = requiere codeudor, E* = estudio (decision interna).
 INSERT INTO criterio_evaluacion (codigo, descripcion, tipo) VALUES
-    ('EDAD_POLITICA', 'Edad entre 18 y 65 anos', 'interno'),
-    ('NACIONALIDAD_COLOMBIANA', 'Nacionalidad colombiana', 'interno'),
-    ('DOCUMENTO_VIGENTE', 'Documento de identidad vigente', 'buro'),
-    ('EMBARGOS_VIGENTES', 'Embargos vigentes', 'buro'),
-    ('CARTERA_CASTIGADA', 'Cartera castigada vigente en los ultimos 12 meses', 'buro'),
-    ('DUDOSO_RECAUDO', 'Obligaciones de dudoso recaudo', 'buro'),
-    ('MORA_30_VIGENTE', 'Mora vigente de 30 dias o mas', 'buro'),
-    ('MORA_60_VIGENTE', 'Mora vigente de 60 dias o mas', 'buro'),
-    ('MORA_HISTORICA_30', 'Mora historica de 30 dias', 'buro'),
-    ('MORA_HISTORICA_60', 'Mora historica de 60 dias', 'buro'),
-    ('MORA_HISTORICA_90', 'Mora historica de 90 dias o mas', 'buro'),
-    ('CALIFICACION_NO_AB', 'Calificacion diferente de A o B', 'buro'),
-    ('REESTRUCTURACION', 'Obligaciones reestructuradas', 'buro'),
-    ('CANCELACION_NEGATIVA', 'Cancelacion por mal habito', 'buro'),
-    ('SCORE_QUANTUM', 'Score Quantum del cliente', 'interno'),
-    ('VALOR_INGRESO', 'Valor ingreso calculado', 'interno'),
-    ('CAPACIDAD_PAGO', 'Capacidad de pago calculada', 'interno')
+    ('R1',  'Clientes reportados como fallecidos', 'buro'),
+    ('R2',  'Embargos vigentes', 'buro'),
+    ('R3',  'Cancelaciones por mal habito', 'buro'),
+    ('R4',  'Cartera castigada', 'buro'),
+    ('R5',  'Dudoso recaudo', 'buro'),
+    ('R6',  'Mora 60 dias o mas vigentes', 'buro'),
+    ('R7',  'Mora historica 30 dias', 'buro'),
+    ('R8',  'Mora historica 60 dias', 'buro'),
+    ('R9',  'Mora historica 90 dias o mas', 'buro'),
+    ('R10', 'Calificacion diferente A y B', 'buro'),
+    ('R11', 'Reestructuracion', 'buro'),
+    ('R12', 'Documento no vigente', 'buro'),
+    ('R13', 'No cumple politica de edad', 'interno'),
+    ('R14', 'Score por debajo del punto de corte', 'buro'),
+    ('R15', 'Ingresos por debajo del permitido', 'interno'),
+    ('R16', 'No tiene Camara de Comercio', 'interno'),
+    ('R17', 'Endeudamiento mayor a 90 por ciento', 'buro'),
+    ('R18', 'Sin disponible', 'interno'),
+    ('R19', 'Sin capacidad de pago', 'interno'),
+    ('R20', 'Informacion insuficiente para aprobar', 'interno'),
+    ('R21', 'Nacionalidad diferente a colombiana', 'interno'),
+    ('R22', 'Multas en el RUNT', 'interno'),
+    ('R23', 'Cliente sin experiencia crediticia', 'buro'),
+    ('R24', 'No cumple anos minimos de Camara de Comercio', 'interno'),
+    ('R25', 'Perfil Score D', 'buro'),
+    ('RC1', 'No cumple continuidad', 'interno'),
+    ('RC2', 'Perfil Score D (requiere codeudor)', 'buro'),
+    ('RC3', 'Validacion de exclusiones (requiere codeudor)', 'buro'),
+    ('RC4', 'Ingreso en zona gris para independiente', 'interno'),
+    ('E1', 'Clientes diferentes a persona natural', 'interno'),
+    ('E2', 'Mora 30 dias vigentes', 'buro'),
+    ('E3', 'Sin valor ingreso y quanto fin', 'interno'),
+    ('E4', 'Perfil ingreso bajo', 'interno'),
+    ('E5', 'Perfil ingreso bajo y score B', 'interno'),
+    ('E6', 'Perfil ingreso bajo y score C', 'interno'),
+    ('E7', 'Validacion de exclusiones (estudio)', 'interno'),
+    ('E8', 'Endeudamiento mayor a 75 y menor o igual a 90 por ciento', 'interno'),
+    ('E9', 'Sin capacidad para moto solicitada', 'interno')
 ON CONFLICT (codigo) DO NOTHING;

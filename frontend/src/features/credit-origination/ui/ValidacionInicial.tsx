@@ -17,7 +17,7 @@ interface ValidacionInicialProps {
 }
 
 const MIN_EDAD = 18
-const MAX_EDAD = 75
+const MAX_EDAD = 66
 
 type Campo = 'numeroDocumento' | 'edad' | 'multas'
 

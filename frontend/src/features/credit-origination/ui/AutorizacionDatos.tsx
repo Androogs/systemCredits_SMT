@@ -16,8 +16,14 @@ interface AutorizacionDatosProps {
 }
 
 const REGISTRO_AUDITORIA = {
-  fecha: '2026-03-04 15:34:10 COT',
   ip: '186.154.43.12',
+}
+
+/** Marca de tiempo de firma del consentimiento, en formato COT legible. */
+function marcaTiempoActual(): string {
+  const ahora = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${ahora.getFullYear()}-${pad(ahora.getMonth() + 1)}-${pad(ahora.getDate())} ${pad(ahora.getHours())}:${pad(ahora.getMinutes())}:${pad(ahora.getSeconds())} COT`
 }
 
 const finalidades = [
@@ -34,6 +40,7 @@ const finalidades = [
 ] as const
 
 function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
+  const [marcaRegistro] = useState(marcaTiempoActual)
   const [autoriza, setAutoriza] = useState(false)
   const [intentado, setIntentado] = useState(false)
   const [registrado, setRegistrado] = useState(false)
@@ -52,7 +59,7 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
     setRegistrado(true)
     onContinue?.({
       autorizaTratamiento: true,
-      fechaRegistro: REGISTRO_AUDITORIA.fecha,
+      fechaRegistro: marcaRegistro,
       ipAsesor: REGISTRO_AUDITORIA.ip,
     })
   }
@@ -140,9 +147,8 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
 
           <a
             className="autorizacion__legal-link"
-            href="#habeas-data"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/documentos/autorizacion-consulta-centrales-habeas-data.docx"
+            download="Autorizacion consulta centrales - Habeas Data - Inversiones Pacifico.docx"
           >
             <svg
               className="autorizacion__legal-icon"
@@ -151,7 +157,7 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
               focusable="false"
             >
               <path
-                d="M14 4h6v6"
+                d="M12 3v12"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
@@ -159,7 +165,7 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
                 strokeLinejoin="round"
               />
               <path
-                d="M20 4 11 13"
+                d="m7 10 5 5 5-5"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
@@ -167,7 +173,7 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
                 strokeLinejoin="round"
               />
               <path
-                d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"
+                d="M5 21h14"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
@@ -175,7 +181,7 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
                 strokeLinejoin="round"
               />
             </svg>
-            Ver el documento legal completo de Habeas Data (PDF)
+            Descargar el documento legal completo de Habeas Data (DOCX)
           </a>
         </div>
 
@@ -251,8 +257,8 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
             />
           </svg>
           <p>
-            <span>Registro Auditoría:</span> {REGISTRO_AUDITORIA.fecha} | IP del
-            Nodo de Solicitud Asesor: {REGISTRO_AUDITORIA.ip}
+            <span>Registro Auditoría:</span> {marcaRegistro} | IP del Nodo de
+            Solicitud Asesor: {REGISTRO_AUDITORIA.ip}
           </p>
         </div>
 

@@ -1,330 +1,307 @@
 """
-Perfil de score, perfil de ingreso y matriz de decisión, según el
-BRD ORIGINAL (BRD-Prefiltro_Cliente_InversionesPacifico_22012026.docx,
-secciones 2.4.5, 2.4.6 y 2.4.7).
+Perfil de score, perfil de ingreso y matriz de decisión
+(PPT v4 + BRD).
 
-Diferencia importante frente a la primera versión de este archivo
-(basada en un resumen automatizado, no en el documento real): la
-matriz de decisión NO tiene "Estudio" ni "Requiere codeudor" — todo
-resultado es APROBADO o RECHAZADO. El texto final del BRD sí
-menciona de pasada "Todo lo que no quede en Rechazado, Estudio o
-Requiere codeudor será Aprobado", pero ninguna tabla del documento
-llega a producir esos dos estados intermedios, así que no se
-implementan aquí (posible texto heredado de una versión anterior de
-la estrategia).
+PERFIL SCORE
+    Empleado / Pensionado            -> escalera Score_EP_1..4
+    Independiente / Fuerzas Militares -> escalera Score_IF_1..4
+        score >= S1 -> A ; >= S2 -> B ; >= S3 -> C ; >= S4 -> D
+        piso <= score < S4 -> Rechazo R14 "Score por debajo del punto de corte"
+        score < piso (150)  -> Rechazo R23 "Cliente sin experiencia crediticia"
+
+PERFIL INGRESO (INGRESO_FINAL en SMMLV)
+    Empleado: ALTO >= E1, MEDIO >= E2, BAJO >= E3, todos exigiendo
+        continuidad (Valor Ingreso: indefinido >= Meses_Cont_1, fijo /
+        obra-labor >= Meses_Cont_2). Con ingreso >= E3 sin continuidad
+        -> GRIS. Ingreso < E3 -> Rechazo R15.
+    Pensionado / FFMM: ALTO >= PF1, MEDIO >= PF2, BAJO >= PF3, < PF3 -> R15.
+    Independiente: ALTO >= I1, MEDIO >= I2, BAJO >= I3, GRIS > I4, <= I4 -> R15.
+
+MATRIZ POR OCUPACIÓN (PPT v4)
+    Empleado:
+        D           -> RECHAZO (R25 "Perfil Score D")
+        ALTO/MEDIO  -> Aprobado
+        BAJO        -> Aprobado (E4 score A, E5 score B, E6 score C)
+        GRIS        -> RECHAZO (RC1 "No cumple continuidad")
+
+    Pensionado:
+        D           -> RECHAZO (R25 "Perfil Score D")
+        ALTO/MEDIO  -> Aprobado
+        BAJO        -> RECHAZO (E4 score A, E5 score B, E6 score C)
+        GRIS        -> RECHAZO (RC1 "No cumple continuidad")
+
+    Fuerzas Militares:
+        D           -> RECHAZO (R25 "Perfil Score D")
+        ALTO/MEDIO  -> Aprobado
+        BAJO        -> RECHAZO (E4 score A, E5 score B, E6 score C)
+        GRIS        -> RECHAZO (R15 "Ingreso por debajo del permitido")
+
+    Independiente (además exige años de Cámara de Comercio):
+        mínimo de años: ALTO Anios_Cam_1, MEDIO Anios_Cam_2, BAJO Anios_Cam_3,
+        GRIS o score D Anios_Cam_4. Sin Cámara -> Rechazo R16; con Cámara
+        pero sin la antigüedad exigida -> Rechazo R24.
+        Luego: D -> RECHAZO ; ALTO/MEDIO -> Aprobado ; BAJO -> RECHAZO ;
+        GRIS -> RECHAZO (R15 "Ingreso por debajo del permitido").
 """
 
 from dataclasses import dataclass
+from decimal import Decimal
 
+from backend.models.enums import Causal, Decision, Ocupacion, PerfilIngreso, PerfilScore, TipoContrato
+from backend.models.motor_models import Solicitud
 from backend.services.motor_parametros import MotorParametros
 
-PerfilScore = str  # "A" | "B" | "C" | "D" | "RECHAZO_PUNTO_CORTE" | "RECHAZO_SIN_EXPERIENCIA"
-PerfilIngreso = str  # "ALTO" | "MEDIO" | "BAJO" | "GRIS" | "RECHAZO"
-Decision = str  # "APROBADO" | "RECHAZADO"
+_OCUPACIONES_ESCALERA_EP = (Ocupacion.EMPLEADO, Ocupacion.PENSIONADO)
+_OCUPACIONES_ESCALERA_IF = (Ocupacion.INDEPENDIENTE, Ocupacion.FUERZAS_MILITARES)
 
 
 @dataclass
-class ResultadoDecisionParcial:
+class ResultadoPerfilScore:
+    perfil: PerfilScore | None = None
+    decision_forzada: Decision | None = None
+    causal_forzada: Causal | None = None
+    razon: str = ""
+
+
+@dataclass
+class ResultadoPerfilIngreso:
+    perfil: PerfilIngreso | None = None
+    decision_forzada: Decision | None = None
+    causal_forzada: Causal | None = None
+    razon: str = ""
+
+
+@dataclass
+class ResultadoDecision:
     decision: Decision
-    causal_codigo: str | None
-    causal_descripcion: str | None
+    causal: Causal | None = None
+    razon: str = ""
 
 
-def perfil_score_empleado_pensionado_ffmm(
-    score: float,
+# ---------------------------------------------------------------------------
+# Perfil de score
+# ---------------------------------------------------------------------------
+def asignar_perfil_score(
+    score: Decimal | float | None,
+    solicitud: Solicitud,
     params: MotorParametros,
-) -> PerfilScore:
-    if score < params.score_piso_experiencia:
-        return "RECHAZO_SIN_EXPERIENCIA"
-    if score < params.score_ep_4:
-        return "RECHAZO_PUNTO_CORTE"
-    if score >= params.score_ep_1:
-        return "A"
-    if score >= params.score_ep_2:
-        return "B"
-    if score >= params.score_ep_3:
-        return "C"
-    return "D"
+) -> ResultadoPerfilScore:
+    if score is None:
+        return ResultadoPerfilScore(razon="Sin score disponible")
 
-
-def perfil_score_independiente(
-    score: float,
-    params: MotorParametros,
-) -> PerfilScore:
-    if score < params.score_piso_experiencia:
-        return "RECHAZO_SIN_EXPERIENCIA"
-    if score < params.score_if_4:
-        return "RECHAZO_PUNTO_CORTE"
-    if score >= params.score_if_1:
-        return "A"
-    if score >= params.score_if_2:
-        return "B"
-    if score >= params.score_if_3:
-        return "C"
-    return "D"
-
-
-def perfil_score(
-    ocupacion: str,
-    score: float,
-    params: MotorParametros,
-) -> PerfilScore:
-    ocupacion_normalizada = ocupacion.strip().lower()
-
-    # NOTA: el BRD agrupa "Empleado o Pensionado" para la escalera
-    # de score con cortes 750/680/600/500, pero la matriz de
-    # decisión posterior agrupa "Pensionado o Fuerzas Militares"
-    # (no "Empleado o Fuerzas Militares"). Es decir, Fuerzas
-    # Militares usa la escalera de SCORE de Independiente (770/700/
-    # 620/520) pero la MATRIZ de decisión de Pensionado. Esto es lo
-    # que el documento dice literalmente en cada sección; no es un
-    # error de esta implementación.
-    if ocupacion_normalizada in ("independiente", "fuerzas militares"):
-        return perfil_score_independiente(score, params)
-    if ocupacion_normalizada in ("empleado", "pensionado"):
-        return perfil_score_empleado_pensionado_ffmm(score, params)
-
-    raise ValueError(f"Ocupación no reconocida: '{ocupacion}'")
-
-
-def perfil_ingreso_empleado(
-    ingreso_final_smmlv: float,
-    tipo_contrato: str,
-    meses_continuidad: int | None,
-    params: MotorParametros,
-) -> PerfilIngreso:
-    tipo_contrato_normalizado = (tipo_contrato or "").strip().lower()
-    meses_continuidad = meses_continuidad or 0
-
-    if tipo_contrato_normalizado == "indefinido":
-        cumple_continuidad = (
-            meses_continuidad >= params.meses_continuidad_indefinido
-        )
-    elif tipo_contrato_normalizado in ("fijo", "obra o labor", "obra labor"):
-        cumple_continuidad = (
-            meses_continuidad >= params.meses_continuidad_fijo_o_labor
-        )
+    score_d = Decimal(str(score))
+    if solicitud.ocupacion in _OCUPACIONES_ESCALERA_EP:
+        s1, s2, s3, s4 = params.score_ep_1, params.score_ep_2, params.score_ep_3, params.score_ep_4
     else:
-        # TIPO CONTRATO = NA u otro valor no cubierto por el BRD:
-        # no hay regla explícita, se trata como "no cumple
-        # continuidad" (cae a GRIS si el ingreso alcanza, o a
-        # Rechazo si no alcanza ni el piso).
-        cumple_continuidad = False
+        s1, s2, s3, s4 = params.score_if_1, params.score_if_2, params.score_if_3, params.score_if_4
 
-    if ingreso_final_smmlv < params.ingreso_e_bajo:
-        return "RECHAZO"
+    if score_d >= s1:
+        return ResultadoPerfilScore(PerfilScore.A, razon=f"Score {score_d} >= {s1}")
+    if score_d >= s2:
+        return ResultadoPerfilScore(PerfilScore.B, razon=f"Score {score_d} en [{s2}, {s1})")
+    if score_d >= s3:
+        return ResultadoPerfilScore(PerfilScore.C, razon=f"Score {score_d} en [{s3}, {s2})")
+    if score_d >= s4:
+        return ResultadoPerfilScore(PerfilScore.D, razon=f"Score {score_d} en [{s4}, {s3})")
+    if score_d < params.score_piso_experiencia:
+        return ResultadoPerfilScore(
+            None,
+            Decision.RECHAZADO,
+            Causal.R23,
+            f"Score {score_d} < {params.score_piso_experiencia} (sin experiencia crediticia)",
+        )
+    return ResultadoPerfilScore(None, Decision.RECHAZADO, Causal.R14, f"Score {score_d} < {s4} (punto de corte)")
 
-    if not cumple_continuidad:
-        return "GRIS"
 
-    if ingreso_final_smmlv >= params.ingreso_e_alto:
-        return "ALTO"
-    if ingreso_final_smmlv >= params.ingreso_e_medio:
-        return "MEDIO"
-    return "BAJO"
-
-
-def perfil_ingreso_pensionado_ffmm(
-    ingreso_final_smmlv: float,
+# ---------------------------------------------------------------------------
+# Perfil de ingreso
+# ---------------------------------------------------------------------------
+def cumple_continuidad(
+    tipo_contrato: TipoContrato | None,
     params: MotorParametros,
-) -> PerfilIngreso:
-    if ingreso_final_smmlv >= params.ingreso_pf_alto:
-        return "ALTO"
-    if ingreso_final_smmlv >= params.ingreso_pf_medio:
-        return "MEDIO"
-    if ingreso_final_smmlv >= params.ingreso_pf_bajo:
-        return "BAJO"
-    return "RECHAZO"
-
-
-def perfil_ingreso_independiente(
-    ingreso_final_smmlv: float,
-    anios_camara_comercio: float | None,
-    params: MotorParametros,
-) -> PerfilIngreso:
-    anios = anios_camara_comercio or 0
-
-    if (
-        ingreso_final_smmlv >= params.ingreso_i_alto
-        and anios >= params.anios_cam_alto
-    ):
-        return "ALTO"
-    if (
-        params.ingreso_i_medio_min <= ingreso_final_smmlv < params.ingreso_i_alto
-        and anios >= params.anios_cam_medio
-    ):
-        return "MEDIO"
-    if (
-        params.ingreso_i_bajo_min
-        <= ingreso_final_smmlv
-        < params.ingreso_i_medio_min
-        and anios >= params.anios_cam_bajo
-    ):
-        return "BAJO"
-    if (
-        params.ingreso_i_gris_min
-        < ingreso_final_smmlv
-        < params.ingreso_i_gris_max
-        and anios >= params.anios_cam_gris
-    ):
-        return "GRIS"
-    if ingreso_final_smmlv <= params.ingreso_i_piso_rechazo:
-        return "RECHAZO"
-
-    # Zona sin regla explícita en el BRD (ej. ingreso entre 1.6 y
-    # 2.0 pero años cámara insuficientes para "BAJO", y tampoco cae
-    # en ningún otro rango): se trata como Rechazo por vacío de
-    # política, coherente con la cláusula del BRD "los registros que
-    # no apliquen a las casuísticas anteriores... quedan Rechazado
-    # con causal 'No cumple política interna'".
-    return "SIN_REGLA"
-
-
-def perfil_ingreso(
-    ocupacion: str,
-    ingreso_final_smmlv: float,
-    tipo_contrato: str | None,
     meses_continuidad: int | None,
-    anios_camara_comercio: float | None,
+) -> bool:
+    """Continuidad según Valor Ingreso; contrato NA o vacío no cumple."""
+    meses = meses_continuidad or 0
+    if tipo_contrato == TipoContrato.INDEFINIDO:
+        return meses >= params.meses_cont_1
+    if tipo_contrato in (TipoContrato.FIJO, TipoContrato.OBRA_LABOR):
+        return meses >= params.meses_cont_2
+    return False
+
+
+def _rechazo_ingreso(razon: str) -> ResultadoPerfilIngreso:
+    return ResultadoPerfilIngreso(None, Decision.RECHAZADO, Causal.R15, razon)
+
+
+def asignar_perfil_ingreso(
+    ingreso_final_smmlv: Decimal,
+    solicitud: Solicitud,
     params: MotorParametros,
-) -> PerfilIngreso:
-    ocupacion_normalizada = ocupacion.strip().lower()
+    meses_continuidad: int | None = None,
+) -> ResultadoPerfilIngreso:
+    x = ingreso_final_smmlv
 
-    if ocupacion_normalizada == "empleado":
-        return perfil_ingreso_empleado(
-            ingreso_final_smmlv,
-            tipo_contrato or "",
-            meses_continuidad,
-            params,
-        )
-    if ocupacion_normalizada in ("pensionado", "fuerzas militares"):
-        return perfil_ingreso_pensionado_ffmm(ingreso_final_smmlv, params)
-    if ocupacion_normalizada == "independiente":
-        return perfil_ingreso_independiente(
-            ingreso_final_smmlv, anios_camara_comercio, params
+    if solicitud.ocupacion == Ocupacion.EMPLEADO:
+        if x < params.ingreso_e_3:
+            return _rechazo_ingreso(f"Ingreso {x:.4f} SMMLV < {params.ingreso_e_3}")
+        if not cumple_continuidad(solicitud.tipo_contrato, params, meses_continuidad):
+            return ResultadoPerfilIngreso(
+                PerfilIngreso.GRIS,
+                razon=f"Ingreso suficiente pero sin continuidad ({meses_continuidad or 0} meses, "
+                f"contrato {solicitud.tipo_contrato or 'sin dato'})",
+            )
+        if x >= params.ingreso_e_1:
+            return ResultadoPerfilIngreso(
+                PerfilIngreso.ALTO, razon=f"Ingreso {x:.4f} >= {params.ingreso_e_1} y cumple continuidad"
+            )
+        if x >= params.ingreso_e_2:
+            return ResultadoPerfilIngreso(
+                PerfilIngreso.MEDIO, razon=f"Ingreso {x:.4f} >= {params.ingreso_e_2} y cumple continuidad"
+            )
+        return ResultadoPerfilIngreso(
+            PerfilIngreso.BAJO, razon=f"Ingreso {x:.4f} >= {params.ingreso_e_3} y cumple continuidad"
         )
 
-    raise ValueError(f"Ocupación no reconocida: '{ocupacion}'")
+    if solicitud.ocupacion in (Ocupacion.PENSIONADO, Ocupacion.FUERZAS_MILITARES):
+        if x >= params.ingreso_pf_1:
+            return ResultadoPerfilIngreso(PerfilIngreso.ALTO, razon=f"PF: {x:.4f} >= {params.ingreso_pf_1}")
+        if x >= params.ingreso_pf_2:
+            return ResultadoPerfilIngreso(PerfilIngreso.MEDIO, razon=f"PF: {x:.4f} >= {params.ingreso_pf_2}")
+        if x >= params.ingreso_pf_3:
+            return ResultadoPerfilIngreso(PerfilIngreso.BAJO, razon=f"PF: {x:.4f} >= {params.ingreso_pf_3}")
+        return _rechazo_ingreso(f"PF: ingreso {x:.4f} SMMLV < {params.ingreso_pf_3}")
 
-
-# --- Matrices de decisión (BRD sección 2.4.7), literal por ocupación ---
-
-def decidir_empleado(
-    perfil_score_valor: PerfilScore,
-    perfil_ingreso_valor: PerfilIngreso,
-) -> ResultadoDecisionParcial:
-    if perfil_score_valor == "RECHAZO_PUNTO_CORTE":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "R_SCORE_CORTE", "Score por debajo del punto de corte"
-        )
-    if perfil_score_valor == "RECHAZO_SIN_EXPERIENCIA":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "R_SIN_EXPERIENCIA", "Cliente sin experiencia crediticia"
-        )
-    if perfil_ingreso_valor == "RECHAZO":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "R_INGRESOS_PERMITIDO", "Ingresos por debajo del permitido"
-        )
-    if perfil_score_valor == "D":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "D_NO_CUMPLE_SCORE", "No Cumple Score"
-        )
-    if perfil_ingreso_valor == "GRIS":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "GRIS_NO_CONTINUIDAD", "No Cumple Continuidad"
-        )
-    if perfil_ingreso_valor in ("ALTO", "MEDIO", "BAJO"):
-        return ResultadoDecisionParcial("APROBADO", None, None)
-
-    return ResultadoDecisionParcial(
-        "RECHAZADO", "SIN_POLITICA", "No cumple política interna"
-    )
+    # Independiente
+    if x >= params.ingreso_i_1:
+        return ResultadoPerfilIngreso(PerfilIngreso.ALTO, razon=f"Ind: {x:.4f} >= {params.ingreso_i_1}")
+    if x >= params.ingreso_i_2:
+        return ResultadoPerfilIngreso(PerfilIngreso.MEDIO, razon=f"Ind: {x:.4f} >= {params.ingreso_i_2}")
+    if x >= params.ingreso_i_3:
+        return ResultadoPerfilIngreso(PerfilIngreso.BAJO, razon=f"Ind: {x:.4f} >= {params.ingreso_i_3}")
+    if x > params.ingreso_i_4:
+        return ResultadoPerfilIngreso(PerfilIngreso.GRIS, razon=f"Ind: {x:.4f} > {params.ingreso_i_4}")
+    return _rechazo_ingreso(f"Ind: ingreso {x:.4f} SMMLV <= {params.ingreso_i_4}")
 
 
-def decidir_pensionado_ffmm(
-    perfil_score_valor: PerfilScore,
-    perfil_ingreso_valor: PerfilIngreso,
-) -> ResultadoDecisionParcial:
-    if perfil_score_valor == "RECHAZO_PUNTO_CORTE":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "R_SCORE_CORTE", "Score por debajo del punto de corte"
-        )
-    if perfil_score_valor == "RECHAZO_SIN_EXPERIENCIA":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "R_SIN_EXPERIENCIA", "Cliente sin experiencia crediticia"
-        )
-    if perfil_ingreso_valor == "RECHAZO":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "R_INGRESOS_PERMITIDO", "Ingresos por debajo del permitido"
-        )
-    if perfil_score_valor == "D":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "D_NO_CUMPLE_SCORE", "No Cumple Score"
-        )
-    if perfil_ingreso_valor == "BAJO":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "BAJO_NO_INGRESOS", "No Cumple Ingresos"
-        )
-    if perfil_ingreso_valor == "GRIS":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "GRIS_NO_CONTINUIDAD", "No Cumple Continuidad"
-        )
-    if perfil_ingreso_valor in ("ALTO", "MEDIO"):
-        return ResultadoDecisionParcial("APROBADO", None, None)
-
-    return ResultadoDecisionParcial(
-        "RECHAZADO", "SIN_POLITICA", "No cumple política interna"
-    )
+# ---------------------------------------------------------------------------
+# Matriz de decisión
+# ---------------------------------------------------------------------------
+_CAUSAL_BAJO = {PerfilScore.A: Causal.E4, PerfilScore.B: Causal.E5, PerfilScore.C: Causal.E6}
 
 
-def decidir_independiente(
-    perfil_score_valor: PerfilScore,
-    perfil_ingreso_valor: PerfilIngreso,
-) -> ResultadoDecisionParcial:
-    if perfil_score_valor == "RECHAZO_PUNTO_CORTE":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "R_SCORE_CORTE", "Score por debajo del punto de corte"
+def cruzar_perfiles_empleado(
+    perfil_score: PerfilScore | None,
+    perfil_ingreso: PerfilIngreso | None,
+) -> ResultadoDecision:
+    """Matriz para Empleado."""
+    if perfil_score == PerfilScore.D:
+        return ResultadoDecision(Decision.RECHAZADO, Causal.R25, "Perfil Score D")
+    if perfil_score is None or perfil_ingreso is None:
+        return ResultadoDecision(Decision.ESTUDIO, None, "Perfil incompleto")
+    if perfil_ingreso in (PerfilIngreso.ALTO, PerfilIngreso.MEDIO):
+        return ResultadoDecision(Decision.APROBADO, None, f"Score {perfil_score} con ingreso {perfil_ingreso}")
+    if perfil_ingreso == PerfilIngreso.BAJO:
+        # Empleado + BAJO -> Aprobado
+        return ResultadoDecision(
+            Decision.APROBADO, _CAUSAL_BAJO[perfil_score], f"Ingreso bajo con score {perfil_score}"
         )
-    if perfil_score_valor == "RECHAZO_SIN_EXPERIENCIA":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "R_SIN_EXPERIENCIA", "Cliente sin experiencia crediticia"
-        )
-    if perfil_ingreso_valor == "RECHAZO":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "R_INGRESOS_PERMITIDO", "Ingresos por debajo del permitido"
-        )
-    if perfil_score_valor == "D":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "D_NO_CUMPLE_SCORE", "No Cumple Score"
-        )
-    if perfil_ingreso_valor == "BAJO":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "BAJO_NO_INGRESOS", "No Cumple Ingresos"
-        )
-    if perfil_ingreso_valor == "GRIS":
-        return ResultadoDecisionParcial(
-            "RECHAZADO", "GRIS_NO_CAMARA", "No Cumple Registro Cámara"
-        )
-    if perfil_ingreso_valor in ("ALTO", "MEDIO"):
-        return ResultadoDecisionParcial("APROBADO", None, None)
+    return ResultadoDecision(Decision.RECHAZADO, Causal.RC1, "No cumple continuidad")
 
-    return ResultadoDecisionParcial(
-        "RECHAZADO", "SIN_POLITICA", "No cumple política interna"
-    )
+
+def cruzar_perfiles_pensionado(
+    perfil_score: PerfilScore | None,
+    perfil_ingreso: PerfilIngreso | None,
+) -> ResultadoDecision:
+    """Matriz para Pensionado."""
+    if perfil_score == PerfilScore.D:
+        return ResultadoDecision(Decision.RECHAZADO, Causal.R25, "Perfil Score D")
+    if perfil_score is None or perfil_ingreso is None:
+        return ResultadoDecision(Decision.ESTUDIO, None, "Perfil incompleto")
+    if perfil_ingreso in (PerfilIngreso.ALTO, PerfilIngreso.MEDIO):
+        return ResultadoDecision(Decision.APROBADO, None, f"Score {perfil_score} con ingreso {perfil_ingreso}")
+    if perfil_ingreso == PerfilIngreso.BAJO:
+        # Pensionado + BAJO -> Rechazado
+        return ResultadoDecision(
+            Decision.RECHAZADO, _CAUSAL_BAJO[perfil_score], f"Ingreso bajo con score {perfil_score}"
+        )
+    return ResultadoDecision(Decision.RECHAZADO, Causal.RC1, "No cumple continuidad")
+
+
+def cruzar_perfiles_ffmm(
+    perfil_score: PerfilScore | None,
+    perfil_ingreso: PerfilIngreso | None,
+) -> ResultadoDecision:
+    """Matriz para Fuerzas Militares."""
+    if perfil_score == PerfilScore.D:
+        return ResultadoDecision(Decision.RECHAZADO, Causal.R25, "Perfil Score D")
+    if perfil_score is None or perfil_ingreso is None:
+        return ResultadoDecision(Decision.ESTUDIO, None, "Perfil incompleto")
+    if perfil_ingreso in (PerfilIngreso.ALTO, PerfilIngreso.MEDIO):
+        return ResultadoDecision(Decision.APROBADO, None, f"Score {perfil_score} con ingreso {perfil_ingreso}")
+    if perfil_ingreso == PerfilIngreso.BAJO:
+        # FFMM + BAJO -> Rechazado
+        return ResultadoDecision(
+            Decision.RECHAZADO, _CAUSAL_BAJO[perfil_score], f"Ingreso bajo con score {perfil_score}"
+        )
+    return ResultadoDecision(Decision.RECHAZADO, Causal.R15, "Ingreso por debajo del permitido")
+
+
+def cruzar_perfiles_independiente(
+    perfil_score: PerfilScore | None,
+    perfil_ingreso: PerfilIngreso | None,
+    anios_camara: Decimal | int | None,
+    params: MotorParametros,
+) -> ResultadoDecision:
+    """Matriz para Independiente."""
+    if perfil_score is None or perfil_ingreso is None:
+        return ResultadoDecision(Decision.ESTUDIO, None, "Perfil incompleto")
+
+    if perfil_score == PerfilScore.D:
+        minimo = params.anios_cam_4
+    else:
+        minimo = {
+            PerfilIngreso.ALTO: params.anios_cam_1,
+            PerfilIngreso.MEDIO: params.anios_cam_2,
+            PerfilIngreso.BAJO: params.anios_cam_3,
+            PerfilIngreso.GRIS: params.anios_cam_4,
+        }[perfil_ingreso]
+
+    if anios_camara is None:
+        return ResultadoDecision(
+            Decision.RECHAZADO,
+            Causal.R16,
+            "Independiente sin Cámara de Comercio registrada",
+        )
+
+    anios = Decimal(str(anios_camara))
+    if anios < minimo:
+        return ResultadoDecision(
+            Decision.RECHAZADO, Causal.R24, f"Antigüedad en Cámara de Comercio {anios} < {minimo} años"
+        )
+
+    if perfil_score == PerfilScore.D:
+        return ResultadoDecision(Decision.RECHAZADO, Causal.R25, "Perfil Score D")
+    if perfil_ingreso in (PerfilIngreso.ALTO, PerfilIngreso.MEDIO):
+        return ResultadoDecision(Decision.APROBADO, None, f"Independiente con ingreso {perfil_ingreso}")
+    if perfil_ingreso == PerfilIngreso.BAJO:
+        # Independiente + BAJO -> Rechazado
+        return ResultadoDecision(Decision.RECHAZADO, _CAUSAL_BAJO[perfil_score], "Ingreso bajo para independiente")
+    return ResultadoDecision(Decision.RECHAZADO, Causal.R15, "Ingreso por debajo del permitido")
 
 
 def decidir_por_ocupacion(
-    ocupacion: str,
-    perfil_score_valor: PerfilScore,
-    perfil_ingreso_valor: PerfilIngreso,
-) -> ResultadoDecisionParcial:
-    ocupacion_normalizada = ocupacion.strip().lower()
-
-    if ocupacion_normalizada == "empleado":
-        return decidir_empleado(perfil_score_valor, perfil_ingreso_valor)
-    if ocupacion_normalizada in ("pensionado", "fuerzas militares"):
-        return decidir_pensionado_ffmm(perfil_score_valor, perfil_ingreso_valor)
-    if ocupacion_normalizada == "independiente":
-        return decidir_independiente(perfil_score_valor, perfil_ingreso_valor)
-
-    raise ValueError(f"Ocupación no reconocida: '{ocupacion}'")
+    solicitud: Solicitud,
+    perfil_score: PerfilScore | None,
+    perfil_ingreso: PerfilIngreso | None,
+    params: MotorParametros,
+) -> ResultadoDecision:
+    if solicitud.ocupacion == Ocupacion.EMPLEADO:
+        return cruzar_perfiles_empleado(perfil_score, perfil_ingreso)
+    if solicitud.ocupacion == Ocupacion.PENSIONADO:
+        return cruzar_perfiles_pensionado(perfil_score, perfil_ingreso)
+    if solicitud.ocupacion == Ocupacion.FUERZAS_MILITARES:
+        return cruzar_perfiles_ffmm(perfil_score, perfil_ingreso)
+    if solicitud.ocupacion == Ocupacion.INDEPENDIENTE:
+        return cruzar_perfiles_independiente(perfil_score, perfil_ingreso, solicitud.anios_camara_comercio, params)
+    return ResultadoDecision(Decision.ESTUDIO, None, "Ocupación no reconocida")

@@ -1,0 +1,15 @@
+{
+  "tipo_id": "1",
+  "numero_id": "1000000001",
+  "primer_apellido": "FICTICIO",
+  "ocupacion": "Empleado",
+  "tipo_contrato": "Indefinido",
+  "fecha_nacimiento": "1990-05-15",
+  "nacionalidad": "Colombia",
+  "tiene_multas_runt": false,
+  "ingresos_mensuales": "3500000",
+  "otros_ingresos": "0",
+  "saldo_financiar": "10000000",
+  "plazo": 36,
+  "tasa": "2"
+}

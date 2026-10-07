@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
+import { listarEscenariosMock } from '../api/originacionApi'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import './PreparacionConsulta.css'
 
@@ -10,6 +11,9 @@ export interface DatosConsulta {
   numeroDocumento: string
   autorizacionFecha: string
   autorizacionIp: string
+  /** Origen de los reportes del buró: escenario simulado o consulta en línea. */
+  origen: 'demo' | 'experian'
+  escenarioMock: string
   iniciadaEn?: string
 }
 
@@ -26,6 +30,13 @@ const valoresIniciales: DatosConsulta = {
   numeroDocumento: '1.032.448.900',
   autorizacionFecha: '2026-03-04 15:34:10 COT',
   autorizacionIp: '186.154.43.12',
+  origen: 'demo',
+  escenarioMock: 'aprobado',
+}
+
+const ESCENARIOS_POR_DEFECTO: Record<string, string> = {
+  aprobado: 'Perfil aprobado',
+  embargo: 'Con embargo vigente',
 }
 
 function PreparacionConsulta({
@@ -33,10 +44,24 @@ function PreparacionConsulta({
   onBack,
   inicial,
 }: PreparacionConsultaProps) {
-  const [datos] = useState<DatosConsulta>({ ...valoresIniciales, ...inicial })
+  const [datos, setDatos] = useState<DatosConsulta>(() => ({
+    ...valoresIniciales,
+    ...Object.fromEntries(
+      Object.entries(inicial ?? {}).filter(([, v]) => v !== undefined),
+    ),
+  }))
+  const [escenarios, setEscenarios] = useState<Record<string, string>>(
+    ESCENARIOS_POR_DEFECTO,
+  )
   const [enviando, setEnviando] = useState(false)
   const [iniciada, setIniciada] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    listarEscenariosMock()
+      .then(setEscenarios)
+      .catch(() => setEscenarios(ESCENARIOS_POR_DEFECTO))
+  }, [])
 
   const handleIniciar = () => {
     if (enviando || iniciada) return
@@ -159,6 +184,55 @@ function PreparacionConsulta({
             <code>{datos.autorizacionIp}</code> por aceptación del cliente
             frente al asesor.
           </p>
+
+          <div
+            className="consulta__origen"
+            role="group"
+            aria-label="Origen de datos del buró"
+          >
+            <strong>Origen de la consulta</strong>
+            <label className="consulta__origen-opcion">
+              <input
+                type="radio"
+                name="origen-consulta"
+                checked={datos.origen === 'demo'}
+                onChange={() =>
+                  setDatos((prev) => ({ ...prev, origen: 'demo' }))
+                }
+              />
+              Escenario de demostración
+              {datos.origen === 'demo' && (
+                <select
+                  value={datos.escenarioMock}
+                  aria-label="Escenario simulado"
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setDatos((prev) => ({
+                      ...prev,
+                      escenarioMock: e.target.value,
+                    }))
+                  }
+                >
+                  {Object.entries(escenarios).map(([codigo, descripcion]) => (
+                    <option key={codigo} value={codigo}>
+                      {descripcion || codigo}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </label>
+            <label className="consulta__origen-opcion">
+              <input
+                type="radio"
+                name="origen-consulta"
+                checked={datos.origen === 'experian'}
+                onChange={() =>
+                  setDatos((prev) => ({ ...prev, origen: 'experian' }))
+                }
+              />
+              Experian en línea (requiere credenciales)
+            </label>
+          </div>
 
           <ul className="consulta__consent-checks">
             <li>

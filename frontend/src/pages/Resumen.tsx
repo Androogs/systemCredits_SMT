@@ -1,14 +1,15 @@
-import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
 import InsigniaEstado from '../entities/credit/ui/InsigniaEstado'
-import { listApplications } from '../entities/credit/model/mockStore'
 import { currency, number, dateShort } from '../shared/lib/formatters'
 import {
-  EMPLOYMENT_LABELS,
-  type EmploymentType,
-} from '../entities/credit/model/underwritingEngine'
+  estadoVisual,
+  etiquetaSolicitud,
+  numero,
+  OCUPACION_LABELS,
+  useSolicitudes,
+} from '../entities/credit/model/solicitudesPanel'
 import { Plus, TrendingUp, TrendingDown, Clock, Wallet } from 'lucide-react'
 import {
   PieChart,
@@ -24,23 +25,45 @@ import {
 } from 'recharts'
 
 const STATUS_COLORS = {
-  APROBADO: '#059669',          // emerald-600 - era 500, ahora más profundo
-  RECHAZADO: '#BE123C',         // rose-700 - era 600, ahora vino elegante
-  REQUIERE_REVISION: '#D97706', // amber-600 - era 500, ahora ámbar quemado
+  APROBADO: '#10b981',
+  RECHAZADO: '#ef4444',
+  REQUIERE_REVISION: '#f59e0b',
+  PENDIENTE: '#94a3b8',
 }
 
 export default function Resumen() {
-  const apps = useMemo(() => listApplications(), [])
-  const total = apps.length
-  const approved = apps.filter((a) => a.status === 'APROBADO').length
-  const rejected = apps.filter((a) => a.status === 'RECHAZADO').length
-  const review = apps.filter((a) => a.status === 'REQUIERE_REVISION').length
+  const {
+    datos: solicitudes,
+    cargando,
+    error,
+  } = useSolicitudes({
+    limite: 200,
+  })
 
-  const avgRequested = total
-    ? apps.reduce((s, a) => s + a.requestedInstallment, 0) / total
+  const total = solicitudes.length
+  const approved = solicitudes.filter(
+    (s) => estadoVisual(s) === 'APROBADO',
+  ).length
+  const rejected = solicitudes.filter(
+    (s) => estadoVisual(s) === 'RECHAZADO',
+  ).length
+  const pendientes = solicitudes.filter(
+    (s) => estadoVisual(s) === 'PENDIENTE',
+  ).length
+  const review = total - approved - rejected - pendientes
+
+  const cupos = solicitudes
+    .filter((s) => estadoVisual(s) === 'APROBADO')
+    .map((s) => numero(s.evaluacion?.cupo_sugerido))
+    .filter((n): n is number => n != null)
+  const capacidades = solicitudes
+    .map((s) => numero(s.evaluacion?.capacidad_pago))
+    .filter((n): n is number => n != null)
+  const avgLimit = cupos.length
+    ? cupos.reduce((a, b) => a + b, 0) / cupos.length
     : 0
-  const avgLimit = total
-    ? apps.reduce((s, a) => s + a.suggestedCreditLimit, 0) / total
+  const avgCapacidad = capacidades.length
+    ? capacidades.reduce((a, b) => a + b, 0) / capacidades.length
     : 0
 
   const byStatus = [
@@ -51,14 +74,17 @@ export default function Resumen() {
       value: review,
       color: STATUS_COLORS.REQUIERE_REVISION,
     },
+    {
+      name: 'Pendientes de evaluación',
+      value: pendientes,
+      color: STATUS_COLORS.PENDIENTE,
+    },
   ]
 
-  const byEmployment = Object.entries(EMPLOYMENT_LABELS).map(
+  const byEmployment = Object.entries(OCUPACION_LABELS).map(
     ([tipo, label]) => ({
       name: label,
-      value: apps.filter(
-        (app) => app.employmentType === (tipo as EmploymentType),
-      ).length,
+      value: solicitudes.filter((s) => s.ocupacion === tipo).length,
     }),
   )
 
@@ -73,9 +99,9 @@ export default function Resumen() {
   })
 
   const monthBuckets = last6Months.map(({ month, year, label }) => ({
-    range: label, // ej: "abr", "may", "jun"
-    count: apps.filter((a) => {
-      const date = new Date(a.createdAt) // cambia a tu campo: a.date, a.fecha, etc
+    range: label,
+    count: solicitudes.filter((s) => {
+      const date = new Date(s.fecha_hora)
       return date.getMonth() === month && date.getFullYear() === year
     }).length,
   }))
@@ -92,11 +118,16 @@ export default function Resumen() {
         }
       />
       <div className="p-6 space-y-6 overflow-auto">
+        {error && (
+          <Tarjeta className="border-red-200 bg-red-50/40 text-sm text-red-800">
+            No se pudo cargar el resumen: {error}
+          </Tarjeta>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <Kpi
             icon={Wallet}
             label="Total solicitudes"
-            value={number(total)}
+            value={cargando ? '…' : number(total)}
             tone="brand"
           />
           <Kpi
@@ -113,7 +144,7 @@ export default function Resumen() {
           />
           <Kpi
             icon={Clock}
-            label="En revisión"
+            label="En revisión / pendiente"
             value={number(review)}
             tone="amber"
           />
@@ -122,79 +153,45 @@ export default function Resumen() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Kpi
             icon={Wallet}
-            label="Ticket promedio solicitado"
-            value={currency(avgRequested)}
+            label="Capacidad de pago promedio"
+            value={currency(avgCapacidad)}
           />
           <Kpi
             icon={Wallet}
-            label="Cupo promedio sugerido"
+            label="Cupo promedio aprobado"
             value={currency(avgLimit)}
           />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Tarjeta className="!p-0 overflow-hidden border-zinc-200 w-full max-w-[620px]">
-          <div className="p-5 pb-0 flex items-center justify-between">
-            <h3 className="text-[13px] font-semibold tracking-tight uppercase">Distribución por estado</h3>
-            <span className="text-[11px] px-2 py-1 rounded-full bg-zinc-900 text-white">{byStatus.reduce((s, x) => s + x.value, 0)} total</span>
-          </div>
-
-          <div className="h-[260px] mt-2 relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={byStatus}
-                  dataKey="value"
-                  nameKey="name"
-                  innerRadius={65}
-                  outerRadius={95}
-                  paddingAngle={4}
-                  stroke="none"
-                  cornerRadius={6}
-                >
-                  {byStatus.map((s) => (
-                    <Cell key={s.name} fill={s.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    background: '#18181b',
-                    border: 'none',
-                    borderRadius: 10,
-                    color: '#fff',
-                    fontSize: 12,
-                    padding: '8px 12px'
-                  }}
-                  itemStyle={{ color: '#fff' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-
-            <div className="absolute inset-0 grid place-items-center pointer-events-none">
-              <div className="text-center">
-                <p className="text-2xl font-semibold tracking-tight">{byStatus.reduce((s, x) => s + x.value, 0)}</p>
-                <p className="text-[11px] uppercase tracking-wide text-zinc-500 -mt-1">Solicitudes</p>
-              </div>
+          <Tarjeta>
+            <h3 className="font-semibold text-slate-900 mb-4">
+              Distribución por estado
+            </h3>
+            <div className="h-64">
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie
+                    data={byStatus}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={60}
+                    outerRadius={90}
+                    paddingAngle={3}
+                  >
+                    {byStatus.map((s) => (
+                      <Cell key={s.name} fill={s.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
-          </div>
-
-          {/* LEYENDA MÁS GRANDE */}
-          <div className="grid grid-cols-3 gap-3 p-3.5 mx-3 mb-3 rounded-xl bg-zinc-50 border border-zinc-100">
-            {byStatus.map((s) => (
-              <div key={s.name} className="flex items-center gap-2.5">
-                <span className="h-3.5 w-3.5 rounded-full shrink-0" style={{ background: s.color }} />
-                <div className="min-w-0">
-                  <p className="text-[12.5px] font-medium text-zinc-700 leading-none truncate">{s.name}</p>
-                  <p className="text-[15px] font-bold leading-none mt-1.5">{s.value}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Tarjeta>
+          </Tarjeta>
 
           <Tarjeta>
             <h3 className="font-semibold text-slate-900 mb-4">
-              Solicitudes por tipo de empleo
+              Solicitudes por ocupación
             </h3>
             <div className="h-64">
               <ResponsiveContainer>
@@ -243,47 +240,78 @@ export default function Resumen() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-200">
-                  <th className="py-3 pr-4">ID</th>
+                  <th className="py-3 pr-4">N°</th>
+                  <th className="py-3 pr-4">Solicitante</th>
                   <th className="py-3 pr-4">Fecha</th>
-                  <th className="py-3 pr-4">Empleo</th>
+                  <th className="py-3 pr-4">Ocupación</th>
                   <th className="py-3 pr-4">Score</th>
-                  <th className="py-3 pr-4">Cuota</th>
                   <th className="py-3 pr-4">Cupo sugerido</th>
                   <th className="py-3 pr-4">Estado</th>
                 </tr>
               </thead>
               <tbody>
-                {apps.slice(0, 6).map((a) => (
-                  <tr
-                    key={a.id}
-                    className="border-b border-slate-100 hover:bg-slate-50"
-                  >
-                    <td className="py-3 pr-4 font-medium">
-                      <Link
-                        to={`/solicitudes/${a.id}`}
-                        className="text-brand-600 hover:underline"
-                      >
-                        {a.id}
-                      </Link>
-                    </td>
-                    <td className="py-3 pr-4 text-slate-600">
-                      {dateShort(a.createdAt)}
-                    </td>
-                    <td className="py-3 pr-4">
-                      {EMPLOYMENT_LABELS[a.employmentType]}
-                    </td>
-                    <td className="py-3 pr-4">{a.creditScore}</td>
-                    <td className="py-3 pr-4">
-                      {currency(a.requestedInstallment)}
-                    </td>
-                    <td className="py-3 pr-4">
-                      {currency(a.suggestedCreditLimit)}
-                    </td>
-                    <td className="py-3 pr-4">
-                      <InsigniaEstado status={a.status} />
+                {solicitudes.slice(0, 6).map((s) => {
+                  const cupo = numero(s.evaluacion?.cupo_sugerido)
+                  return (
+                    <tr
+                      key={s.id_solicitud}
+                      className="border-b border-slate-100 hover:bg-slate-50"
+                    >
+                      <td className="py-3 pr-4 font-medium">
+                        <Link
+                          to={`/solicitudes/${s.id_solicitud}`}
+                          className="text-brand-600 hover:underline"
+                        >
+                          {etiquetaSolicitud(s)}
+                        </Link>
+                      </td>
+                      <td className="py-3 pr-4 whitespace-nowrap">
+                        {s.nombre_cliente}
+                      </td>
+                      <td className="py-3 pr-4 text-slate-600">
+                        {dateShort(s.fecha_hora)}
+                      </td>
+                      <td className="py-3 pr-4">
+                        {s.ocupacion
+                          ? (OCUPACION_LABELS[s.ocupacion] ?? s.ocupacion)
+                          : '—'}
+                      </td>
+                      <td className="py-3 pr-4">
+                        {s.evaluacion?.score != null
+                          ? Number(s.evaluacion.score)
+                          : '—'}
+                      </td>
+                      <td className="py-3 pr-4">
+                        {cupo != null && estadoVisual(s) === 'APROBADO'
+                          ? currency(cupo)
+                          : '—'}
+                      </td>
+                      <td className="py-3 pr-4">
+                        <InsigniaEstado status={estadoVisual(s)} />
+                      </td>
+                    </tr>
+                  )
+                })}
+                {!cargando && solicitudes.length === 0 && !error && (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="py-10 text-center text-slate-500"
+                    >
+                      Aún no hay solicitudes registradas.
                     </td>
                   </tr>
-                ))}
+                )}
+                {cargando && (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="py-10 text-center text-slate-500"
+                    >
+                      Cargando solicitudes…
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

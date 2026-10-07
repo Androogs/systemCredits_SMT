@@ -84,6 +84,96 @@
   overflow-wrap: anywhere;
 }
 
+.resultado-credito__cupo {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 0.55rem;
+  background: #eef7fc;
+}
+
+.resultado-credito__cupo small {
+  color: #03658c;
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.resultado-credito__cupo strong {
+  color: #0d4460;
+  font-size: 1.35rem;
+  font-weight: 750;
+}
+
+.resultado-credito__cupo p {
+  margin: 0;
+  color: #3d6b85;
+  font-size: 0.66rem;
+  line-height: 1.45;
+}
+
+.resultado-credito__seleccion {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.resultado-credito__seleccion-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.resultado-credito__seleccion-head strong {
+  color: #1d3557;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.resultado-credito__seleccion-head span {
+  color: #03658c;
+  font-size: 0.95rem;
+  font-weight: 750;
+}
+
+.resultado-credito__rango {
+  width: 100%;
+  accent-color: #099dd7;
+  cursor: pointer;
+}
+
+.resultado-credito__rango:disabled {
+  cursor: default;
+}
+
+.resultado-credito__rango-extremos {
+  display: flex;
+  justify-content: space-between;
+  color: #748397;
+  font-size: 0.62rem;
+  font-weight: 600;
+}
+
+.resultado-credito__plazo {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: #475467;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.resultado-credito__plazo select {
+  padding: 0.4rem 1.6rem 0.4rem 0.55rem;
+  border: 1px solid #dce4ea;
+  border-radius: 0.45rem;
+  background: #fff;
+  color: #1d2939;
+  font: inherit;
+  font-size: 0.7rem;
+}
+
 .resultado-credito__tasa {
   display: flex;
   align-items: flex-start;

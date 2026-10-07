@@ -1,373 +1,229 @@
-"""
-Motor de decisión propio de Inversiones Pacíficas, según el BRD
-original: BRD-Prefiltro_Cliente_InversionesPacifico_22012026.docx.
+from collections.abc import Sequence
+from decimal import Decimal
 
-Flujo (BRD: "Lineal" — se evalúan todas las condiciones aplicables y
-se devuelven todas las causales que disparen, pero el resultado
-final es siempre binario: APROBADO o RECHAZADO):
-
-    1. Filtros duros (exclusiones de score + política de edad/
-       nacionalidad/RUNT + tabla de 11 políticas de buró + mora 30
-       vigentes). Si dispara alguno -> RECHAZADO, y el BRD indica
-       explícitamente NO seguir con validaciones de consumo
-       adicional (valor ingreso), así que se corta aquí.
-    2. Ingreso final (reglas_ingreso) -> si es RECHAZO, se corta.
-    3. Perfil de score y perfil de ingreso, según ocupación
-       (reglas_perfil) -> matriz de decisión por ocupación.
-    4. Si lo anterior no rechazó: capacidad de pago (gastos
-       personales, endeudamiento, disponible, capacidad, cupo
-       sugerido) -> puede rechazar por endeudamiento/sin disponible/
-       sin capacidad.
-    5. Validación de la cuota de la moto solicitada contra la cuota
-       que permite el cupo sugerido.
-
-Los parámetros (MotorParametros) ya traen los valores reales del
-BRD por default — no hace falta configurarlos externamente salvo
-que el BRD cambie de versión.
-"""
-
-import datetime
-import uuid
-from dataclasses import dataclass
-
-from sqlalchemy.orm import Session
-
-from backend.repositories.evaluacion_repository import (
-    EvaluacionRepository,
+from backend.models.buro_models import (
+    Aportante,
+    Indicadores,
+    PeriodoPago,
+    RespuestaValorIngreso,
+    ResumenGeneralIngresos,
 )
-from backend.repositories.solicitud_repository import (
-    SolicitudRepository,
-)
-from backend.services.capacidad_pago_service import (
-    calcular_capacidad_pago,
-    calcular_cuota_sugerida,
-    validar_capacidad_para_moto,
-)
-from backend.services.motor_parametros import MotorParametros
-from backend.services.reglas_filtros_duros import (
-    DatosBuroParaFiltros,
-    evaluar_filtros_duros,
-)
-from backend.services.reglas_ingreso import calcular_ingreso_final
-from backend.services.reglas_perfil import (
-    decidir_por_ocupacion,
-    perfil_ingreso,
-    perfil_score,
-)
-from backend.utils.loggers import get_logger
 
 
-logger = get_logger("motor_decision.propio")
+def _ordenar_pagos(pagos: Sequence[PeriodoPago]) -> list[PeriodoPago]:
+    """Ordena los pagos del más reciente al más antiguo."""
+    return sorted(pagos, key=lambda pago: (pago.anio, pago.mes), reverse=True)
 
 
-@dataclass
-class CausalMotor:
-    codigo: str
-    descripcion: str
+def promedio_aportante(
+    pagos: Sequence[PeriodoPago],
+    periodos_a_considerar: int = 3,
+) -> Decimal:
+    if periodos_a_considerar <= 0:
+        raise ValueError("periodos_a_considerar debe ser mayor que 0")
+
+    # Tomar los periodos más recientes consecutivos tal como vienen en el reporte
+    # incluyendo ceros (BRD: "no se deben tomar los reportes con valor cero" se refiere
+    # a no omitir periodos, no a excluirlos del promedio)
+    ultimos_periodos = _ordenar_pagos(pagos)[:periodos_a_considerar]
+
+    if not ultimos_periodos:
+        return Decimal(0)
+
+    return sum((pago.ingresos for pago in ultimos_periodos), Decimal(0)) / Decimal(len(ultimos_periodos))
 
 
-def _calcular_edad(fecha_nacimiento, hoy) -> int:
-    return (
-        hoy.year
-        - fecha_nacimiento.year
-        - ((hoy.month, hoy.day) < (fecha_nacimiento.month, fecha_nacimiento.day))
+def calcular_ingreso_min_max(pagos: list[PeriodoPago]) -> tuple[Decimal, Decimal]:
+    """Calcula el ingreso mínimo y máximo desde los pagos reales del aportante.
+
+    Retorna (ingreso_minimo, ingreso_maximo).
+    Si no hay pagos con ingreso > 0, retorna (0, 0).
+    """
+    if not pagos:
+        return Decimal(0), Decimal(0)
+
+    # Filtrar solo pagos con ingreso
+    ingresos = [pago.ingresos for pago in pagos if pago.ingresos > 0]
+
+    if not ingresos:
+        return Decimal(0), Decimal(0)
+
+    return min(ingresos), max(ingresos)
+
+
+def calcular_valor_ingreso_aportantes(
+    aportantes: Sequence[Aportante],
+    max_aportantes: int = 5,
+    periodos_a_considerar: int = 3,
+) -> Decimal:
+    if max_aportantes <= 0:
+        raise ValueError("max_aportantes debe ser mayor que 0")
+
+    if periodos_a_considerar <= 0:
+        raise ValueError("periodos_a_considerar debe ser mayor que 0")
+
+    return sum(
+        (
+            promedio_aportante(
+                aportante.resultado_pagos,
+                periodos_a_considerar,
+            )
+            for aportante in aportantes[:max_aportantes]
+        ),
+        Decimal(0),
     )
 
 
-class MotorDecisionService:
-    def __init__(self, db: Session) -> None:
-        self.db = db
-        self.solicitud_repo = SolicitudRepository(db)
-        self.evaluacion_repo = EvaluacionRepository(db)
+def calcular_valor_ingreso(
+    vi: RespuestaValorIngreso | None,
+    max_aportantes: int = 5,
+    periodos_a_considerar: int = 3,
+) -> Decimal:
+    """Devuelve la suma del promedio de los últimos N meses de cada aportante.
 
-    async def evaluar(self, payload: dict) -> dict:
-        id_solicitud = uuid.UUID(str(payload["id_solicitud"]))
+    BRD/PPT v4 / Experian: Valor Ingreso es la suma de los promedios
+    recientes de cada aportante, no un promedio global ni un promedio de
+    promedios. Esto evita rechazos injustificados cuando solo algunos
+    aportantes tienen pagos en el periodo.
+    """
+    if not vi or not vi.aportantes:
+        return Decimal(0)
 
-        logger.info(
-            "Evaluación motor propio solicitada",
-            extra={"id_solicitud": str(id_solicitud)},
-        )
+    return calcular_valor_ingreso_aportantes(
+        vi.aportantes,
+        max_aportantes=max_aportantes,
+        periodos_a_considerar=periodos_a_considerar,
+    )
 
-        solicitud = self.solicitud_repo.obtener_con_datos_para_evaluar(
-            id_solicitud
-        )
-        if solicitud is None:
-            raise ValueError(f"No existe la solicitud {id_solicitud}")
-        if solicitud.cliente is None:
-            raise ValueError(f"La solicitud {id_solicitud} no tiene cliente")
-        if solicitud.datos_laborales is None:
-            raise ValueError(
-                f"La solicitud {id_solicitud} no tiene datos_laborales"
-            )
 
-        params = MotorParametros()
-        ocupacion = solicitud.cliente.ocupacion
-        if not ocupacion:
-            raise ValueError(
-                f"El cliente de la solicitud {id_solicitud} no tiene "
-                f"ocupación registrada."
-            )
+def aportantes_desde_cotizantes(cotizantes) -> list[Aportante]:
+    aportantes = []
 
-        causales: list[CausalMotor] = []
+    for cotizante in cotizantes:
+        pagos = []
 
-        # --- Paso 1: filtros duros ---
-        datos_buro_raw = payload.get("datos_buro", {})
-        datos_buro = DatosBuroParaFiltros(
-            edad=_calcular_edad(
-                solicitud.cliente.fecha_nacimiento, datetime.date.today()
-            ),
-            nacionalidad_colombiana=datos_buro_raw.get(
-                "nacionalidad_colombiana", True
-            ),
-            tiene_multas_runt=datos_buro_raw.get("tiene_multas_runt", False),
-            embargos_vigentes=datos_buro_raw.get("embargos_vigentes", False),
-            cancelacion_mal_manejo=datos_buro_raw.get(
-                "cancelacion_mal_manejo", False
-            ),
-            cartera_castigada=datos_buro_raw.get("cartera_castigada", False),
-            dudoso_recaudo=datos_buro_raw.get("dudoso_recaudo", False),
-            mora_60_o_mas_vigente=datos_buro_raw.get(
-                "mora_60_o_mas_vigente", False
-            ),
-            mora_30_historica_veces=datos_buro_raw.get(
-                "mora_30_historica_veces", 0
-            ),
-            mora_60_historica=datos_buro_raw.get("mora_60_historica", False),
-            mora_90_historica=datos_buro_raw.get("mora_90_historica", False),
-            calificacion=datos_buro_raw.get("calificacion"),
-            reestructuraciones=datos_buro_raw.get("reestructuraciones", 0),
-            documento_vigente=datos_buro_raw.get("documento_vigente", True),
-            documento_es_cedula_extranjeria=datos_buro_raw.get(
-                "documento_es_cedula_extranjeria", False
-            ),
-            mora_30_vigente=datos_buro_raw.get("mora_30_vigente", False),
-            es_persona_natural=datos_buro_raw.get("es_persona_natural", True),
-            exclusion_tipo5_sin_obligaciones=datos_buro_raw.get(
-                "exclusion_tipo5_sin_obligaciones", False
-            ),
-            exclusion_tipo1_sin_desempeno=datos_buro_raw.get(
-                "exclusion_tipo1_sin_desempeno", False
-            ),
-            reportado_fallecido=datos_buro_raw.get(
-                "reportado_fallecido", False
-            ),
-            exclusion_solo_codeudor=datos_buro_raw.get(
-                "exclusion_solo_codeudor", False
-            ),
-        )
+        for ingreso_mensual in cotizante.ingresos_mensuales:
+            ingreso = Decimal(ingreso_mensual.ingreso or 0)
 
-        filtros_disparados = evaluar_filtros_duros(datos_buro, params)
-        for c in filtros_disparados:
-            causales.append(CausalMotor(c.codigo, c.descripcion))
-
-        if causales:
-            # BRD: si hay causal de rechazo activa, no continuar con
-            # validaciones de consumo adicional (valor ingreso).
-            return self._guardar_y_responder(
-                id_solicitud, "RECHAZADO", causales, score=None
-            )
-
-        # --- Paso 2: ingreso final ---
-        score = float(payload["score"])
-        quanto3_medio = payload.get("quanto3_medio")
-        salario_minimo = float(payload["salario_minimo"])
-
-        valor_ingreso_actual = None
-        if solicitud.evaluaciones:
-            valor_ingreso_actual = solicitud.evaluaciones[-1].valor_ingreso
-
-        resultado_ingreso = calcular_ingreso_final(
-            ocupacion=ocupacion,
-            valor_ingreso=(
-                float(valor_ingreso_actual) if valor_ingreso_actual else None
-            ),
-            quanto3_medio=quanto3_medio,
-            ingresos_mensuales_declarados=(
-                float(solicitud.datos_laborales.ingreso_mensual)
-                if solicitud.datos_laborales.ingreso_mensual
-                else None
-            ),
-        )
-
-        if resultado_ingreso.rechazado:
-            causales.append(
-                CausalMotor(
-                    resultado_ingreso.causal_codigo,
-                    resultado_ingreso.causal_descripcion,
-                )
-            )
-            return self._guardar_y_responder(
-                id_solicitud,
-                "RECHAZADO",
-                causales,
-                score=score,
-                ingreso_final=resultado_ingreso.ingreso_final,
-            )
-
-        ingreso_final_smmlv = (
-            resultado_ingreso.ingreso_final / salario_minimo
-            if salario_minimo > 0
-            else 0
-        )
-
-        # --- Paso 3: perfil de score / ingreso y matriz ---
-        perfil_score_valor = perfil_score(ocupacion, score, params)
-        perfil_ingreso_valor = perfil_ingreso(
-            ocupacion=ocupacion,
-            ingreso_final_smmlv=ingreso_final_smmlv,
-            tipo_contrato=solicitud.datos_laborales.tipo_contrato,
-            meses_continuidad=solicitud.datos_laborales.meses_continuidad,
-            anios_camara_comercio=(
-                solicitud.datos_laborales.anios_camara_comercio
-            ),
-            params=params,
-        )
-        resultado_matriz = decidir_por_ocupacion(
-            ocupacion, perfil_score_valor, perfil_ingreso_valor
-        )
-        if resultado_matriz.causal_codigo:
-            causales.append(
-                CausalMotor(
-                    resultado_matriz.causal_codigo,
-                    resultado_matriz.causal_descripcion,
+            pagos.append(
+                PeriodoPago(
+                    anio=ingreso_mensual.periodo.year,
+                    mes=ingreso_mensual.periodo.month,
+                    realizo_pago=ingreso > 0,
+                    ingresos=ingreso,
                 )
             )
 
-        if resultado_matriz.decision == "RECHAZADO":
-            return self._guardar_y_responder(
-                id_solicitud,
-                "RECHAZADO",
-                causales,
-                score=score,
-                ingreso_final=resultado_ingreso.ingreso_final,
-                perfil_score_valor=perfil_score_valor,
-                perfil_ingreso_valor=perfil_ingreso_valor,
+        aportantes.append(
+            Aportante(
+                razon_social=cotizante.razon_social_aportante,
+                resultado_pagos=pagos,
             )
-
-        # --- Paso 4: capacidad de pago (aplica siempre, BRD 2.4.8) ---
-        resultado_capacidad = calcular_capacidad_pago(
-            ingreso_final=resultado_ingreso.ingreso_final,
-            ingreso_final_smmlv=ingreso_final_smmlv,
-            gasto_financiero_no_rotativo=float(
-                payload.get("gasto_financiero_no_rotativo", 0)
-            ),
-            gasto_financiero_rotativo=float(
-                payload.get("gasto_financiero_rotativo", 0)
-            ),
-            params=params,
-        )
-        if resultado_capacidad.rechazado:
-            causales.append(
-                CausalMotor(
-                    resultado_capacidad.causal_codigo,
-                    resultado_capacidad.causal_descripcion,
-                )
-            )
-            return self._guardar_y_responder(
-                id_solicitud,
-                "RECHAZADO",
-                causales,
-                score=score,
-                ingreso_final=resultado_ingreso.ingreso_final,
-                perfil_score_valor=perfil_score_valor,
-                perfil_ingreso_valor=perfil_ingreso_valor,
-                resultado_capacidad=resultado_capacidad,
-            )
-
-        # --- Paso 5: cuota de la moto vs. cuota que permite el cupo ---
-        cuota_sugerida = calcular_cuota_sugerida(
-            resultado_capacidad.cupo_sugerido,
-            float(payload["tasa_credito_pct"]),
-            int(payload["plazo_meses"]),
-        )
-        cuota_moto = calcular_cuota_sugerida(
-            float(payload["monto_moto_solicitado"]),
-            float(payload["tasa_credito_pct"]),
-            int(payload["plazo_meses"]),
-        )
-        aprueba_moto, causal_codigo, causal_desc = validar_capacidad_para_moto(
-            cuota_moto, cuota_sugerida
-        )
-        decision_final = "APROBADO"
-        if not aprueba_moto:
-            causales.append(CausalMotor(causal_codigo, causal_desc))
-            decision_final = "RECHAZADO"
-
-        return self._guardar_y_responder(
-            id_solicitud,
-            decision_final,
-            causales,
-            score=score,
-            ingreso_final=resultado_ingreso.ingreso_final,
-            perfil_score_valor=perfil_score_valor,
-            perfil_ingreso_valor=perfil_ingreso_valor,
-            resultado_capacidad=resultado_capacidad,
-            cuota_sugerida=cuota_sugerida,
-            cuota_moto=cuota_moto,
         )
 
-    def _guardar_y_responder(
-        self,
-        id_solicitud: uuid.UUID,
-        decision: str,
-        causales: list[CausalMotor],
-        score: float | None,
-        ingreso_final: float | None = None,
-        perfil_score_valor: str | None = None,
-        perfil_ingreso_valor: str | None = None,
-        resultado_capacidad=None,
-        cuota_sugerida: float | None = None,
-        cuota_moto: float | None = None,
-    ) -> dict:
+    return aportantes
 
-        evaluacion = self.evaluacion_repo.crear_evaluacion(
-            id_solicitud=id_solicitud,
-            score=score,
-            detalles=[],
-            endeudamiento=(
-                resultado_capacidad.endeudamiento_pct
-                if resultado_capacidad
-                else None
-            ),
-            capacidad_pago=(
-                resultado_capacidad.capacidad_de_pago
-                if resultado_capacidad
-                else None
-            ),
-            ingreso_final=ingreso_final,
-        )
-        self.solicitud_repo.actualizar_decision(
-            id_solicitud=id_solicitud, decision=decision
-        )
 
-        return {
-            "id_solicitud": str(id_solicitud),
-            "id_evaluacion": evaluacion.id_evaluacion,
-            "version": evaluacion.version,
-            "score": score,
-            "perfil_score": perfil_score_valor,
-            "perfil_ingreso": perfil_ingreso_valor,
-            "ingreso_final": ingreso_final,
-            "endeudamiento_pct": (
-                resultado_capacidad.endeudamiento_pct
-                if resultado_capacidad
-                else None
-            ),
-            "capacidad_de_pago": (
-                resultado_capacidad.capacidad_de_pago
-                if resultado_capacidad
-                else None
-            ),
-            "cupo_sugerido": (
-                resultado_capacidad.cupo_sugerido
-                if resultado_capacidad
-                else None
-            ),
-            "cuota_sugerida": cuota_sugerida,
-            "cuota_moto": cuota_moto,
-            "decision": decision,
-            "causales": [
-                {"codigo": c.codigo, "descripcion": c.descripcion}
-                for c in causales
-            ],
-        }
+def obtener_ultima_empresa(aportantes: Sequence[Aportante]) -> str | None:
+    """Determina la última empresa en la que trabajó o está trabajando la persona.
+
+    Retorna la razón social del aportante con el pago más reciente.
+    """
+    if not aportantes:
+        return None
+
+    ultima_empresa = None
+    fecha_mas_reciente = None
+
+    for aportante in aportantes:
+        if aportante.resultado_pagos:
+            pagos_ordenados = _ordenar_pagos(aportante.resultado_pagos)
+            if pagos_ordenados:
+                pago_mas_reciente = pagos_ordenados[0]
+                fecha_pago = (pago_mas_reciente.anio, pago_mas_reciente.mes)
+
+                if fecha_mas_reciente is None or fecha_pago > fecha_mas_reciente:
+                    fecha_mas_reciente = fecha_pago
+                    ultima_empresa = aportante.razon_social
+
+    return ultima_empresa
+
+
+def calcular_indicadores_agregados(
+    aportantes: Sequence[Aportante],
+) -> Indicadores:
+    """Calcula indicadores agregados desde todos los aportantes.
+
+    Retorna:
+    - promedio_ult_mes: Promedio del último ingreso por aportante
+    - ingreso_total_ult_mes: Suma total del último ingreso de todos los aportantes
+    - promedio_ult_tres_meses: Promedio del ingreso de los últimos 3 meses por aportante
+    - total_ult_tres_meses: Suma total de los promedios de 3 meses de cada aportante
+    - promedio_ult_doce_meses: Promedio del ingreso de los últimos 12 meses por aportante
+    - total_ult_doce_meses: Suma total de los promedios de 12 meses de cada aportante
+    """
+    if not aportantes:
+        return Indicadores()
+
+    def promedio_ultimos_n(pagos: Sequence[PeriodoPago], n: int) -> Decimal | None:
+        recientes = _ordenar_pagos(pagos)[:n]
+        if not recientes:
+            return None
+        return sum(pago.ingresos for pago in recientes) / Decimal(len(recientes))
+
+    # Calcular ingreso del último mes por aportante
+    ingresos_ult_mes_por_aportante = []
+    for aportante in aportantes:
+        if aportante.resultado_pagos:
+            pagos_ordenados = _ordenar_pagos(aportante.resultado_pagos)
+            if pagos_ordenados and pagos_ordenados[0].realizo_pago:
+                ingresos_ult_mes_por_aportante.append(pagos_ordenados[0].ingresos)
+
+    ingreso_ult_mes_total = sum(ingresos_ult_mes_por_aportante, Decimal(0))
+    promedio_ult_mes = (
+        ingreso_ult_mes_total / len(ingresos_ult_mes_por_aportante) if ingresos_ult_mes_por_aportante else Decimal(0)
+    )
+
+    # Calcular promedios de 3 y 12 meses por aportante
+    promedios_3_meses_por_aportante = [
+        promedio
+        for aportante in aportantes
+        if (promedio := promedio_ultimos_n(aportante.resultado_pagos, 3)) is not None
+    ]
+    promedios_12_meses_por_aportante = [
+        promedio
+        for aportante in aportantes
+        if (promedio := promedio_ultimos_n(aportante.resultado_pagos, 12)) is not None
+    ]
+
+    total_3_meses = sum(promedios_3_meses_por_aportante, Decimal(0))
+    promedio_3 = total_3_meses / len(promedios_3_meses_por_aportante) if promedios_3_meses_por_aportante else Decimal(0)
+    total_12_meses = sum(promedios_12_meses_por_aportante, Decimal(0))
+    promedio_12 = (
+        total_12_meses / len(promedios_12_meses_por_aportante) if promedios_12_meses_por_aportante else Decimal(0)
+    )
+
+    return Indicadores(
+        promedio_ult_mes=promedio_ult_mes,
+        ingreso_total_ult_mes=ingreso_ult_mes_total,
+        promedio_ult_tres_meses=promedio_3,
+        total_ult_tres_meses=total_3_meses,
+        promedio_ult_doce_meses=promedio_12,
+        total_ult_doce_meses=total_12_meses,
+    )
+
+
+def respuesta_desde_cotizantes(
+    cotizantes,
+) -> RespuestaValorIngreso | None:
+    if not cotizantes:
+        return None
+
+    continuidades = [cotizante.meses_continuidad for cotizante in cotizantes if cotizante.meses_continuidad is not None]
+
+    return RespuestaValorIngreso(
+        aportantes=aportantes_desde_cotizantes(cotizantes),
+        resumen_general=ResumenGeneralIngresos(
+            meses_continuidad=max(continuidades) if continuidades else None,
+        ),
+    )
