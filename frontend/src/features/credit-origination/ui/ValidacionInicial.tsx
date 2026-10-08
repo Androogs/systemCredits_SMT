@@ -2,6 +2,11 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { ArrowRight } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
+import {
+  validacionInicialSchema,
+  EDAD_MINIMA,
+  EDAD_MAXIMA,
+} from '../schemas/persona'
 import './ValidacionInicial.css'
 
 export interface DatosValidacion {
@@ -16,42 +21,34 @@ interface ValidacionInicialProps {
   onContinue?: (datos: DatosValidacion) => void
 }
 
-const MIN_EDAD = 18
-const MAX_EDAD = 66
-
 type Campo = 'numeroDocumento' | 'edad' | 'multas'
 
+// Precarga de demostración: solo en dev (import.meta.env.DEV), nunca en
+// el build de producción.
+const DEMO = import.meta.env.DEV
+
 function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
-  const [numeroDocumento, setNumeroDocumento] = useState('1032448900')
-  const [edad, setEdad] = useState('34')
-  const [multas, setMultas] = useState<'si' | 'no' | ''>('')
+  const [numeroDocumento, setNumeroDocumento] = useState(
+    DEMO ? '1032448900' : '',
+  )
+  const [edad, setEdad] = useState(DEMO ? '34' : '')
+  const [multas, setMultas] = useState<'si' | 'no' | ''>(DEMO ? 'no' : '')
   const [tocados, setTocados] = useState<Partial<Record<Campo, boolean>>>({})
   const [intentado, setIntentado] = useState(false)
   const [resultado, setResultado] = useState<'idle' | 'ok' | 'error'>('idle')
 
   const errores = useMemo(() => {
+    const resultado = validacionInicialSchema.safeParse({
+      numeroDocumento,
+      edad,
+      multas: multas === '' ? undefined : multas,
+    })
+    if (resultado.success) return {}
     const lista: Partial<Record<Campo, string>> = {}
-
-    if (!/^\d{6,10}$/.test(numeroDocumento)) {
-      lista.numeroDocumento =
-        'Ingresa un número de cédula válido, entre 6 y 10 dígitos.'
+    for (const issue of resultado.error.issues) {
+      const campo = issue.path[0] as Campo
+      if (campo && !(campo in lista)) lista[campo] = issue.message
     }
-
-    const edadNumero = Number(edad)
-    if (edad.trim() === '' || Number.isNaN(edadNumero)) {
-      lista.edad = 'Ingresa la edad del solicitante.'
-    } else if (
-      !Number.isInteger(edadNumero) ||
-      edadNumero < MIN_EDAD ||
-      edadNumero > MAX_EDAD
-    ) {
-      lista.edad = `La edad debe estar entre ${MIN_EDAD} y ${MAX_EDAD} años.`
-    }
-
-    if (multas === '') {
-      lista.multas = 'Selecciona una opción para continuar.'
-    }
-
     return lista
   }, [numeroDocumento, edad, multas])
 
@@ -220,8 +217,8 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
               <input
                 id="edad"
                 type="number"
-                min={MIN_EDAD}
-                max={MAX_EDAD}
+                min={EDAD_MINIMA}
+                max={EDAD_MAXIMA}
                 inputMode="numeric"
                 value={edad}
                 aria-invalid={mostrarError('edad')}

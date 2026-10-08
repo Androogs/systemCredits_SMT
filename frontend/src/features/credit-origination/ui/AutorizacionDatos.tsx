@@ -15,9 +15,7 @@ interface AutorizacionDatosProps {
   onBack?: () => void
 }
 
-const REGISTRO_AUDITORIA = {
-  ip: '186.154.43.12',
-}
+const IP_NO_CAPTURADA = 'no registrada'
 
 /** Marca de tiempo de firma del consentimiento, en formato COT legible. */
 function marcaTiempoActual(): string {
@@ -60,7 +58,10 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
     onContinue?.({
       autorizaTratamiento: true,
       fechaRegistro: marcaRegistro,
-      ipAsesor: REGISTRO_AUDITORIA.ip,
+      // En dev se muestra una IP de ejemplo para completar la demo; en
+      // producción queda como no capturada hasta que el backend registre
+      // la IP real del asesor.
+      ipAsesor: import.meta.env.DEV ? '186.154.43.12' : IP_NO_CAPTURADA,
     })
   }
 
@@ -258,7 +259,7 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
           </svg>
           <p>
             <span>Registro Auditoría:</span> {marcaRegistro} | IP del Nodo de
-            Solicitud Asesor: {REGISTRO_AUDITORIA.ip}
+            Solicitud Asesor: {IP_NO_CAPTURADA}
           </p>
         </div>
 

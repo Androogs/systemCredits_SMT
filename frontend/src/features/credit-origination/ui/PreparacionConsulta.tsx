@@ -25,11 +25,11 @@ interface PreparacionConsultaProps {
 }
 
 const valoresIniciales: DatosConsulta = {
-  nombreCompleto: 'CARLOS MARIO RESTREPO ALVAREZ',
+  nombreCompleto: '',
   tipoDocumento: 'Cédula de Ciudadanía',
-  numeroDocumento: '1.032.448.900',
-  autorizacionFecha: '2026-03-04 15:34:10 COT',
-  autorizacionIp: '186.154.43.12',
+  numeroDocumento: '',
+  autorizacionFecha: '',
+  autorizacionIp: '',
   origen: 'demo',
   escenarioMock: 'aprobado',
 }

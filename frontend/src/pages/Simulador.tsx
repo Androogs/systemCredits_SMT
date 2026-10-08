@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
@@ -48,14 +49,13 @@ const initial = {
 export default function Simulador() {
   const navigate = useNavigate()
   const [form, setForm] = useState(initial)
-  const [producto, setProducto] = useState<ProductoApi | null>(null)
-  const [catalogoError, setCatalogoError] = useState(false)
-
-  useEffect(() => {
-    listarProductos()
-      .then((lista) => setProducto(lista[0] ?? null))
-      .catch(() => setCatalogoError(true))
-  }, [])
+  const consultaCatalogo = useQuery({
+    queryKey: ['productos'],
+    queryFn: listarProductos,
+    staleTime: 5 * 60_000,
+  })
+  const producto: ProductoApi | null = consultaCatalogo.data?.[0] ?? null
+  const catalogoError = consultaCatalogo.isError
 
   const rangos = useMemo(
     () => ({

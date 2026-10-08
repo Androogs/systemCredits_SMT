@@ -1,5 +1,5 @@
 import { useParams, Link } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
 import Skeleton from '../shared/ui/Skeleton'
@@ -90,28 +90,23 @@ const tonos: Record<string, { fondo: string; icono: string; borde: string }> = {
 
 export default function Resultado() {
   const { id } = useParams()
-  const [datos, setDatos] = useState<SolicitudDetalleApi | null>(null)
-  const [cargando, setCargando] = useState(true)
-  const [noExiste, setNoExiste] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!id) return
-    obtenerSolicitud(id)
-      .then(setDatos)
-      .catch((err: unknown) => {
-        if (err instanceof ApiError && err.status === 404) {
-          setNoExiste(true)
-        } else {
-          setError(
-            err instanceof Error
-              ? err.message
-              : 'Error consultando el resultado',
-          )
-        }
-      })
-      .finally(() => setCargando(false))
-  }, [id])
+  const consulta = useQuery<SolicitudDetalleApi>({
+    queryKey: ['solicitud', id],
+    queryFn: () => obtenerSolicitud(id!),
+    enabled: !!id,
+    retry: (count, err) =>
+      !(err instanceof ApiError && err.status === 404) && count < 1,
+  })
+  const datos = consulta.data ?? null
+  const cargando = consulta.isPending
+  const noExiste =
+    consulta.error instanceof ApiError && consulta.error.status === 404
+  const error =
+    consulta.error && !noExiste
+      ? consulta.error instanceof Error
+        ? consulta.error.message
+        : 'Error consultando el resultado'
+      : null
 
   if (cargando) {
     return (

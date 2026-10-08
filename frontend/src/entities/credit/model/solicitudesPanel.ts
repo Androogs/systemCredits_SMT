@@ -4,7 +4,7 @@
  * esquema (estado/decisión) a la insignia visual del panel.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   listarSolicitudes,
   type FiltrosSolicitudes,
@@ -68,40 +68,26 @@ export function numero(valor: string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-interface EstadoCarga {
-  datos: SolicitudResumenApi[]
-  cargando: boolean
-  error: string | null
-}
-
+/**
+ * Solicitudes del backend con caché compartida (TanStack Query):
+ * navegar entre /solicitudes, /resumen y el panel reutiliza la misma
+ * consulta sin golpear la API cada vez, y las mutaciones del detalle
+ * la invalidan para que la lista vuelva fresca.
+ */
 export function useSolicitudes(filtros?: FiltrosSolicitudes) {
-  const [estado, setEstado] = useState<EstadoCarga>({
-    datos: [],
-    cargando: true,
-    error: null,
+  const consulta = useQuery({
+    queryKey: ['solicitudes', filtros ?? null],
+    queryFn: () => listarSolicitudes(filtros),
   })
-  const clave = JSON.stringify(filtros ?? {})
-
-  const recargar = useCallback(() => {
-    setEstado((prev) => ({ ...prev, cargando: true, error: null }))
-    listarSolicitudes(filtros)
-      .then((datos) => setEstado({ datos, cargando: false, error: null }))
-      .catch((err: unknown) =>
-        setEstado({
-          datos: [],
-          cargando: false,
-          error:
-            err instanceof Error
-              ? err.message
-              : 'Error consultando solicitudes',
-        }),
-      )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clave])
-
-  useEffect(() => {
-    recargar()
-  }, [recargar])
-
-  return { ...estado, recargar }
+  return {
+    datos: consulta.data ?? ([] as SolicitudResumenApi[]),
+    cargando: consulta.isPending,
+    error:
+      consulta.error instanceof Error
+        ? consulta.error.message
+        : consulta.error
+          ? 'Error consultando solicitudes'
+          : null,
+    recargar: consulta.refetch,
+  }
 }

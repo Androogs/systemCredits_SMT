@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
-import Skeleton from '../shared/ui/Skeleton'
+import Skeleton, { FilasSkeleton } from '../shared/ui/Skeleton'
 import InsigniaEstado from '../entities/credit/ui/InsigniaEstado'
 import { currency, number, dateShort } from '../shared/lib/formatters'
 import {
@@ -128,7 +128,7 @@ export default function Resumen() {
           <Kpi
             icon={Wallet}
             label="Total solicitudes"
-            value={cargando ? '…' : number(total)}
+            value={number(total)}
             tone="brand"
             cargando={cargando}
           />
@@ -355,30 +355,7 @@ export default function Resumen() {
                     </td>
                   </tr>
                 )}
-                {cargando && (
-                  <>
-                    <tr className="sr-only">
-                      <td colSpan={7} role="status">
-                        Cargando solicitudes
-                      </td>
-                    </tr>
-                    {[...Array(5)].map((_, row) => (
-                      <tr
-                        key={`skeleton-${row}`}
-                        aria-hidden="true"
-                        className="border-b border-slate-100"
-                      >
-                        {[...Array(7)].map((__, column) => (
-                          <td key={column} className="py-4 pr-4">
-                            <Skeleton
-                              className={column === 1 ? 'h-4 w-36' : 'h-4 w-20'}
-                            />
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </>
-                )}
+                {cargando && <FilasSkeleton filas={4} columnas={7} />}
               </tbody>
             </table>
           </div>

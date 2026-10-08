@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
+import { datosPersonalesSchema } from '../schemas/persona'
 import './RevisionDatos.css'
 
 export interface DatosRevisados {
@@ -84,16 +85,29 @@ const campos: DefinicionCampo[] = [
   },
 ]
 
-const valoresIniciales: DatosRevisados = {
-  nombres: 'CARLOS MARIO',
-  apellidos: 'RESTREPO ALVAREZ',
-  numeroIdentificacion: '1.032.448.900',
-  sexo: 'Masculino (M)',
-  fechaNacimiento: '1991-08-15',
-  lugarNacimiento: 'Medellín, Antioquia',
-  fechaExpedicion: '2009-08-18',
-  ciudadExpedicion: 'Palmira, Valle del Cauca',
-}
+// Precarga de demostración solo en dev (import.meta.env.DEV); en el
+// build de producción todos los campos arrancan vacíos.
+const valoresIniciales: DatosRevisados = import.meta.env.DEV
+  ? {
+      nombres: 'CARLOS MARIO',
+      apellidos: 'RESTREPO ALVAREZ',
+      numeroIdentificacion: '',
+      sexo: 'Masculino (M)',
+      fechaNacimiento: '1991-03-14',
+      lugarNacimiento: 'Palmira, Valle del Cauca',
+      fechaExpedicion: '2010-04-20',
+      ciudadExpedicion: 'Palmira, Valle del Cauca',
+    }
+  : {
+      nombres: '',
+      apellidos: '',
+      numeroIdentificacion: '',
+      sexo: '',
+      fechaNacimiento: '',
+      lugarNacimiento: '',
+      fechaExpedicion: '',
+      ciudadExpedicion: '',
+    }
 
 function RevisionDatos({ onContinue, onBack, inicial }: RevisionDatosProps) {
   const [datos, setDatos] = useState<DatosRevisados>(() => ({
@@ -110,19 +124,13 @@ function RevisionDatos({ onContinue, onBack, inicial }: RevisionDatosProps) {
   const [registrado, setRegistrado] = useState(false)
 
   const errores = useMemo(() => {
+    const resultado = datosPersonalesSchema.safeParse(datos)
+    if (resultado.success) return {}
     const lista: Partial<Record<CampoId, string>> = {}
-    if (!datos.nombres.trim()) lista.nombres = 'Los nombres son obligatorios.'
-    if (!datos.apellidos.trim())
-      lista.apellidos = 'Los apellidos son obligatorios.'
-    if (!datos.sexo) lista.sexo = 'Selecciona el sexo.'
-    if (!datos.fechaNacimiento)
-      lista.fechaNacimiento = 'Ingresa la fecha de nacimiento.'
-    if (!datos.lugarNacimiento.trim())
-      lista.lugarNacimiento = 'Confirma el lugar de nacimiento.'
-    if (!datos.fechaExpedicion)
-      lista.fechaExpedicion = 'Ingresa la fecha de expedición.'
-    if (!datos.ciudadExpedicion.trim())
-      lista.ciudadExpedicion = 'Confirma la ciudad de expedición.'
+    for (const issue of resultado.error.issues) {
+      const campo = issue.path[0] as CampoId
+      if (campo && !(campo in lista)) lista[campo] = issue.message
+    }
     return lista
   }, [datos])
 
@@ -329,6 +337,9 @@ function RevisionDatos({ onContinue, onBack, inicial }: RevisionDatosProps) {
                       }
                       onBlur={() => marcarTocado(campo.id)}
                     >
+                      <option value="" disabled>
+                        Selecciona una opción…
+                      </option>
                       {campo.opciones?.map((opcion) => (
                         <option key={opcion} value={opcion}>
                           {opcion}

@@ -117,18 +117,22 @@ function ProcesamientoOCR({
     setReinicio((n) => n + 1)
   }
 
-  const digitosDocumento = (numeroDocumento ?? '1032448900').replace(/\D/g, '')
+  const digitosDocumento = (numeroDocumento ?? '').replace(/\D/g, '')
   const documentoLegible = digitosDocumento.replace(
     /\B(?=(\d{3})+(?!\d))/g,
     '.',
   )
 
   const handleContinuar = () => {
+    // Sin motor OCR real no hay extracción de campos: en producción los
+    // datos los confirma el asesor manualmente en el paso siguiente; en
+    // dev se emiten valores de demostración para agilizar el recorrido.
+    const demo = import.meta.env.DEV
     onContinue?.({
       numeroDocumento: documentoLegible,
-      nombres: 'CARLOS MARIO',
-      apellidos: 'MENDOZA',
-      fechaExpedicion: 'Palmira (Valle)',
+      nombres: demo ? 'CARLOS MARIO' : '',
+      apellidos: demo ? 'RESTREPO ALVAREZ' : '',
+      fechaExpedicion: demo ? '2010-04-20' : '',
       vigente: true,
       calidadImagen: 'aprobada',
       alteraciones: false,
@@ -282,11 +286,11 @@ function ProcesamientoOCR({
               <div className="ocr__doc-fields">
                 <div className="ocr__doc-field">
                   <span>Número / Number</span>
-                  <strong>{documentoLegible}</strong>
+                  <strong>{documentoLegible || '—'}</strong>
                 </div>
                 <div className="ocr__doc-field">
                   <span>Nombres / Names</span>
-                  <strong>CARLOS MARIO</strong>
+                  <strong>—</strong>
                 </div>
               </div>
             </div>

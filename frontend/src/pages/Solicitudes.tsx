@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
-import Skeleton from '../shared/ui/Skeleton'
+import { FilasSkeleton } from '../shared/ui/Skeleton'
 import InsigniaEstado from '../entities/credit/ui/InsigniaEstado'
 import { currency, dateShort } from '../shared/lib/formatters'
 import {
@@ -40,7 +40,11 @@ export default function Solicitudes() {
         title="Solicitudes"
         subtitle="Consulta y filtra el histórico de evaluaciones"
         actions={
-          <button onClick={recargar} className="btn-ghost" type="button">
+          <button
+            onClick={() => recargar()}
+            className="btn-ghost"
+            type="button"
+          >
             <RefreshCw size={16} aria-hidden="true" /> Actualizar
           </button>
         }
@@ -189,30 +193,7 @@ export default function Solicitudes() {
                     </td>
                   </tr>
                 )}
-                {cargando && (
-                  <>
-                    <tr className="sr-only">
-                      <td colSpan={8} role="status">
-                        Cargando solicitudes
-                      </td>
-                    </tr>
-                    {[...Array(5)].map((_, row) => (
-                      <tr
-                        key={`skeleton-${row}`}
-                        aria-hidden="true"
-                        className="border-b border-slate-100"
-                      >
-                        {[...Array(8)].map((__, column) => (
-                          <td key={column} className="px-5 py-4">
-                            <Skeleton
-                              className={column === 1 ? 'h-4 w-36' : 'h-4 w-20'}
-                            />
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </>
-                )}
+                {cargando && <FilasSkeleton filas={5} columnas={8} />}
               </tbody>
             </table>
           </div>

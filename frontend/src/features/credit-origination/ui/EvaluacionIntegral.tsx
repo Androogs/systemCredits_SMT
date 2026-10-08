@@ -27,8 +27,8 @@ function EvaluacionIntegral({
   onRevisionManual,
   onContinue,
 }: EvaluacionIntegralProps) {
-  const ingresos = solicitud?.ingresosMensuales ?? 4_500_000
-  const egresos = solicitud?.egresosMensuales ?? 1_800_000
+  const ingresos = solicitud?.ingresosMensuales ?? 0
+  const egresos = solicitud?.egresosMensuales ?? 0
   const plazoMeses = solicitud?.plazoMeses ?? 36
   const capacidadDisponible = Math.max(0, ingresos - egresos)
   const cupoSugerido =

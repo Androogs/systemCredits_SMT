@@ -78,6 +78,14 @@
   }
 }
 
+/* El foco al h1 de cada ruta es programático (anuncio para lectores de
+   pantalla); tabindex=-1 lo excluye del tab order, así que ocultar el
+   outline no afecta la navegación por teclado. */
+#main-content h1[tabindex='-1']:focus,
+#main-content:focus {
+  outline: none;
+}
+
 /* Fondo degradado de toda la pantalla */
 .login-wrapper {
   min-height: 100vh;
