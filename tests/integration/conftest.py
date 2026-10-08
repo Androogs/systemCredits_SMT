@@ -11,6 +11,7 @@ from backend.routes.dependencies import get_store
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "sqlite://")
+    monkeypatch.setenv("DB_CREAR_TABLAS", "true")
     monkeypatch.setenv("PARAMETROS_PATH", str(tmp_path / "parametros.json"))
     monkeypatch.setenv("ENVIRONMENT", "demo")
     monkeypatch.setenv("SMMLV", "1300000")

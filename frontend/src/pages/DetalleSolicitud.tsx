@@ -762,32 +762,6 @@ export default function DetalleSolicitud() {
                   )}
                 </section>
 
-                {auditoria.resultado.causales.length > 0 && (
-                  <section aria-labelledby="auditoria-causales">
-                    <h4
-                      id="auditoria-causales"
-                      className="mb-2 text-sm font-semibold text-slate-900"
-                    >
-                      Causales de la evaluación
-                    </h4>
-                    <ul className="space-y-2">
-                      {auditoria.resultado.causales.map((causal) => (
-                        <li
-                          key={causal.codigo}
-                          className="rounded-lg border border-slate-200 p-3 text-sm"
-                        >
-                          <span className="font-semibold text-slate-900">
-                            {causal.codigo}
-                          </span>
-                          <span className="ml-2 text-slate-700">
-                            {causal.descripcion}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                )}
-
                 {auditoria.resultado.advertencias.length > 0 && (
                   <section aria-labelledby="auditoria-advertencias">
                     <h4
@@ -1161,15 +1135,16 @@ export default function DetalleSolicitud() {
             <h3 className="font-semibold text-amber-900 mb-3 flex items-center gap-2">
               <AlertTriangle size={18} /> Causales de la evaluación
             </h3>
-            <ul className="space-y-2 text-sm text-amber-900">
+            <ul className="space-y-2">
               {datos.causales.map((c) => (
-                <li key={c.codigo} className="flex gap-3">
-                  <XCircle
-                    size={17}
-                    className="shrink-0 mt-0.5 text-amber-600"
-                  />
-                  <span>
-                    <span className="font-semibold">{c.codigo}</span> —{' '}
+                <li
+                  key={c.codigo}
+                  className="flex items-start gap-3 rounded-xl border border-amber-200 bg-white/70 px-4 py-3"
+                >
+                  <span className="mt-0.5 shrink-0 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold tracking-wide text-amber-800">
+                    {c.codigo}
+                  </span>
+                  <span className="text-sm leading-snug text-amber-900">
                     {c.descripcion}
                   </span>
                 </li>

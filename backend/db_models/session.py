@@ -32,7 +32,7 @@ def configurar_engine(url: str) -> None:
 
 
 def crear_tablas() -> None:
-    from backend.db_models import auditoria_models, models  # noqa: F401  (registra tablas)
+    from backend.db_models import auditoria_models, evidencia_models, models  # noqa: F401  (registra tablas)
 
     Base.metadata.create_all(bind=engine)
 
