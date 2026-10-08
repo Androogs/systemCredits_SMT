@@ -1,0 +1,51 @@
+# Stack local: backend FastAPI en contenedor.
+#   docker compose up --build        → API contra TU Postgres local (mismos datos del dev)
+#   docker compose --profile db-local up --build
+#                                    → además levanta un Postgres propio (BD limpia de vitrina)
+#
+# La API queda en http://localhost:8000 (docs en /api-docs).
+# El frontend se corre aparte con `npm run dev` en frontend/.
+#
+# host.docker.internal permite al contenedor alcanzar el Postgres instalado
+# en Windows (misma instancia que usa el servidor de desarrollo).
+
+services:
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:1234@host.docker.internal:5432/DB
+      ENVIRONMENT: demo
+      SMMLV: "1750905"
+      APP_TITLE: Creditos API
+      APP_VERSION: "1.0.0"
+      CORS_ORIGINS: http://localhost:5173
+      EVIDENCIAS_DIR: /app/uploads/evidencias
+    ports:
+      - "8000:8000"
+    volumes:
+      # Evidencias de captura persisten fuera del contenedor.
+      - evidencias:/app/uploads
+
+  # Postgres propio del stack, solo con el perfil db-local.
+  # Si lo usas, cambia DATABASE_URL de api a:
+  #   postgresql+psycopg://postgres:postgres@db:5432/DB
+  db:
+    image: postgres:16-alpine
+    profiles: ["db-local"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: DB
+    ports:
+      - "5433:5432"   # 5433 para no chocar con el Postgres local de Windows
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+  evidencias:

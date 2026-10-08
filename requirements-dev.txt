@@ -1,0 +1,4 @@
+# Dependencias de desarrollo/pruebas/CI (no van en la imagen de producción).
+-r backend/requirements.txt
+pytest>=8.3
+pip-audit>=2.7

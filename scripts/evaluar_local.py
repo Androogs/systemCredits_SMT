@@ -4,7 +4,7 @@ Evalúa localmente una solicitud con reportes de Experian exportados
 escribir en base de datos.
 
 Uso (desde la raíz del proyecto):
-    python -m scripts.evaluar_local --solicitud ejemplos/solicitud_ejemplo.json \
+    python -m scripts.evaluar_local --solicitud solicitud.json \
         --hdc ruta/hdc.json --ingresos ruta/valor_ingreso.json --salida resultado.json
 
 Si el archivo de solicitud no existe, se crea preguntando en la

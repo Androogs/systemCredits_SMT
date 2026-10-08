@@ -1,6 +1,6 @@
 # Dependencias de ejecución (motor de decisión integrado)
 fastapi>=0.115,<1.0
-python-multipart>=0.0.12
+python-multipart>=0.0.12  # upload multipart de evidencias (UploadFile/Form)
 uvicorn[standard]>=0.32
 pydantic>=2.9,<3.0
 pydantic-settings>=2.6

@@ -1,0 +1,24 @@
+# Contexto de build del Dockerfile (imagen del backend).
+.git
+.github
+.venv
+venv
+**/.venv
+**/__pycache__
+**/*.pyc
+
+# Frontend se despliega aparte (Cloudflare Pages); no va en la imagen.
+frontend/
+node_modules/
+
+# Datos locales, secretos y artefactos de dev.
+.env
+.env.*
+!.env.example
+uploads/
+tests/
+docs/
+*.xlsx
+*.md
+e2e_playwright.db
+_*.py
