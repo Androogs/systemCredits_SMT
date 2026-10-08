@@ -14,7 +14,7 @@
 
 .solicitud__eyebrow {
   margin: 0 0 0.6rem;
-  color: #1689b7;
+  color: #11648a;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.11em;
@@ -68,7 +68,7 @@
 }
 
 .solicitud__meta dt {
-  color: #8792a3;
+  color: #566575;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -183,7 +183,7 @@
   place-items: center;
   border-radius: 0.5rem;
   background: #eaf6fc;
-  color: #1689b7;
+  color: #11648a;
   font-size: 0.85rem;
   font-weight: 700;
 }
@@ -198,7 +198,7 @@
 
 .solicitud__section-head p {
   margin: 0.15rem 0 0;
-  color: #8792a3;
+  color: #566575;
   font-size: 0.76rem;
 }
 
@@ -324,7 +324,7 @@
 
 .solicitud__hint {
   margin: 0;
-  color: #8792a3;
+  color: #566575;
   font-size: 0.72rem;
   line-height: 1.45;
 }
@@ -356,7 +356,7 @@
 }
 
 .solicitud__analisis-hint {
-  color: #8792a3;
+  color: #566575;
   font-size: 0.68rem;
   font-weight: 500;
   font-style: italic;
@@ -378,7 +378,7 @@
 }
 
 .solicitud__analisis-label {
-  color: #8792a3;
+  color: #566575;
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -393,7 +393,7 @@
 }
 
 .solicitud__analisis-card small {
-  color: #8792a3;
+  color: #566575;
   font-size: 0.68rem;
   line-height: 1.4;
 }
@@ -462,7 +462,7 @@
 }
 
 .solicitud__final-eyebrow {
-  color: #1689b7;
+  color: #11648a;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.1em;

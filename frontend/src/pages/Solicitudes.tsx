@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
+import Skeleton from '../shared/ui/Skeleton'
 import InsigniaEstado from '../entities/credit/ui/InsigniaEstado'
 import { currency, dateShort } from '../shared/lib/formatters'
 import {
@@ -39,8 +40,8 @@ export default function Solicitudes() {
         title="Solicitudes"
         subtitle="Consulta y filtra el histórico de evaluaciones"
         actions={
-          <button onClick={recargar} className="btn-ghost">
-            <RefreshCw size={16} /> Actualizar
+          <button onClick={recargar} className="btn-ghost" type="button">
+            <RefreshCw size={16} aria-hidden="true" /> Actualizar
           </button>
         }
       />
@@ -53,6 +54,7 @@ export default function Solicitudes() {
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
               />
               <input
+                aria-label="Buscar solicitudes"
                 className="input-base pl-9"
                 placeholder="Buscar por número, cliente, cédula, línea…"
                 value={q}
@@ -60,6 +62,7 @@ export default function Solicitudes() {
               />
             </div>
             <select
+              aria-label="Filtrar solicitudes por estado"
               className="input-base"
               value={estado}
               onChange={(e) => setEstado(e.target.value as '' | EstadoVisual)}
@@ -75,26 +78,52 @@ export default function Solicitudes() {
 
         {error && (
           <Tarjeta className="border-red-200 bg-red-50/40 text-sm text-red-800">
-            No se pudieron cargar las solicitudes: {error}
+            <p role="alert">No se pudieron cargar las solicitudes: {error}</p>
           </Tarjeta>
         )}
+        <p className="sr-only" role="status" aria-live="polite">
+          {cargando
+            ? 'Cargando solicitudes'
+            : `${filtradas.length} solicitudes encontradas`}
+        </p>
 
         <Tarjeta className="p-0">
-          <div className="overflow-x-auto">
+          <div
+            className="overflow-x-auto"
+            role="region"
+            aria-label="Tabla de solicitudes"
+            tabIndex={0}
+          >
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-200">
-                  <th className="px-5 py-3">N°</th>
-                  <th className="px-5 py-3">Solicitante</th>
-                  <th className="px-5 py-3">Documento</th>
-                  <th className="px-5 py-3">Línea / destino</th>
-                  <th className="px-5 py-3">Fecha de solicitud</th>
-                  <th className="px-5 py-3">Score</th>
-                  <th className="px-5 py-3">Cupo sugerido</th>
-                  <th className="px-5 py-3">Estado</th>
+                  <th scope="col" className="px-5 py-3">
+                    N°
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Solicitante
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Documento
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Línea / destino
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Fecha de solicitud
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Score
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Cupo sugerido
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Estado
+                  </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody aria-busy={cargando}>
                 {filtradas.map((s) => {
                   const cupo = numero(s.evaluacion?.cupo_sugerido)
                   const mostrarCupo =
@@ -161,14 +190,28 @@ export default function Solicitudes() {
                   </tr>
                 )}
                 {cargando && (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="px-5 py-10 text-center text-slate-500"
-                    >
-                      Cargando solicitudes…
-                    </td>
-                  </tr>
+                  <>
+                    <tr className="sr-only">
+                      <td colSpan={8} role="status">
+                        Cargando solicitudes
+                      </td>
+                    </tr>
+                    {[...Array(5)].map((_, row) => (
+                      <tr
+                        key={`skeleton-${row}`}
+                        aria-hidden="true"
+                        className="border-b border-slate-100"
+                      >
+                        {[...Array(8)].map((__, column) => (
+                          <td key={column} className="px-5 py-4">
+                            <Skeleton
+                              className={column === 1 ? 'h-4 w-36' : 'h-4 w-20'}
+                            />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </>
                 )}
               </tbody>
             </table>

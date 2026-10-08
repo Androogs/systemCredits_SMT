@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
+import Skeleton from '../shared/ui/Skeleton'
 import {
   ApiError,
   obtenerSolicitud,
@@ -92,13 +93,22 @@ export default function Resultado() {
   const [datos, setDatos] = useState<SolicitudDetalleApi | null>(null)
   const [cargando, setCargando] = useState(true)
   const [noExiste, setNoExiste] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!id) return
     obtenerSolicitud(id)
       .then(setDatos)
       .catch((err: unknown) => {
-        if (err instanceof ApiError && err.status === 404) setNoExiste(true)
+        if (err instanceof ApiError && err.status === 404) {
+          setNoExiste(true)
+        } else {
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'Error consultando el resultado',
+          )
+        }
       })
       .finally(() => setCargando(false))
   }, [id])
@@ -106,19 +116,50 @@ export default function Resultado() {
   if (cargando) {
     return (
       <>
-        <Encabezado title="Resultado" subtitle="Cargando…" />
-        <div className="p-6 text-sm text-slate-500">
-          Consultando el resultado…
+        <Encabezado title="Resultado" subtitle="Consultando información" />
+        <div
+          className="space-y-6 overflow-auto p-6"
+          role="status"
+          aria-label="Cargando el resultado"
+        >
+          <Tarjeta>
+            <Skeleton className="mb-4 h-6 w-1/3" />
+            <Skeleton className="mb-6 h-4 w-1/2" />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {[...Array(4)].map((_, index) => (
+                <Skeleton key={index} className="h-20 rounded-xl" />
+              ))}
+            </div>
+          </Tarjeta>
+          <Tarjeta>
+            <Skeleton className="mb-4 h-5 w-1/3" />
+            <div className="space-y-3">
+              {[...Array(5)].map((_, index) => (
+                <Skeleton key={index} className="h-4 w-full" />
+              ))}
+            </div>
+          </Tarjeta>
         </div>
       </>
     )
   }
 
-  if (noExiste || !datos) {
+  if (noExiste || error || !datos) {
     return (
       <>
-        <Encabezado title="Solicitud no encontrada" />
+        <Encabezado
+          title={
+            noExiste
+              ? 'Solicitud no encontrada'
+              : 'No se pudo cargar el resultado'
+          }
+        />
         <div className="p-6">
+          {error && (
+            <p role="alert" className="mb-4 text-sm text-red-700">
+              No se pudo cargar el resultado: {error}
+            </p>
+          )}
           <Link to="/solicitudes" className="btn-ghost">
             <ArrowLeft size={16} /> Volver
           </Link>

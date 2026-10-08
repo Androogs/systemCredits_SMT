@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useId, useState, useRef, useCallback, useEffect } from 'react'
 import type { ChangeEvent, InputHTMLAttributes, ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -128,7 +128,7 @@ const Card = ({
   action?: ReactNode
 }) => (
   <div className="rounded-lg border border-zinc-200 bg-white p-5">
-    <div className="flex items-start justify-between mb-5">
+    <div className="flex flex-col gap-3 mb-5 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <h3 className="font-semibold text-[14px] tracking-tight">{title}</h3>
         {desc && <p className="text-xs text-zinc-500 mt-1">{desc}</p>}
@@ -141,23 +141,34 @@ const Card = ({
 
 const Input = ({
   label,
+  id,
   ...props
-}: { label: string } & InputHTMLAttributes<HTMLInputElement>) => (
-  <div className="space-y-1.5">
-    <label className="text-[11px] font-medium uppercase tracking-wide text-zinc-600">
-      {label}
-    </label>
-    <input
-      {...props}
-      className="h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-900"
-    />
-  </div>
-)
+}: { label: string } & InputHTMLAttributes<HTMLInputElement>) => {
+  const generatedId = useId()
+  const inputId = id ?? generatedId
+
+  return (
+    <div className="space-y-1.5">
+      <label
+        htmlFor={inputId}
+        className="text-[11px] font-medium uppercase tracking-wide text-zinc-600"
+      >
+        {label}
+      </label>
+      <input
+        {...props}
+        id={inputId}
+        className="h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-900"
+      />
+    </div>
+  )
+}
 
 export default function Ajustes() {
   const [seccion, setSeccion] = useState<SeccionId>('perfil')
   const [hasChanges, setHasChanges] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const userModalRef = useRef<HTMLDivElement>(null)
   const [avatar, setAvatar] = useState<string | null>(null)
   const [concesionarios, setConcesionarios] = useState<string[]>([
     'Suzuki Palmira',
@@ -191,6 +202,22 @@ export default function Ajustes() {
   const [searchUser, setSearchUser] = useState('')
   const [showUserModal, setShowUserModal] = useState(false)
   const [editingUser, setEditingUser] = useState<Usuario | null>(null)
+  useEffect(() => {
+    if (!showUserModal) return
+
+    const returnFocusTo =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
+    userModalRef.current
+      ?.querySelector<HTMLElement>(
+        'input:not([disabled]), select:not([disabled])',
+      )
+      ?.focus()
+
+    return () => returnFocusTo?.focus()
+  }, [showUserModal])
+
   const [userForm, setUserForm] = useState({
     nombre: '',
     email: '',
@@ -426,7 +453,7 @@ export default function Ajustes() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1400px] px-6 py-6 grid grid-cols-[260px_1fr] gap-6">
+      <div className="mx-auto max-w-[1400px] px-6 py-6 grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-6">
         <div className="h-fit sticky top-[68px] space-y-1">
           {SECCIONES.map((s) => {
             const Icon = s.icon
@@ -434,7 +461,9 @@ export default function Ajustes() {
             return (
               <button
                 key={s.id}
+                type="button"
                 onClick={() => setSeccion(s.id)}
+                aria-pressed={active}
                 className={`w-full text-left rounded-md px-3 py-2.5 flex items-center gap-3 border ${active ? 'bg-zinc-900 text-white border-zinc-900' : 'border-transparent text-zinc-600 hover:bg-white hover:border-zinc-200'}`}
               >
                 <Icon className="h-[18px] w-[18px]" />
@@ -465,23 +494,26 @@ export default function Ajustes() {
           </div>
         </div>
 
-        <div className="space-y-4 pb-24">
+        <div className="min-w-0 space-y-4 pb-24">
           {seccion === 'perfil' && (
             <>
               <Card
                 title="Perfil y Cuenta"
                 desc="Información visible para SOCIP"
               >
-                <div className="flex gap-8">
+                <div className="flex flex-col sm:flex-row gap-8">
                   <div className="flex flex-col items-center shrink-0">
                     <div className="relative">
-                      <div
+                      <button
+                        type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="h-24 w-24 rounded-full bg-zinc-50 border-2 border-dashed border-zinc-300 overflow-hidden flex items-center justify-center cursor-pointer hover:border-zinc-900 group"
+                        aria-label="Seleccionar foto de perfil"
+                        className="h-24 w-24 rounded-full bg-zinc-50 border-2 border-dashed border-zinc-300 overflow-hidden flex items-center justify-center cursor-pointer hover:border-zinc-900 group focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
                       >
                         {avatar ? (
                           <img
                             src={avatar}
+                            alt="Foto de perfil"
                             className="h-full w-full object-cover"
                           />
                         ) : (
@@ -492,10 +524,12 @@ export default function Ajustes() {
                             </span>
                           </div>
                         )}
-                      </div>
+                      </button>
                       {avatar && (
                         <button
+                          type="button"
                           onClick={handleAvatarRemove}
+                          aria-label="Eliminar foto de perfil"
                           className="absolute -top-1 -right-1 h-6 w-6 rounded-full bg-red-500 text-white grid place-items-center"
                         >
                           <X className="h-3 w-3" />
@@ -512,13 +546,13 @@ export default function Ajustes() {
                     {avatar && (
                       <button
                         onClick={handleAvatarRemove}
-                        className="mt-2 text-[10px] text-red-500 flex items-center gap-1"
+                        className="mt-2 text-[10px] text-red-700 flex items-center gap-1"
                       >
                         <Trash2 className="h-3 w-3" /> Eliminar
                       </button>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-4 flex-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 min-w-0">
                     <Input
                       label="Nombre completo"
                       value={form.nombre}
@@ -541,10 +575,14 @@ export default function Ajustes() {
                       }
                     />
                     <div className="space-y-1.5">
-                      <label className="text-[11px] uppercase text-zinc-600">
+                      <label
+                        className="text-[11px] uppercase text-zinc-600"
+                        htmlFor="profile-role"
+                      >
                         Cargo
                       </label>
                       <select
+                        id="profile-role"
                         value={form.cargo}
                         onChange={(e) => onChange('cargo', e.target.value)}
                         className="h-9 w-full rounded-md border px-3 text-sm"
@@ -556,9 +594,9 @@ export default function Ajustes() {
                       </select>
                     </div>
                     <div className="col-span-2">
-                      <label className="text-[11px] uppercase text-zinc-600">
+                      <p className="text-[11px] uppercase text-zinc-600">
                         Concesionarios asignados
-                      </label>
+                      </p>
                       <div className="mt-1.5 flex flex-wrap gap-2">
                         {concesionarios.map((c) => (
                           <span
@@ -567,16 +605,22 @@ export default function Ajustes() {
                           >
                             {c}
                             <button
+                              type="button"
                               onClick={() => removeConcesionario(c)}
-                              className="h-4 w-4 rounded-full bg-white/20 grid place-items-center"
+                              aria-label={`Quitar concesionario ${c}`}
+                              className="h-6 w-6 rounded-full bg-white/20 grid place-items-center"
                             >
                               <X className="h-3 w-3" />
                             </button>
                           </span>
                         ))}
                       </div>
-                      <div className="mt-3 flex gap-2 max-w-sm">
+                      <div className="mt-3 flex flex-col gap-2 max-w-sm sm:flex-row">
+                        <label className="sr-only" htmlFor="new-dealer">
+                          Nuevo concesionario
+                        </label>
                         <input
+                          id="new-dealer"
                           value={nuevoConcesionario}
                           onChange={(e) =>
                             setNuevoConcesionario(e.target.value)
@@ -585,9 +629,10 @@ export default function Ajustes() {
                             e.key === 'Enter' && addConcesionario()
                           }
                           placeholder="Ej: Suzuki Yumbo"
-                          className="h-8 flex-1 rounded-md border px-3 text-sm"
+                          className="h-8 w-full min-w-0 rounded-md border px-3 text-sm sm:flex-1"
                         />
                         <button
+                          type="button"
                           onClick={addConcesionario}
                           className="h-8 px-3 rounded-md border bg-white text-xs flex items-center gap-1"
                         >
@@ -601,11 +646,15 @@ export default function Ajustes() {
               <Card title="Seguridad" desc="Contraseña y 2FA">
                 <div className="grid md:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[11px] uppercase text-zinc-600">
+                    <label
+                      className="text-[11px] uppercase text-zinc-600"
+                      htmlFor="current-password"
+                    >
                       Actual
                     </label>
                     <div className="relative">
                       <input
+                        id="current-password"
                         type={showPass ? 'text' : 'password'}
                         value={form.passActual}
                         onChange={(e) => onChange('passActual', e.target.value)}
@@ -613,8 +662,15 @@ export default function Ajustes() {
                         className="h-9 w-full rounded-md border px-3 pr-8 text-sm"
                       />
                       <button
+                        type="button"
                         onClick={() => setShowPass(!showPass)}
-                        className="absolute right-2 top-2 text-zinc-400"
+                        aria-label={
+                          showPass
+                            ? 'Ocultar contraseña actual'
+                            : 'Mostrar contraseña actual'
+                        }
+                        aria-pressed={showPass}
+                        className="absolute right-1 top-1.5 grid h-6 w-6 place-items-center text-zinc-600"
                       >
                         {showPass ? (
                           <EyeOff className="h-4 w-4" />
@@ -650,17 +706,24 @@ export default function Ajustes() {
                       <p className="text-xs text-zinc-500">Segundo factor</p>
                     </div>
                     <button
+                      type="button"
                       onClick={() => onChange('twoFA', !form.twoFA)}
-                      className={`h-5 w-10 rounded-full flex items-center ${form.twoFA ? 'bg-zinc-900 justify-end' : 'bg-zinc-200 justify-start'}`}
+                      aria-label="Autenticación de dos factores"
+                      aria-pressed={form.twoFA}
+                      className={`h-6 w-11 rounded-full flex items-center ${form.twoFA ? 'bg-zinc-900 justify-end' : 'bg-zinc-200 justify-start'}`}
                     >
-                      <span className="h-4 w-4 rounded-full bg-white shadow mx-0.5" />
+                      <span className="h-4 w-4 rounded-full bg-white shadow mx-1" />
                     </button>
                   </div>
                   <div className="rounded-lg border p-4">
-                    <label className="text-[11px] uppercase text-zinc-600">
+                    <label
+                      className="text-[11px] uppercase text-zinc-600"
+                      htmlFor="two-factor-method"
+                    >
                       Método
                     </label>
                     <select
+                      id="two-factor-method"
                       value={form.metodo2FA}
                       onChange={(e) => onChange('metodo2FA', e.target.value)}
                       className="mt-1 h-8 w-full rounded-md border px-2 text-sm"
@@ -679,10 +742,14 @@ export default function Ajustes() {
                 >
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-[11px] uppercase text-zinc-600">
+                      <label
+                        className="text-[11px] uppercase text-zinc-600"
+                        htmlFor="settings-theme"
+                      >
                         Tema
                       </label>
                       <select
+                        id="settings-theme"
                         value={form.tema}
                         onChange={(e) => onChange('tema', e.target.value)}
                         className="h-9 w-full rounded-md border px-3 text-sm"
@@ -693,10 +760,14 @@ export default function Ajustes() {
                       </select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-[11px] uppercase text-zinc-600">
+                      <label
+                        className="text-[11px] uppercase text-zinc-600"
+                        htmlFor="settings-language"
+                      >
                         Idioma
                       </label>
                       <select
+                        id="settings-language"
                         value={form.idioma}
                         onChange={(e) => onChange('idioma', e.target.value)}
                         className="h-9 w-full rounded-md border px-3 text-sm"
@@ -735,29 +806,41 @@ export default function Ajustes() {
               title="Usuarios y Permisos"
               desc="Edita, crea y elimina. El límite está en Motor"
             >
-              <div className="flex gap-2 mb-4">
+              <div className="flex flex-col sm:flex-row gap-2 mb-4">
                 <button
                   onClick={openCreateModal}
+                  type="button"
                   className="h-8 px-3 rounded-md bg-zinc-900 text-white text-xs flex items-center gap-1"
                 >
                   <Plus className="h-3 w-3" /> Crear
                 </button>
                 <input
+                  aria-label="Buscar usuarios"
                   value={searchUser}
                   onChange={(e) => setSearchUser(e.target.value)}
                   placeholder="Buscar..."
-                  className="h-8 w-64 rounded-md border px-3 text-sm"
+                  className="h-8 w-full sm:w-64 min-w-0 rounded-md border px-3 text-sm"
                 />
               </div>
               <div className="overflow-auto rounded-md border">
                 <table className="w-full text-sm">
                   <thead className="bg-zinc-50 text-[11px] uppercase text-zinc-500">
                     <tr>
-                      <th className="text-left p-3">Usuario</th>
-                      <th className="text-left p-3">Rol</th>
-                      <th className="text-left p-3">Concesionario</th>
-                      <th className="text-left p-3">Estado</th>
-                      <th className="text-right p-3">Acciones</th>
+                      <th scope="col" className="text-left p-3">
+                        Usuario
+                      </th>
+                      <th scope="col" className="text-left p-3">
+                        Rol
+                      </th>
+                      <th scope="col" className="text-left p-3">
+                        Concesionario
+                      </th>
+                      <th scope="col" className="text-left p-3">
+                        Estado
+                      </th>
+                      <th scope="col" className="text-right p-3">
+                        Acciones
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -787,17 +870,21 @@ export default function Ajustes() {
                           <td className="p-3">
                             <div className="flex justify-end gap-1">
                               <button
+                                type="button"
                                 onClick={() => openEditModal(u)}
+                                aria-label={`Editar usuario ${u.n}`}
                                 className="h-7 w-7 grid place-items-center rounded border"
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
                               <button
+                                type="button"
                                 onClick={() =>
                                   setUsuarios((p) =>
                                     p.filter((x) => x.id !== u.id),
                                   )
                                 }
+                                aria-label={`Eliminar usuario ${u.n}`}
                                 className="h-7 w-7 grid place-items-center rounded border"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -875,29 +962,36 @@ export default function Ajustes() {
                 desc="Define cuánto puede aprobar cada rol"
               >
                 <div className="grid md:grid-cols-2 gap-4">
-                  {Object.entries(form.limitesRol).map(([rol, lim]) => (
-                    <div key={rol} className="space-y-1.5">
-                      <label className="text-[11px] uppercase text-zinc-600">
-                        {rol}
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          value={lim}
-                          onChange={(e) =>
-                            onChange('limitesRol', {
-                              ...form.limitesRol,
-                              [rol]: Number(e.target.value),
-                            })
-                          }
-                          className="h-9 flex-1 rounded-md border px-3 text-sm"
-                        />
-                        <span className="h-9 px-3 rounded-md border bg-zinc-50 grid place-items-center text-xs">
-                          ${Number(lim).toLocaleString()}
-                        </span>
+                  {Object.entries(form.limitesRol).map(([rol, lim]) => {
+                    const inputId = `limite-${rol.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+                    return (
+                      <div key={rol} className="space-y-1.5">
+                        <label
+                          className="text-[11px] uppercase text-zinc-600"
+                          htmlFor={inputId}
+                        >
+                          {rol}
+                        </label>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <input
+                            id={inputId}
+                            type="number"
+                            value={lim}
+                            onChange={(e) =>
+                              onChange('limitesRol', {
+                                ...form.limitesRol,
+                                [rol]: Number(e.target.value),
+                              })
+                            }
+                            className="h-9 w-full min-w-0 rounded-md border px-3 text-sm sm:flex-1"
+                          />
+                          <span className="h-9 px-3 rounded-md border bg-zinc-50 flex items-center text-xs sm:grid sm:place-items-center">
+                            ${Number(lim).toLocaleString()}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </Card>
             </>
@@ -913,10 +1007,18 @@ export default function Ajustes() {
                   <table className="w-full text-sm">
                     <thead className="bg-zinc-50 text-[11px] uppercase text-zinc-500">
                       <tr>
-                        <th className="text-left p-3">Tipo Empleo</th>
-                        <th className="text-left p-3">Score Min</th>
-                        <th className="text-left p-3">Ingresos (SMMLV)</th>
-                        <th className="text-left p-3">Activo</th>
+                        <th scope="col" className="text-left p-3">
+                          Tipo Empleo
+                        </th>
+                        <th scope="col" className="text-left p-3">
+                          Score Min
+                        </th>
+                        <th scope="col" className="text-left p-3">
+                          Ingresos (SMMLV)
+                        </th>
+                        <th scope="col" className="text-left p-3">
+                          Activo
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -927,6 +1029,7 @@ export default function Ajustes() {
                             <input
                               type="number"
                               value={r.scoreMin}
+                              aria-label={`Score mínimo para ${r.tipo}`}
                               className="h-7 w-20 border rounded px-2 text-sm"
                               onChange={(e) => {
                                 const c = [...form.reglasEmpleo]
@@ -940,6 +1043,7 @@ export default function Ajustes() {
                               type="number"
                               step="0.1"
                               value={r.ingresoMin}
+                              aria-label={`Ingreso mínimo en SMMLV para ${r.tipo}`}
                               className="h-7 w-20 border rounded px-2 text-sm"
                               onChange={(e) => {
                                 const c = [...form.reglasEmpleo]
@@ -952,6 +1056,7 @@ export default function Ajustes() {
                             <input
                               type="checkbox"
                               checked={r.activo}
+                              aria-label={`Regla activa para ${r.tipo}`}
                               onChange={(e) => {
                                 const c = [...form.reglasEmpleo]
                                 c[i].activo = e.target.checked
@@ -970,7 +1075,7 @@ export default function Ajustes() {
                   title="Filtros Globales"
                   desc="Aplican a todos los perfiles"
                 >
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <Input
                       label="Edad Mín"
                       type="number"
@@ -1006,10 +1111,13 @@ export default function Ajustes() {
                       </p>
                     </div>
                     <button
+                      type="button"
                       onClick={() => onChange('listaNegra', !form.listaNegra)}
-                      className={`h-5 w-10 rounded-full flex items-center ${form.listaNegra ? 'bg-zinc-900 justify-end' : 'bg-zinc-200 justify-start'}`}
+                      aria-label="Lista negra interna"
+                      aria-pressed={form.listaNegra}
+                      className={`h-6 w-11 rounded-full flex items-center ${form.listaNegra ? 'bg-zinc-900 justify-end' : 'bg-zinc-200 justify-start'}`}
                     >
-                      <span className="h-4 w-4 rounded-full bg-white shadow mx-0.5" />
+                      <span className="h-4 w-4 rounded-full bg-white shadow mx-1" />
                     </button>
                   </div>
                 </Card>
@@ -1018,18 +1126,18 @@ export default function Ajustes() {
                   desc="Qué hace el sistema al rechazar"
                 >
                   <div className="space-y-3 text-sm">
-                    <div className="flex items-center justify-between p-3 border rounded-md">
+                    <label className="flex items-center justify-between p-3 border rounded-md">
                       <span>Notificar al asesor por WhatsApp</span>
                       <input type="checkbox" defaultChecked />
-                    </div>
-                    <div className="flex items-center justify-between p-3 border rounded-md">
+                    </label>
+                    <label className="flex items-center justify-between p-3 border rounded-md">
                       <span>Enviar a revisión manual si score &gt; 550</span>
                       <input type="checkbox" defaultChecked />
-                    </div>
-                    <div className="flex items-center justify-between p-3 border rounded-md">
+                    </label>
+                    <label className="flex items-center justify-between p-3 border rounded-md">
                       <span>Bloquear intentos duplicados 24h</span>
                       <input type="checkbox" defaultChecked />
-                    </div>
+                    </label>
                   </div>
                 </Card>
               </div>
@@ -1038,8 +1146,12 @@ export default function Ajustes() {
 
           {seccion === 'concesionarios' && (
             <Card title="Concesionarios" desc="Aliados y cupos de crédito">
-              <div className="flex gap-2 mb-4">
+              <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                <label className="sr-only" htmlFor="dealer-name">
+                  Nombre del concesionario
+                </label>
                 <input
+                  id="dealer-name"
                   value={nuevoConcesionario}
                   onChange={(e) => setNuevoConcesionario(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addConcesionario()}
@@ -1047,6 +1159,7 @@ export default function Ajustes() {
                   className="h-9 flex-1 rounded-md border px-3 text-sm"
                 />
                 <button
+                  type="button"
                   onClick={addConcesionario}
                   className="h-9 px-4 rounded-md bg-zinc-900 text-white text-sm"
                 >
@@ -1069,7 +1182,9 @@ export default function Ajustes() {
                       </div>
                     </div>
                     <button
+                      type="button"
                       onClick={() => removeConcesionario(c)}
+                      aria-label={`Quitar concesionario ${c}`}
                       className="h-8 w-8 grid place-items-center rounded-md border hover:bg-red-50 text-zinc-500 hover:text-red-600"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -1086,7 +1201,10 @@ export default function Ajustes() {
                 title="Documentos y Plantillas"
                 desc="Gestiona requisitos por tipo de crédito. Afecta el checklist del asesor"
                 action={
-                  <button className="h-8 px-3 rounded-md bg-zinc-900 text-white text-xs flex items-center gap-1">
+                  <button
+                    type="button"
+                    className="h-8 px-3 rounded-md bg-zinc-900 text-white text-xs flex items-center gap-1"
+                  >
                     <Upload className="h-3 w-3" /> Subir plantilla
                   </button>
                 }
@@ -1095,12 +1213,24 @@ export default function Ajustes() {
                   <table className="w-full text-sm">
                     <thead className="bg-zinc-50 text-[11px] uppercase text-zinc-500">
                       <tr>
-                        <th className="text-left p-3">Documento</th>
-                        <th className="text-left p-3">Requerido</th>
-                        <th className="text-left p-3">Formato</th>
-                        <th className="text-left p-3">Tamaño Máx</th>
-                        <th className="text-left p-3">Estado</th>
-                        <th className="text-right p-3">Acción</th>
+                        <th scope="col" className="text-left p-3">
+                          Documento
+                        </th>
+                        <th scope="col" className="text-left p-3">
+                          Requerido
+                        </th>
+                        <th scope="col" className="text-left p-3">
+                          Formato
+                        </th>
+                        <th scope="col" className="text-left p-3">
+                          Tamaño Máx
+                        </th>
+                        <th scope="col" className="text-left p-3">
+                          Estado
+                        </th>
+                        <th scope="col" className="text-right p-3">
+                          Acción
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1123,6 +1253,7 @@ export default function Ajustes() {
                           <td className="p-3 text-xs">{d.max}</td>
                           <td className="p-3">
                             <button
+                              type="button"
                               onClick={() =>
                                 setDocumentos((p) =>
                                   p.map((x) =>
@@ -1132,22 +1263,30 @@ export default function Ajustes() {
                                   ),
                                 )
                               }
-                              className={`h-5 w-10 rounded-full flex items-center ${d.activo ? 'bg-zinc-900 justify-end' : 'bg-zinc-200 justify-start'}`}
+                              aria-label={`Documento activo: ${d.nombre}`}
+                              aria-pressed={d.activo}
+                              className={`h-6 w-11 rounded-full flex items-center ${d.activo ? 'bg-zinc-900 justify-end' : 'bg-zinc-200 justify-start'}`}
                             >
-                              <span className="h-4 w-4 rounded-full bg-white shadow mx-0.5" />
+                              <span className="h-4 w-4 rounded-full bg-white shadow mx-1" />
                             </button>
                           </td>
                           <td className="p-3">
                             <div className="flex justify-end gap-1">
-                              <button className="h-7 w-7 grid place-items-center rounded border">
+                              <button
+                                type="button"
+                                aria-label={`Descargar ${d.nombre}`}
+                                className="h-7 w-7 grid place-items-center rounded border"
+                              >
                                 <Download className="h-3.5 w-3.5" />
                               </button>
                               <button
+                                type="button"
                                 onClick={() =>
                                   setDocumentos((p) =>
                                     p.filter((x) => x.id !== d.id),
                                   )
                                 }
+                                aria-label={`Eliminar documento ${d.nombre}`}
                                 className="h-7 w-7 grid place-items-center rounded border hover:bg-red-50"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -1173,10 +1312,16 @@ export default function Ajustes() {
                     Última actualización: 28/09/2026 • 2.4MB
                   </p>
                   <div className="mt-4 flex justify-center gap-2">
-                    <button className="h-8 px-3 rounded-md border bg-white text-xs">
+                    <button
+                      type="button"
+                      className="h-8 px-3 rounded-md border bg-white text-xs"
+                    >
                       Ver PDF
                     </button>
-                    <button className="h-8 px-3 rounded-md bg-zinc-900 text-white text-xs">
+                    <button
+                      type="button"
+                      className="h-8 px-3 rounded-md bg-zinc-900 text-white text-xs"
+                    >
                       Reemplazar
                     </button>
                   </div>
@@ -1192,10 +1337,17 @@ export default function Ajustes() {
                 desc="Trazabilidad completa de cambios y evaluaciones"
                 action={
                   <div className="flex gap-2">
-                    <button className="h-8 px-3 rounded-md border bg-white text-xs">
+                    <button
+                      type="button"
+                      className="h-8 px-3 rounded-md border bg-white text-xs"
+                    >
                       Exportar CSV
                     </button>
+                    <label className="sr-only" htmlFor="log-retention">
+                      Retención de registros
+                    </label>
                     <select
+                      id="log-retention"
                       value={form.retencionLogs}
                       onChange={(e) =>
                         onChange('retencionLogs', Number(e.target.value))
@@ -1210,12 +1362,16 @@ export default function Ajustes() {
                   </div>
                 }
               >
-                <div className="flex gap-2 mb-4">
+                <div className="flex flex-col gap-2 mb-4 sm:flex-row">
                   <input
+                    aria-label="Buscar en el registro de auditoría"
                     placeholder="Buscar por usuario, acción o IP..."
                     className="h-8 flex-1 rounded-md border px-3 text-sm"
                   />
-                  <select className="h-8 rounded-md border px-2 text-sm">
+                  <select
+                    aria-label="Filtrar registros por acción"
+                    className="h-8 w-full min-w-0 rounded-md border px-2 text-sm sm:w-auto"
+                  >
                     <option>Todas las acciones</option>
                     <option>Evaluaciones</option>
                     <option>Cambios de parámetros</option>
@@ -1226,10 +1382,18 @@ export default function Ajustes() {
                   <table className="w-full text-sm">
                     <thead className="bg-zinc-50 text-[11px] uppercase text-zinc-500">
                       <tr>
-                        <th className="text-left p-3">Fecha</th>
-                        <th className="text-left p-3">Usuario</th>
-                        <th className="text-left p-3">Acción</th>
-                        <th className="text-left p-3">IP</th>
+                        <th scope="col" className="text-left p-3">
+                          Fecha
+                        </th>
+                        <th scope="col" className="text-left p-3">
+                          Usuario
+                        </th>
+                        <th scope="col" className="text-left p-3">
+                          Acción
+                        </th>
+                        <th scope="col" className="text-left p-3">
+                          IP
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1263,6 +1427,7 @@ export default function Ajustes() {
                 desc="Usa estas llaves en header X-API-Key. Nunca expongas en frontend público"
                 action={
                   <button
+                    type="button"
                     onClick={() =>
                       setApiKeys((p) => [
                         ...p,
@@ -1300,13 +1465,19 @@ export default function Ajustes() {
                         </p>
                       </div>
                       <div className="flex gap-1">
-                        <button className="h-7 w-7 grid place-items-center rounded border bg-white">
+                        <button
+                          type="button"
+                          aria-label={`Copiar clave ${k.nombre}`}
+                          className="h-7 w-7 grid place-items-center rounded border bg-white"
+                        >
                           <Copy className="h-3.5 w-3.5" />
                         </button>
                         <button
+                          type="button"
                           onClick={() =>
                             setApiKeys((p) => p.filter((x) => x.id !== k.id))
                           }
+                          aria-label={`Eliminar clave ${k.nombre}`}
                           className="h-7 w-7 grid place-items-center rounded border bg-white hover:bg-red-50"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -1322,10 +1493,14 @@ export default function Ajustes() {
                   desc="Orígenes permitidos para consumir la API"
                   action={<Globe className="h-4 w-4 text-zinc-400" />}
                 >
-                  <label className="text-[11px] uppercase text-zinc-600">
+                  <label
+                    className="text-[11px] uppercase text-zinc-600"
+                    htmlFor="allowed-domains"
+                  >
                     Dominios permitidos (separados por coma)
                   </label>
                   <textarea
+                    id="allowed-domains"
                     value={cors}
                     onChange={(e) => setCors(e.target.value)}
                     className="mt-1 w-full min-h-[80px] rounded-md border px-3 py-2 text-sm"
@@ -1463,10 +1638,13 @@ export default function Ajustes() {
                       </p>
                     </div>
                     <button
+                      type="button"
                       onClick={() => onChange('backupAuto', !form.backupAuto)}
-                      className={`h-5 w-10 rounded-full flex items-center ${form.backupAuto ? 'bg-zinc-900 justify-end' : 'bg-zinc-200 justify-start'}`}
+                      aria-label="Respaldo automático"
+                      aria-pressed={form.backupAuto}
+                      className={`h-6 w-11 rounded-full flex items-center ${form.backupAuto ? 'bg-zinc-900 justify-end' : 'bg-zinc-200 justify-start'}`}
                     >
-                      <span className="h-4 w-4 rounded-full bg-white shadow mx-0.5" />
+                      <span className="h-4 w-4 rounded-full bg-white shadow mx-1" />
                     </button>
                   </div>
                   <Input
@@ -1494,18 +1672,52 @@ export default function Ajustes() {
 
       {showUserModal && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-[520px] rounded-xl bg-white shadow-2xl border">
+          <div
+            ref={userModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="user-modal-title"
+            aria-describedby="user-modal-description"
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                setShowUserModal(false)
+                return
+              }
+              if (event.key !== 'Tab') return
+
+              const focusable =
+                userModalRef.current?.querySelectorAll<HTMLElement>(
+                  'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]',
+                )
+              if (!focusable?.length) return
+              const first = focusable[0]
+              const last = focusable[focusable.length - 1]
+              if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault()
+                last.focus()
+              } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault()
+                first.focus()
+              }
+            }}
+            className="w-full max-w-[520px] rounded-xl bg-white shadow-2xl border"
+          >
             <div className="p-5 border-b flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-sm">
+                <h3 id="user-modal-title" className="font-semibold text-sm">
                   {editingUser ? 'Editar usuario' : 'Nuevo usuario'}
                 </h3>
-                <p className="text-xs text-zinc-500">
+                <p
+                  id="user-modal-description"
+                  className="text-xs text-zinc-500"
+                >
                   {editingUser ? `Editando a ${editingUser.n}` : 'Crear acceso'}
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setShowUserModal(false)}
+                aria-label="Cerrar diálogo"
                 className="h-8 w-8 rounded-full hover:bg-zinc-100 grid place-items-center"
               >
                 <X className="h-4 w-4" />
@@ -1537,8 +1749,11 @@ export default function Ajustes() {
               />
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[11px] uppercase">Rol</label>
+                  <label className="text-[11px] uppercase" htmlFor="modal-role">
+                    Rol
+                  </label>
                   <select
+                    id="modal-role"
                     value={userForm.cargo}
                     onChange={(e) =>
                       setUserForm((s) => ({ ...s, cargo: e.target.value }))
@@ -1552,8 +1767,14 @@ export default function Ajustes() {
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[11px] uppercase">Concesionario</label>
+                  <label
+                    className="text-[11px] uppercase"
+                    htmlFor="modal-dealer"
+                  >
+                    Concesionario
+                  </label>
                   <select
+                    id="modal-dealer"
                     value={userForm.concesionario}
                     onChange={(e) =>
                       setUserForm((s) => ({
@@ -1572,8 +1793,14 @@ export default function Ajustes() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[11px] uppercase">Estado</label>
+                  <label
+                    className="text-[11px] uppercase"
+                    htmlFor="modal-state"
+                  >
+                    Estado
+                  </label>
                   <select
+                    id="modal-state"
                     value={userForm.estado}
                     onChange={(e) =>
                       setUserForm((s) => ({ ...s, estado: e.target.value }))
@@ -1596,12 +1823,14 @@ export default function Ajustes() {
             </div>
             <div className="p-4 bg-zinc-50 rounded-b-xl flex justify-end gap-2">
               <button
+                type="button"
                 onClick={() => setShowUserModal(false)}
                 className="h-9 px-4 rounded-md border bg-white text-sm"
               >
                 Cancelar
               </button>
               <button
+                type="button"
                 onClick={handleSaveUser}
                 className="h-9 px-5 rounded-md bg-zinc-900 text-white text-sm"
               >

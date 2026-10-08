@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
+import Skeleton from '../shared/ui/Skeleton'
 import InsigniaEstado from '../entities/credit/ui/InsigniaEstado'
 import {
   estadoVisual,
@@ -51,7 +52,7 @@ export default function PanelAsesor() {
       <div className="p-6 space-y-6 overflow-auto">
         {error && (
           <Tarjeta className="border-red-200 bg-red-50/40 text-sm text-red-800">
-            No se pudo cargar la cola de trabajo: {error}
+            <p role="alert">No se pudo cargar la cola de trabajo: {error}</p>
           </Tarjeta>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -60,24 +61,28 @@ export default function PanelAsesor() {
             label="Solicitudes"
             value={cargando ? '…' : number(solicitudes.length)}
             tone="brand"
+            cargando={cargando}
           />
           <Kpi
             icon={CheckCircle2}
             label="Aprobadas"
             value={number(aprobadas)}
             tone="emerald"
+            cargando={cargando}
           />
           <Kpi
             icon={Clock}
             label="En revisión / pendientes"
             value={number(enCola.length)}
             tone="amber"
+            cargando={cargando}
           />
           <Kpi
             icon={TrendingUp}
             label="Tasa de aprobación"
             value={`${solicitudes.length ? ((aprobadas / solicitudes.length) * 100).toFixed(0) : 0}%`}
             tone="emerald"
+            cargando={cargando}
           />
         </div>
 
@@ -117,19 +122,36 @@ export default function PanelAsesor() {
               Ver todas <ArrowRight size={14} />
             </Link>
           </div>
-          <div className="overflow-x-auto">
+          <div
+            className="overflow-x-auto"
+            role="region"
+            aria-label="Tabla de cola de trabajo"
+            tabIndex={0}
+          >
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-200">
-                  <th className="px-5 py-3">N°</th>
-                  <th className="px-5 py-3">Cliente</th>
-                  <th className="px-5 py-3">Destino</th>
-                  <th className="px-5 py-3">Fecha</th>
-                  <th className="px-5 py-3">Cupo sugerido</th>
-                  <th className="px-5 py-3">Estado</th>
+                  <th scope="col" className="px-5 py-3">
+                    N°
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Cliente
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Destino
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Fecha
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Cupo sugerido
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Estado
+                  </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody aria-busy={cargando}>
                 {cola.map((s) => {
                   const visual = estadoVisual(s)
                   const cupo = numero(s.evaluacion?.cupo_sugerido)
@@ -186,14 +208,28 @@ export default function PanelAsesor() {
                   </tr>
                 )}
                 {cargando && (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="px-5 py-10 text-center text-slate-500"
-                    >
-                      Cargando solicitudes…
-                    </td>
-                  </tr>
+                  <>
+                    <tr className="sr-only">
+                      <td colSpan={6} role="status">
+                        Cargando solicitudes
+                      </td>
+                    </tr>
+                    {[...Array(4)].map((_, row) => (
+                      <tr
+                        key={`skeleton-${row}`}
+                        aria-hidden="true"
+                        className="border-b border-slate-100"
+                      >
+                        {[...Array(6)].map((__, column) => (
+                          <td key={column} className="px-5 py-4">
+                            <Skeleton
+                              className={column === 1 ? 'h-4 w-36' : 'h-4 w-20'}
+                            />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </>
                 )}
               </tbody>
             </table>
@@ -209,11 +245,13 @@ function Kpi({
   label,
   value,
   tone = 'brand',
+  cargando = false,
 }: {
   icon: typeof Inbox
   label: string
   value: string
   tone?: 'brand' | 'emerald' | 'amber'
+  cargando?: boolean
 }) {
   const tones = {
     brand: 'bg-brand-50 text-brand-600',
@@ -227,11 +265,15 @@ function Kpi({
       >
         <Icon size={20} />
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0" aria-busy={cargando}>
         <p className="text-xs uppercase tracking-wide text-slate-500">
           {label}
         </p>
-        <p className="text-xl font-bold text-slate-900 truncate">{value}</p>
+        {cargando ? (
+          <Skeleton className="mt-2 h-6 w-24" />
+        ) : (
+          <p className="text-xl font-bold text-slate-900 truncate">{value}</p>
+        )}
       </div>
     </Tarjeta>
   )

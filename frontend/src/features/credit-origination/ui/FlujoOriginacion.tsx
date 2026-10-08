@@ -90,6 +90,16 @@ function FlujoOriginacion() {
   const [borradorPendiente, setBorradorPendiente] =
     useState<BorradorOriginacion | null>(() => cargarBorrador())
 
+  useEffect(() => {
+    const heading = document.querySelector<HTMLElement>('#main-content h1')
+    const title = heading?.textContent?.trim()
+    if (!heading || !title) return
+
+    document.title = `${title} | Inversiones Pacífico`
+    heading.tabIndex = -1
+    heading.focus({ preventScroll: true })
+  }, [pasoActual, borradorPendiente])
+
   // Autoguardado local: cada avance de paso o cambio de contexto queda
   // persistido, de modo que cerrar el navegador o perder energía no
   // pierde el proceso. No se guarda mientras un borrador previo está
@@ -436,9 +446,9 @@ function FlujoOriginacion() {
   }
 
   return (
-    <main className="flujo-originacion">
+    <div className="flujo-originacion">
       {borradorPendiente ? renderBorradorPendiente() : renderPasoActual()}
-    </main>
+    </div>
   )
 }
 

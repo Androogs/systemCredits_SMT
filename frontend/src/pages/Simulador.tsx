@@ -147,7 +147,10 @@ export default function Simulador() {
                 </p>
               )}
               {catalogoError && !producto && (
-                <p className="text-xs text-amber-700 rounded-lg bg-amber-50 border border-amber-200 p-3">
+                <p
+                  role="status"
+                  className="text-xs text-amber-700 rounded-lg bg-amber-50 border border-amber-200 p-3"
+                >
                   Catálogo no disponible; usando rangos de referencia del
                   producto propio.
                 </p>
@@ -221,10 +224,18 @@ export default function Simulador() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-200">
-                      <th className="py-2.5 pr-4">Plazo</th>
-                      <th className="py-2.5 pr-4">Cuota mensual</th>
-                      <th className="py-2.5 pr-4">Total a pagar</th>
-                      <th className="py-2.5 pr-4">Intereses</th>
+                      <th scope="col" className="py-2.5 pr-4">
+                        Plazo
+                      </th>
+                      <th scope="col" className="py-2.5 pr-4">
+                        Cuota mensual
+                      </th>
+                      <th scope="col" className="py-2.5 pr-4">
+                        Total a pagar
+                      </th>
+                      <th scope="col" className="py-2.5 pr-4">
+                        Intereses
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -272,11 +283,21 @@ export default function Simulador() {
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-white">
                 <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-200">
-                  <th className="px-5 py-3">Mes</th>
-                  <th className="px-5 py-3">Cuota</th>
-                  <th className="px-5 py-3">Interés</th>
-                  <th className="px-5 py-3">Abono a capital</th>
-                  <th className="px-5 py-3">Saldo</th>
+                  <th scope="col" className="px-5 py-3">
+                    Mes
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Cuota
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Interés
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Abono a capital
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Saldo
+                  </th>
                 </tr>
               </thead>
               <tbody>

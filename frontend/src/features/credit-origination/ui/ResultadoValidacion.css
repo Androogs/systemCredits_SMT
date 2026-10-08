@@ -14,7 +14,7 @@
 
 .resultado__eyebrow {
   margin: 0 0 0.6rem;
-  color: #1689b7;
+  color: #11648a;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.11em;
@@ -68,7 +68,7 @@
 }
 
 .resultado__meta dt {
-  color: #8792a3;
+  color: #566575;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -346,7 +346,7 @@
 
 .resultado__nota {
   margin: 0;
-  color: #8792a3;
+  color: #566575;
   font-size: 0.72rem;
   line-height: 1.55;
   font-style: italic;
@@ -376,7 +376,7 @@
   place-items: center;
   border-radius: 0.5rem;
   background: #eaf6fc;
-  color: #1689b7;
+  color: #11648a;
 }
 
 .resultado__auditoria-icon svg {
@@ -405,7 +405,7 @@
 }
 
 .resultado__auditoria-grid dt {
-  color: #8792a3;
+  color: #566575;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;

@@ -14,7 +14,7 @@
 
 .captura__eyebrow {
   margin: 0 0 0.6rem;
-  color: #1689b7;
+  color: #11648a;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.11em;
@@ -68,7 +68,7 @@
 }
 
 .captura__meta dt {
-  color: #8792a3;
+  color: #566575;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -137,7 +137,7 @@
 
 .captura__form-head p {
   margin: 0.4rem 0 0;
-  color: #8792a3;
+  color: #566575;
   font-size: 0.78rem;
 }
 
@@ -199,7 +199,7 @@
   place-items: center;
   border-radius: 0.65rem;
   background: #f2fbff;
-  color: #1689b7;
+  color: #11648a;
   transition:
     background-color 160ms ease,
     color 160ms ease;
@@ -355,7 +355,7 @@
 }
 
 .captura__capturas-label {
-  color: #8792a3;
+  color: #566575;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -405,7 +405,7 @@
 .captura__capturas-list small {
   display: block;
   margin-top: 0.15rem;
-  color: #8792a3;
+  color: #566575;
   font-size: 0.72rem;
   line-height: 1.45;
 }
@@ -438,7 +438,7 @@
 }
 
 .captura__qr-sesion {
-  color: #8792a3;
+  color: #566575;
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -679,7 +679,7 @@
 .captura__requisito-copy small {
   display: block;
   margin-top: 0.15rem;
-  color: #8792a3;
+  color: #566575;
   font-size: 0.72rem;
   line-height: 1.45;
 }

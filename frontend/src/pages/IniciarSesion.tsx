@@ -1,13 +1,19 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { FormEvent } from 'react'
 
 export default function IniciarSesion() {
   const navigate = useNavigate()
+  const headingRef = useRef<HTMLHeadingElement>(null)
   const [email, setEmail] = useState('demo@underwriting.io')
   const [password, setPassword] = useState('demo1234')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    document.title = 'Iniciar sesión | Inversiones Pacífico'
+    headingRef.current?.focus()
+  }, [])
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -48,8 +54,15 @@ export default function IniciarSesion() {
       .login__remember { display: flex; align-items: center; gap: .5rem; color: #667085; font-size: .85rem; cursor: pointer; }
       .login__submit { padding: .875rem; border: none; border-radius: 8px; background: #1a1b41; color: #fff; font-weight: 600; cursor: pointer; }
       .login__submit:hover { background: #2a2b5e; }
-      .login__credit { margin-top: 2.5rem; color: #98a2b3; font-size: .7rem; text-align: center; }
-      @media (max-width: 850px) { .login { grid-template-columns: 1fr; } .login__welcome-image { display: none; } }
+      .login__credit { margin-top: 2.5rem; color: #667085; font-size: .7rem; text-align: center; }
+      .login__input:focus-visible, .login__submit:focus-visible { outline: 3px solid #099dd7; outline-offset: 3px; }
+      @media (max-width: 850px) {
+        .login-wrapper { padding: 1rem; }
+        .login { grid-template-columns: 1fr; min-height: auto; }
+        .login__welcome { padding: 2rem 1.5rem; }
+        .login__form-panel { padding: 2rem 1.5rem; }
+        .login__welcome-image { display: none; }
+      }
     `}</style>
 
       <div className="login-wrapper">
@@ -60,10 +73,14 @@ export default function IniciarSesion() {
                 <img
                   src="/brand/pacifico-blancos.png"
                   alt="Inversiones Pacífico"
+                  width="1600"
+                  height="769"
                   className="h-36 w-auto object-contain flex-1"
                 />
               </div>
-              <h1 className="login__heading">Bienvenido.</h1>
+              <h1 ref={headingRef} tabIndex={-1} className="login__heading">
+                Bienvenido.
+              </h1>
               <p className="login__description">
                 Accede a tu cuenta y continuemos con tu solicitud de crédito en
                 5 minutos.
@@ -90,26 +107,40 @@ export default function IniciarSesion() {
               </div>
               <form className="login__form" onSubmit={submit}>
                 <div>
-                  <label className="login__label">Correo / Usuario</label>
+                  <label className="login__label" htmlFor="login-username">
+                    Correo / Usuario
+                  </label>
                   <input
+                    id="login-username"
+                    type="text"
                     className="login__input"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Ingresa el usuario asignado"
+                    autoComplete="username"
+                    required
                   />
                 </div>
                 <div>
-                  <label className="login__label">Contraseña</label>
+                  <label className="login__label" htmlFor="login-password">
+                    Contraseña
+                  </label>
                   <input
+                    id="login-password"
                     type="password"
                     className="login__input"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Ingrese su contraseña"
+                    autoComplete="current-password"
+                    required
                   />
                 </div>
                 {error && (
-                  <p style={{ color: '#ef4444', fontSize: '0.8rem' }}>
+                  <p
+                    role="alert"
+                    style={{ color: '#b91c1c', fontSize: '0.8rem' }}
+                  >
                     {error}
                   </p>
                 )}
@@ -117,8 +148,11 @@ export default function IniciarSesion() {
                   type="submit"
                   className="login__submit"
                   disabled={loading}
+                  aria-busy={loading}
                 >
-                  {loading ? 'Ingresando...' : 'Ingresar'}
+                  <span aria-live="polite">
+                    {loading ? 'Ingresando...' : 'Ingresar'}
+                  </span>
                 </button>
               </form>
               <p className="login__credit">

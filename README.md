@@ -219,6 +219,14 @@ contra SQLite en memoria (integration).
 
 ## Despliegue
 
+### Integración para aliados
+
+El contrato REST actualmente implementado, los ejemplos de ciclo de solicitud y
+las limitaciones de seguridad/capacidades están documentados en
+[Manual de integración para aliados](docs/manual_integracion_aliados.md).
+Revisar especialmente sus prerrequisitos de autenticación antes de exponer rutas
+que contienen datos personales.
+
 ### Frontend (Cloudflare Pages)
 
 Configura `VITE_API_URL` en **Settings → Environment variables** con la URL

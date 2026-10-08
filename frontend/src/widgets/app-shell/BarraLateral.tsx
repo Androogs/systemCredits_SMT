@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -6,9 +6,6 @@ import {
   FilePlus2,
   ListChecks,
   LogOut,
-  Users,
-  ShieldAlert,
-  ActivityIcon,
   Settings2,
   PanelLeftClose,
   PanelLeftOpen,
@@ -24,15 +21,78 @@ const nav: { to: string; label: string; icon: LucideIcon }[] = [
   { to: '/solicitudes', label: 'Solicitudes', icon: ListChecks },
   { to: '/nueva-solicitud', label: 'Nueva solicitud', icon: FilePlus2 },
   { to: '/simulador', label: 'Simulador', icon: Calculator },
-  { to: '/clientes', label: 'Clientes', icon: Users },
-  { to: '/riesgo', label: 'Riesgo', icon: ShieldAlert },
-  { to: '/estados', label: 'Estados', icon: ActivityIcon },
-  { to: '/ajustes', label: 'Administración', icon: Settings2 },
+  { to: '/ajustes', label: 'Ajustes', icon: Settings2 },
 ]
 
-export default function BarraLateral({ onLogout }: { onLogout: () => void }) {
+export default function BarraLateral({
+  onLogout,
+  onMobileMenuChange,
+}: {
+  onLogout: () => void
+  onMobileMenuChange?: (open: boolean) => void
+}) {
   const [collapsed, setCollapsed] = useState(false)
   const [menuMovilAbierto, setMenuMovilAbierto] = useState(false)
+  const [esMovil, setEsMovil] = useState(
+    () => window.matchMedia('(max-width: 767.98px)').matches,
+  )
+  const botonMenuRef = useRef<HTMLButtonElement>(null)
+  const botonCerrarRef = useRef<HTMLButtonElement>(null)
+  const asideRef = useRef<HTMLElement>(null)
+  const menuEstabaAbierto = useRef(false)
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767.98px)')
+    const actualizar = (event: MediaQueryListEvent) => {
+      setEsMovil(event.matches)
+      if (!event.matches) {
+        setMenuMovilAbierto(false)
+        setCollapsed(false)
+      }
+    }
+    media.addEventListener('change', actualizar)
+    return () => media.removeEventListener('change', actualizar)
+  }, [])
+
+  useEffect(() => {
+    if (menuMovilAbierto) {
+      botonCerrarRef.current?.focus()
+    } else if (menuEstabaAbierto.current) {
+      botonMenuRef.current?.focus()
+    }
+    menuEstabaAbierto.current = menuMovilAbierto
+  }, [menuMovilAbierto])
+
+  useEffect(() => {
+    onMobileMenuChange?.(esMovil && menuMovilAbierto)
+  }, [esMovil, menuMovilAbierto, onMobileMenuChange])
+
+  useEffect(() => {
+    if (!menuMovilAbierto) return
+    const cerrarConEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuMovilAbierto(false)
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      const focusable = asideRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled])',
+      )
+      if (!focusable?.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    window.addEventListener('keydown', cerrarConEscape)
+    return () => window.removeEventListener('keydown', cerrarConEscape)
+  }, [menuMovilAbierto])
 
   const cerrarMenu = () => {
     if (window.matchMedia('(max-width: 767.98px)').matches) {
@@ -46,6 +106,7 @@ export default function BarraLateral({ onLogout }: { onLogout: () => void }) {
     <>
       {/* BOTÓN HAMBURGUESA - SOLO MÓVIL */}
       <button
+        ref={botonMenuRef}
         onClick={() => setMenuMovilAbierto(true)}
         className={`
           md:hidden fixed top-4 left-4 z-40 p-2.5 rounded-xl
@@ -55,22 +116,34 @@ export default function BarraLateral({ onLogout }: { onLogout: () => void }) {
         `}
         title="Abrir menú"
         aria-label="Abrir menú"
+        aria-haspopup={esMovil ? 'dialog' : undefined}
+        aria-expanded={menuMovilAbierto}
+        aria-controls="sidebar-nav"
+        aria-hidden={menuMovilAbierto}
+        tabIndex={menuMovilAbierto ? -1 : 0}
       >
         <Menu size={20} />
       </button>
 
       {/* BACKDROP - SOLO MÓVIL */}
-      <button
-        aria-label="Cerrar menú"
+      <div
+        role="presentation"
+        aria-hidden="true"
         onClick={() => setMenuMovilAbierto(false)}
         className={`
           md:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm
-          transition-opacity duration-300
+          cursor-pointer transition-opacity duration-300
           ${menuMovilAbierto ? 'opacity-100' : 'opacity-0 pointer-events-none'}
         `}
       />
 
       <aside
+        ref={asideRef}
+        id="sidebar-nav"
+        role={esMovil && menuMovilAbierto ? 'dialog' : undefined}
+        aria-label="Menú principal"
+        aria-modal={esMovil && menuMovilAbierto ? true : undefined}
+        inert={esMovil ? !menuMovilAbierto : collapsed}
         className={`
         fixed md:sticky inset-y-0 left-0 top-0 z-50 md:z-auto
         flex flex-col border-r border-white/10 bg-[rgba(0,0,51,1)]
@@ -89,13 +162,16 @@ export default function BarraLateral({ onLogout }: { onLogout: () => void }) {
           <img
             src="/brand/pacifico-blancos.png"
             alt="Inversiones Pacífico"
+            width="1600"
+            height="769"
             className="h-20 w-auto object-contain flex-1"
           />
           <button
+            ref={botonCerrarRef}
             onClick={cerrarMenu}
             className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/20 transition"
             title="Ocultar menú"
-            aria-label="Ocultar menú"
+            aria-label={esMovil ? 'Cerrar menú' : 'Ocultar menú'}
           >
             <span className="hidden md:block">
               <PanelLeftClose size={18} />

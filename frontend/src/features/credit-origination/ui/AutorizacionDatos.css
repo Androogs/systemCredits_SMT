@@ -14,7 +14,7 @@
 
 .autorizacion__eyebrow {
   margin: 0 0 0.6rem;
-  color: #1689b7;
+  color: #11648a;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.11em;
@@ -68,7 +68,7 @@
 }
 
 .autorizacion__meta dt {
-  color: #8792a3;
+  color: #566575;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -137,7 +137,7 @@
 
 .autorizacion__form-head p {
   margin: 0.4rem 0 0;
-  color: #8792a3;
+  color: #566575;
   font-size: 0.78rem;
 }
 
@@ -337,7 +337,7 @@
 }
 
 .autorizacion__consent-copy small {
-  color: #8792a3;
+  color: #566575;
   font-size: 0.73rem;
   line-height: 1.5;
 }

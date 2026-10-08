@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
+import Skeleton from '../shared/ui/Skeleton'
 import InsigniaEstado from '../entities/credit/ui/InsigniaEstado'
 import { currency, number, dateShort } from '../shared/lib/formatters'
 import {
@@ -120,7 +121,7 @@ export default function Resumen() {
       <div className="p-6 space-y-6 overflow-auto">
         {error && (
           <Tarjeta className="border-red-200 bg-red-50/40 text-sm text-red-800">
-            No se pudo cargar el resumen: {error}
+            <p role="alert">No se pudo cargar el resumen: {error}</p>
           </Tarjeta>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -129,24 +130,28 @@ export default function Resumen() {
             label="Total solicitudes"
             value={cargando ? '…' : number(total)}
             tone="brand"
+            cargando={cargando}
           />
           <Kpi
             icon={TrendingUp}
             label="Tasa de aprobación"
             value={`${total ? ((approved / total) * 100).toFixed(1) : 0}%`}
             tone="emerald"
+            cargando={cargando}
           />
           <Kpi
             icon={TrendingDown}
             label="Tasa de rechazo"
             value={`${total ? ((rejected / total) * 100).toFixed(1) : 0}%`}
             tone="red"
+            cargando={cargando}
           />
           <Kpi
             icon={Clock}
             label="En revisión / pendiente"
             value={number(review)}
             tone="amber"
+            cargando={cargando}
           />
         </div>
 
@@ -155,11 +160,13 @@ export default function Resumen() {
             icon={Wallet}
             label="Capacidad de pago promedio"
             value={currency(avgCapacidad)}
+            cargando={cargando}
           />
           <Kpi
             icon={Wallet}
             label="Cupo promedio aprobado"
             value={currency(avgLimit)}
+            cargando={cargando}
           />
         </div>
 
@@ -168,24 +175,33 @@ export default function Resumen() {
             <h3 className="font-semibold text-slate-900 mb-4">
               Distribución por estado
             </h3>
-            <div className="h-64">
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie
-                    data={byStatus}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={60}
-                    outerRadius={90}
-                    paddingAngle={3}
-                  >
-                    {byStatus.map((s) => (
-                      <Cell key={s.name} fill={s.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+            <div
+              className="h-64"
+              aria-busy={cargando}
+              role="img"
+              aria-label={`Distribución por estado: ${byStatus.map((item) => `${item.name}: ${item.value}`).join(', ')}`}
+            >
+              {cargando ? (
+                <Skeleton className="h-full w-full rounded-xl" />
+              ) : (
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie
+                      data={byStatus}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={60}
+                      outerRadius={90}
+                      paddingAngle={3}
+                    >
+                      {byStatus.map((s) => (
+                        <Cell key={s.name} fill={s.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </Tarjeta>
 
@@ -193,16 +209,25 @@ export default function Resumen() {
             <h3 className="font-semibold text-slate-900 mb-4">
               Solicitudes por ocupación
             </h3>
-            <div className="h-64">
-              <ResponsiveContainer>
-                <BarChart data={byEmployment}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#099dd7" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+            <div
+              className="h-64"
+              aria-busy={cargando}
+              role="img"
+              aria-label={`Solicitudes por ocupación: ${byEmployment.map((item) => `${item.name}: ${item.value}`).join(', ')}`}
+            >
+              {cargando ? (
+                <Skeleton className="h-full w-full rounded-xl" />
+              ) : (
+                <ResponsiveContainer>
+                  <BarChart data={byEmployment}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} />
+                    <Tooltip />
+                    <Bar dataKey="value" fill="#099dd7" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </Tarjeta>
 
@@ -210,16 +235,25 @@ export default function Resumen() {
             <h3 className="font-semibold text-slate-900 mb-4">
               Últimos 6 meses
             </h3>
-            <div className="h-64">
-              <ResponsiveContainer>
-                <BarChart data={monthBuckets}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="range" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="#065f83" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+            <div
+              className="h-64"
+              aria-busy={cargando}
+              role="img"
+              aria-label={`Solicitudes en los últimos seis meses: ${monthBuckets.map((item) => `${item.range}: ${item.count}`).join(', ')}`}
+            >
+              {cargando ? (
+                <Skeleton className="h-full w-full rounded-xl" />
+              ) : (
+                <ResponsiveContainer>
+                  <BarChart data={monthBuckets}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="range" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} />
+                    <Tooltip />
+                    <Bar dataKey="count" fill="#065f83" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </Tarjeta>
         </div>
@@ -236,20 +270,39 @@ export default function Resumen() {
               Ver todas →
             </Link>
           </div>
-          <div className="overflow-x-auto">
+          <div
+            className="overflow-x-auto"
+            role="region"
+            aria-label="Tabla de últimas solicitudes"
+            tabIndex={0}
+          >
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-200">
-                  <th className="py-3 pr-4">N°</th>
-                  <th className="py-3 pr-4">Solicitante</th>
-                  <th className="py-3 pr-4">Fecha</th>
-                  <th className="py-3 pr-4">Ocupación</th>
-                  <th className="py-3 pr-4">Score</th>
-                  <th className="py-3 pr-4">Cupo sugerido</th>
-                  <th className="py-3 pr-4">Estado</th>
+                  <th scope="col" className="py-3 pr-4">
+                    N°
+                  </th>
+                  <th scope="col" className="py-3 pr-4">
+                    Solicitante
+                  </th>
+                  <th scope="col" className="py-3 pr-4">
+                    Fecha
+                  </th>
+                  <th scope="col" className="py-3 pr-4">
+                    Ocupación
+                  </th>
+                  <th scope="col" className="py-3 pr-4">
+                    Score
+                  </th>
+                  <th scope="col" className="py-3 pr-4">
+                    Cupo sugerido
+                  </th>
+                  <th scope="col" className="py-3 pr-4">
+                    Estado
+                  </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody aria-busy={cargando}>
                 {solicitudes.slice(0, 6).map((s) => {
                   const cupo = numero(s.evaluacion?.cupo_sugerido)
                   return (
@@ -303,14 +356,28 @@ export default function Resumen() {
                   </tr>
                 )}
                 {cargando && (
-                  <tr>
-                    <td
-                      colSpan={7}
-                      className="py-10 text-center text-slate-500"
-                    >
-                      Cargando solicitudes…
-                    </td>
-                  </tr>
+                  <>
+                    <tr className="sr-only">
+                      <td colSpan={7} role="status">
+                        Cargando solicitudes
+                      </td>
+                    </tr>
+                    {[...Array(5)].map((_, row) => (
+                      <tr
+                        key={`skeleton-${row}`}
+                        aria-hidden="true"
+                        className="border-b border-slate-100"
+                      >
+                        {[...Array(7)].map((__, column) => (
+                          <td key={column} className="py-4 pr-4">
+                            <Skeleton
+                              className={column === 1 ? 'h-4 w-36' : 'h-4 w-20'}
+                            />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </>
                 )}
               </tbody>
             </table>
@@ -326,11 +393,13 @@ function Kpi({
   label,
   value,
   tone = 'brand',
+  cargando = false,
 }: {
   icon: typeof Wallet
   label: string
   value: string
   tone?: 'brand' | 'emerald' | 'red' | 'amber'
+  cargando?: boolean
 }) {
   const tones = {
     brand: 'bg-brand-50 text-brand-600',
@@ -345,11 +414,15 @@ function Kpi({
       >
         <Icon size={20} />
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0" aria-busy={cargando}>
         <p className="text-xs uppercase tracking-wide text-slate-500">
           {label}
         </p>
-        <p className="text-xl font-bold text-slate-900 truncate">{value}</p>
+        {cargando ? (
+          <Skeleton className="mt-2 h-6 w-24" />
+        ) : (
+          <p className="text-xl font-bold text-slate-900 truncate">{value}</p>
+        )}
       </div>
     </Tarjeta>
   )

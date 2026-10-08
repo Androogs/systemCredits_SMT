@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
+import Skeleton from '../shared/ui/Skeleton'
 import InsigniaEstado from '../entities/credit/ui/InsigniaEstado'
 import {
   ApiError,
@@ -64,6 +65,49 @@ const ETAPA_LABELS: Record<string, string> = {
   matriz_decision: 'Matriz de decisión',
   capacidad_pago: 'Capacidad de pago',
 }
+
+const INDICADOR_LABELS: Record<string, string> = {
+  embargos: 'Embargos vigentes',
+  cancelaciones_mal_manejo: 'Cancelaciones por mal manejo',
+  cartera_castigada: 'Cartera castigada',
+  dudoso_recaudo: 'Obligaciones de dudoso recaudo',
+  mora_60_vigente: 'Moras vigentes de 60 días o más',
+  moras_30_historicas: 'Moras históricas de 30 días',
+  moras_60_historicas: 'Moras históricas de 60 días',
+  moras_90_historicas: 'Moras históricas de 90 días o más',
+  calificaciones_negativas: 'Calificaciones negativas',
+  reestructuraciones: 'Obligaciones reestructuradas',
+  mora_30_vigente: 'Moras vigentes de 30 días',
+  estado_documento: 'Estado del documento',
+  peor_calificacion: 'Peor calificación reportada',
+  documento_vigente: 'Documento vigente',
+  score_codigo_exclusion: 'Código de exclusión del score',
+  reportado_fallecido: 'Reporte de fallecimiento',
+}
+
+const SOLICITUD_LABELS: Record<string, string> = {
+  tipo_id: 'Tipo de documento',
+  numero_id: 'Número de documento',
+  primer_apellido: 'Primer apellido',
+  ocupacion: 'Ocupación',
+  tipo_contrato: 'Tipo de contrato',
+  antiguedad_meses: 'Antigüedad laboral',
+  anios_camara_comercio: 'Años en Cámara de Comercio',
+  fecha_nacimiento: 'Fecha de nacimiento',
+  nacionalidad: 'Nacionalidad',
+  tiene_multas_runt: 'Multas pendientes en RUNT',
+  ingresos_mensuales: 'Ingresos mensuales declarados',
+  otros_ingresos: 'Otros ingresos',
+  saldo_financiar: 'Saldo a financiar',
+  plazo: 'Plazo solicitado',
+  tasa: 'Tasa mensual',
+}
+
+const FORMAS_MONETARIAS = new Set([
+  'ingresos_mensuales',
+  'otros_ingresos',
+  'saldo_financiar',
+])
 
 export default function DetalleSolicitud() {
   const { id } = useParams()
@@ -139,8 +183,36 @@ export default function DetalleSolicitud() {
   if (cargando) {
     return (
       <>
-        <Encabezado title="Solicitud" subtitle="Cargando…" />
-        <div className="p-6 text-sm text-slate-500">Cargando la solicitud…</div>
+        <Encabezado title="Solicitud" subtitle="Consultando información" />
+        <div
+          className="space-y-6 overflow-auto p-6"
+          role="status"
+          aria-label="Cargando la solicitud"
+        >
+          <Tarjeta>
+            <div className="space-y-4">
+              <Skeleton className="h-6 w-1/3" />
+              <Skeleton className="h-4 w-1/2" />
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {[...Array(4)].map((_, index) => (
+                  <Skeleton key={index} className="h-20 rounded-xl" />
+                ))}
+              </div>
+            </div>
+          </Tarjeta>
+          <div className="grid gap-6 lg:grid-cols-2">
+            {[...Array(2)].map((_, index) => (
+              <Tarjeta key={index}>
+                <Skeleton className="mb-4 h-5 w-1/3" />
+                <div className="space-y-3">
+                  {[...Array(5)].map((__, row) => (
+                    <Skeleton key={row} className="h-4 w-full" />
+                  ))}
+                </div>
+              </Tarjeta>
+            ))}
+          </div>
+        </div>
       </>
     )
   }
@@ -148,11 +220,13 @@ export default function DetalleSolicitud() {
   if (noExiste || !datos) {
     return (
       <>
-        <Encabezado
-          title={noExiste ? 'Solicitud no encontrada' : 'Error'}
-          subtitle={error ?? undefined}
-        />
+        <Encabezado title={noExiste ? 'Solicitud no encontrada' : 'Error'} />
         <div className="p-6">
+          {error && (
+            <p role="alert" className="mb-4 text-sm text-red-700">
+              No se pudo cargar la solicitud: {error}
+            </p>
+          )}
           <Link to="/solicitudes" className="btn-ghost">
             <ArrowLeft size={16} /> Volver
           </Link>
@@ -544,7 +618,7 @@ export default function DetalleSolicitud() {
                       </span>
                       <p className="text-slate-600">{paso.resultado}</p>
                       {paso.detalle.length > 0 && (
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-slate-600">
                           {paso.detalle.join(' · ')}
                         </p>
                       )}
@@ -563,74 +637,275 @@ export default function DetalleSolicitud() {
 
         {auditoria && (
           <Tarjeta>
-            <div className="flex items-center justify-between mb-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <h3 className="font-semibold flex items-center gap-2">
-                <Database size={18} /> Evaluación auditada - JSON
+                <Database size={18} /> Detalle de evaluación
               </h3>
-              <div className="flex bg-slate-100 rounded-full p-1 text-xs">
+              <div
+                className="flex max-w-full flex-wrap bg-slate-100 rounded-full p-1 text-xs"
+                role="group"
+                aria-label="Información de la evaluación"
+              >
                 <button
+                  type="button"
                   onClick={() => setJsonTab('resultado')}
-                  className={`px-3 py-1 rounded-full ${jsonTab === 'resultado' ? 'bg-white shadow font-medium' : 'text-slate-500'}`}
+                  aria-pressed={jsonTab === 'resultado'}
+                  className={`px-3 py-1.5 rounded-full ${jsonTab === 'resultado' ? 'bg-white shadow font-medium' : 'text-slate-500'}`}
                 >
-                  Resultado del motor
+                  Desición Final
                 </button>
                 <button
+                  type="button"
                   onClick={() => setJsonTab('payload')}
-                  className={`px-3 py-1 rounded-full ${jsonTab === 'payload' ? 'bg-white shadow font-medium' : 'text-slate-500'}`}
+                  aria-pressed={jsonTab === 'payload'}
+                  className={`px-3 py-1.5 rounded-full ${jsonTab === 'payload' ? 'bg-white shadow font-medium' : 'text-slate-500'}`}
                 >
-                  Payload enviado
+                  Solicitud evaluada
                 </button>
               </div>
             </div>
 
-            <div className="rounded-xl bg-slate-950 text-slate-100 p-4 overflow-auto max-h-[380px]">
-              <div className="flex justify-between items-center mb-2 text-[11px] text-slate-400">
-                <span>
-                  {jsonTab === 'resultado'
-                    ? 'resultado_motor.json'
-                    : 'solicitud_motor.json'}
-                </span>
-                <button
-                  onClick={() => {
-                    const blob = new Blob(
-                      [
-                        JSON.stringify(
-                          jsonTab === 'resultado'
-                            ? auditoria.resultado
-                            : auditoria.request,
-                          null,
-                          2,
-                        ),
-                      ],
-                      { type: 'application/json' },
-                    )
-                    const url = URL.createObjectURL(blob)
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.download = `${datos.id_solicitud}_${jsonTab}.json`
-                    a.click()
-                    URL.revokeObjectURL(url)
-                  }}
-                  className="flex items-center gap-1 hover:text-white"
-                >
-                  <Download size={12} /> Descargar
-                </button>
-              </div>
-              <pre className="text-xs leading-relaxed whitespace-pre-wrap">
-                {JSON.stringify(
-                  jsonTab === 'resultado'
-                    ? auditoria.resultado
-                    : auditoria.request,
-                  null,
-                  2,
+            {jsonTab === 'resultado' ? (
+              <div className="space-y-5">
+                <section aria-labelledby="auditoria-decision">
+                  <h4
+                    id="auditoria-decision"
+                    className="mb-2 text-sm font-semibold text-slate-900"
+                  >
+                    Decisión y perfil
+                  </h4>
+                  <dl className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
+                    <Row k="Decisión" v={auditoria.resultado.decision} />
+                    <Row
+                      k="Decisión interna"
+                      v={auditoria.resultado.decision_interna}
+                    />
+                    <Row
+                      k="Score consultado"
+                      v={auditoria.resultado.score_consultado ?? '—'}
+                    />
+                    <Row
+                      k="Tipo de score"
+                      v={auditoria.resultado.score_tipo ?? '—'}
+                    />
+                    <Row
+                      k="Perfil de score"
+                      v={auditoria.resultado.perfil_score ?? '—'}
+                    />
+                    <Row
+                      k="Perfil de ingreso"
+                      v={auditoria.resultado.perfil_ingreso ?? '—'}
+                    />
+                  </dl>
+                </section>
+
+                <section aria-labelledby="auditoria-ingresos">
+                  <h4
+                    id="auditoria-ingresos"
+                    className="mb-2 text-sm font-semibold text-slate-900"
+                  >
+                    Ingresos y capacidad de pago
+                  </h4>
+                  <dl className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
+                    <Row
+                      k="Ingreso reportado por la evaluación"
+                      v={formatCurrencyValue(auditoria.resultado.valor_ingreso)}
+                    />
+                    <Row
+                      k="Estimación de ingreso HDC+ (Quanto)"
+                      v={formatCurrencyValue(auditoria.resultado.quanto_medio)}
+                    />
+                    <Row
+                      k="Ingreso usado por el motor"
+                      v={formatCurrencyValue(auditoria.resultado.ingreso_final)}
+                      highlight
+                    />
+                    <Row
+                      k="Fuente del ingreso"
+                      v={auditoria.resultado.fuente_ingreso_final}
+                    />
+                    <Row
+                      k="Ingreso en SMMLV"
+                      v={auditoria.resultado.ingreso_final_smmlv}
+                    />
+                    <Row
+                      k="Endeudamiento"
+                      v={formatPercentageValue(
+                        auditoria.resultado.endeudamiento,
+                      )}
+                    />
+                    <Row
+                      k="Disponible"
+                      v={formatCurrencyValue(auditoria.resultado.disponible)}
+                    />
+                    <Row
+                      k="Capacidad de pago"
+                      v={formatCurrencyValue(
+                        auditoria.resultado.capacidad_pago,
+                      )}
+                    />
+                    <Row
+                      k="Cupo sugerido"
+                      v={formatCurrencyValue(auditoria.resultado.cupo_sugerido)}
+                    />
+                    <Row
+                      k="Cuota sugerida"
+                      v={formatCurrencyValue(
+                        auditoria.resultado.cuota_sugerida,
+                      )}
+                    />
+                  </dl>
+                </section>
+
+                <section aria-labelledby="auditoria-historial">
+                  <h4
+                    id="auditoria-historial"
+                    className="mb-2 text-sm font-semibold text-slate-900"
+                  >
+                    Indicadores del historial crediticio
+                  </h4>
+                  {Object.entries(auditoria.resultado.indicadores_buro).filter(
+                    ([, value]) =>
+                      value == null ||
+                      ['string', 'number', 'boolean'].includes(typeof value),
+                  ).length > 0 ? (
+                    <dl className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
+                      {Object.entries(auditoria.resultado.indicadores_buro)
+                        .filter(
+                          ([, value]) =>
+                            value == null ||
+                            ['string', 'number', 'boolean'].includes(
+                              typeof value,
+                            ),
+                        )
+                        .map(([key, value]) => (
+                          <Row
+                            key={key}
+                            k={INDICADOR_LABELS[key] ?? labelReadable(key)}
+                            v={formatReadableValue(value)}
+                          />
+                        ))}
+                    </dl>
+                  ) : (
+                    <p className="text-sm text-slate-500">
+                      La auditoría no contiene indicadores de historial
+                      crediticio para esta evaluación.
+                    </p>
+                  )}
+                </section>
+
+                {auditoria.resultado.causales.length > 0 && (
+                  <section aria-labelledby="auditoria-causales">
+                    <h4
+                      id="auditoria-causales"
+                      className="mb-2 text-sm font-semibold text-slate-900"
+                    >
+                      Causales de la evaluación
+                    </h4>
+                    <ul className="space-y-2">
+                      {auditoria.resultado.causales.map((causal) => (
+                        <li
+                          key={causal.codigo}
+                          className="rounded-lg border border-slate-200 p-3 text-sm"
+                        >
+                          <span className="font-semibold text-slate-900">
+                            {causal.codigo}
+                          </span>
+                          <span className="ml-2 text-slate-700">
+                            {causal.descripcion}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
                 )}
-              </pre>
-            </div>
+
+                {auditoria.resultado.advertencias.length > 0 && (
+                  <section aria-labelledby="auditoria-advertencias">
+                    <h4
+                      id="auditoria-advertencias"
+                      className="mb-2 text-sm font-semibold text-slate-900"
+                    >
+                      Advertencias
+                    </h4>
+                    <ul className="list-disc space-y-1 pl-5 text-sm text-amber-800">
+                      {auditoria.resultado.advertencias.map(
+                        (advertencia, index) => (
+                          <li key={`${index}-${advertencia}`}>{advertencia}</li>
+                        ),
+                      )}
+                    </ul>
+                  </section>
+                )}
+              </div>
+            ) : (
+              <section aria-labelledby="auditoria-solicitud">
+                <h4
+                  id="auditoria-solicitud"
+                  className="mb-2 text-sm font-semibold text-slate-900"
+                >
+                  Datos usados para la evaluación
+                </h4>
+                <dl className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
+                  {Object.entries(auditoria.request).map(([key, value]) => (
+                    <Row
+                      key={key}
+                      k={SOLICITUD_LABELS[key] ?? labelReadable(key)}
+                      v={
+                        key === 'numero_id'
+                          ? enmascararIdentificacion(value)
+                          : FORMAS_MONETARIAS.has(key)
+                            ? formatCurrencyValue(value)
+                            : key === 'tasa'
+                              ? `${formatReadableValue(value)}% m.v.`
+                              : key === 'plazo'
+                                ? `${formatReadableValue(value)} meses`
+                                : key === 'antiguedad_meses'
+                                  ? `${formatReadableValue(value)} meses`
+                                  : formatReadableValue(value)
+                      }
+                    />
+                  ))}
+                </dl>
+              </section>
+            )}
+
+            <p className="mt-4 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
+              Se muestran los resultados normalizados y los indicadores usados
+              por el motor. Las respuestas JSON originales de Historia de
+              Crédito y Valor Ingreso no se conservan en la auditoría.
+            </p>
             <p className="mt-2 text-[11px] text-slate-500">
               Evaluación {auditoria.evaluacion_id} · origen{' '}
               {auditoria.origen_datos} · {auditoria.tiempo_ms} ms ·{' '}
               {dateShort(auditoria.fecha_evaluacion)}
             </p>
+            <button
+              type="button"
+              onClick={() => {
+                const blob = new Blob(
+                  [
+                    JSON.stringify(
+                      jsonTab === 'resultado'
+                        ? auditoria.resultado
+                        : auditoria.request,
+                      null,
+                      2,
+                    ),
+                  ],
+                  { type: 'application/json' },
+                )
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `${datos.id_solicitud}_${jsonTab}.json`
+                a.click()
+                URL.revokeObjectURL(url)
+              }}
+              className="mt-3 inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700"
+            >
+              <Download size={14} /> Descargar datos técnicos
+            </button>
           </Tarjeta>
         )}
 
@@ -776,7 +1051,9 @@ export default function DetalleSolicitud() {
               </div>
             </div>
             {errorSeleccion && (
-              <p className="mt-3 text-sm text-red-600">{errorSeleccion}</p>
+              <p role="alert" className="mt-3 text-sm text-red-600">
+                {errorSeleccion}
+              </p>
             )}
             <button
               className="btn-primary mt-4"
@@ -883,7 +1160,9 @@ export default function DetalleSolicitud() {
               </label>
             </div>
             {errorDesembolso && (
-              <p className="mt-3 text-sm text-red-600">{errorDesembolso}</p>
+              <p role="alert" className="mt-3 text-sm text-red-600">
+                {errorDesembolso}
+              </p>
             )}
             <button
               className="btn-primary mt-4"
@@ -937,7 +1216,9 @@ export default function DetalleSolicitud() {
               </button>
             </div>
             {errorEvaluacion && (
-              <p className="mt-3 text-sm text-red-600">{errorEvaluacion}</p>
+              <p role="alert" className="mt-3 text-sm text-red-600">
+                {errorEvaluacion}
+              </p>
             )}
           </Tarjeta>
         )}
@@ -993,4 +1274,57 @@ function Row({
       </dd>
     </div>
   )
+}
+
+function formatCurrencyValue(value: unknown) {
+  const amount = Number(value)
+  return value == null || value === '' || !Number.isFinite(amount)
+    ? '—'
+    : currency(amount)
+}
+
+function formatPercentageValue(value: unknown) {
+  const percentage = Number(value)
+  return value == null || value === '' || !Number.isFinite(percentage)
+    ? '—'
+    : `${percentage.toFixed(1)}%`
+}
+
+function formatReadableValue(value: unknown): ReactNode {
+  if (value == null || value === '') return 'Sin dato'
+  if (typeof value === 'boolean') return value ? 'Sí' : 'No'
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value.toLocaleString('es-CO') : 'Sin dato'
+  }
+  if (Array.isArray(value)) {
+    return value.length
+      ? value.map(formatReadableValue).join(', ')
+      : 'Sin registros'
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value)
+    return entries.length
+      ? entries
+          .map(
+            ([key, entryValue]) =>
+              `${labelReadable(key)}: ${formatReadableValue(entryValue)}`,
+          )
+          .join(' · ')
+      : 'Sin registros'
+  }
+  return typeof value === 'string' ? value : 'Sin dato'
+}
+
+function labelReadable(value: string) {
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toLocaleUpperCase('es-CO'))
+}
+
+function enmascararIdentificacion(value: unknown) {
+  const identification = String(value ?? '').trim()
+  if (!identification) return 'Sin dato'
+  return identification.length > 4
+    ? `${'•'.repeat(Math.min(identification.length - 4, 8))}${identification.slice(-4)}`
+    : '•'.repeat(identification.length)
 }

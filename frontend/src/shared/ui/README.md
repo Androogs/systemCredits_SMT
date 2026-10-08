@@ -9,6 +9,8 @@ copias paralelas de componentes comunes.
 - `Alerta`: variantes `informacion`, `exito`, `advertencia` y `error`, con roles
   accesibles por defecto.
 - `Tarjeta`: contenedor basado en `div` con atributos HTML estándar.
+- `Skeleton`: placeholder animado y decorativo para estados de carga; el
+  contenedor debe comunicar el estado con `role="status"` o `aria-busy`.
 - `CampoEntrada`: entrada con etiqueta asociada, atributos nativos y error
   accesible.
 - `Selector`: selector con etiqueta asociada, opciones y error accesible.
@@ -16,5 +18,12 @@ copias paralelas de componentes comunes.
 Importación recomendada:
 
 ```tsx
-import { Alerta, Boton, CampoEntrada, Selector, Tarjeta } from '../shared/ui'
+import {
+  Alerta,
+  Boton,
+  CampoEntrada,
+  Selector,
+  Skeleton,
+  Tarjeta,
+} from '../shared/ui'
 ```
