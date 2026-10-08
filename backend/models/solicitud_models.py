@@ -42,6 +42,9 @@ class CrearSolicitudRequest(BaseModel):
     linea_credito: str | None = Field(default=None, max_length=60)
     destino_credito: str | None = Field(default=None, max_length=80)
     plazo_deseado_meses: int | None = Field(default=None, ge=1)
+    # Token de la sesión de captura remota (paso 3): enlaza las evidencias
+    # documentales subidas por el cliente a esta solicitud.
+    sesion_captura: str | None = Field(default=None, max_length=64)
 
 
 class CrearSolicitudResponse(BaseModel):

@@ -278,6 +278,7 @@ function FlujoOriginacion() {
           onBack={() => setPasoActual(6)}
           inicial={contexto.solicitud}
           identidad={identidadDesdeContexto(contexto) ?? undefined}
+          sesionCapturaToken={contexto.biometria?.sesionToken}
           onContinue={(creada: ResultadoCrearSolicitud) => {
             setContexto((actual) => ({
               ...actual,

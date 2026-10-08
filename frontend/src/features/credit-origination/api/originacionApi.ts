@@ -85,6 +85,8 @@ export interface CrearSolicitudPayload {
   linea_credito?: string
   destino_credito?: string
   plazo_deseado_meses?: number
+  /** Token del link de captura (paso 3): enlaza las evidencias del cliente. */
+  sesion_captura?: string
 }
 
 export interface EvaluarSolicitudPayload {
@@ -397,5 +399,79 @@ export function registrarDesembolso(
   return request<DesembolsoApi>(`/api/solicitudes/${idSolicitud}/desembolso`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  })
+}
+
+// ---------- Captura remota de evidencias (cédula + video) ----------
+
+export type TipoEvidencia =
+  'cedula_frontal' | 'cedula_reverso' | 'video_prueba_vida'
+
+export interface SesionCapturaApi {
+  id_sesion: string
+  token: string
+  estado: 'pendiente' | 'completada' | 'expirada'
+  expira_en: string
+}
+
+export interface EvidenciaApi {
+  id_evidencia: number
+  tipo: TipoEvidencia
+  mime: string
+  tamano_bytes: number
+  hash_sha256: string
+  creado_en: string
+}
+
+export interface EstadoCapturaApi {
+  estado: string
+  pendientes: TipoEvidencia[]
+  evidencias: EvidenciaApi[]
+}
+
+export interface EstadoSesionApi extends EstadoCapturaApi {
+  id_sesion: string
+  expira_en: string
+}
+
+/** El asesor crea la sesión; el token va en el link/QR del celular. */
+export function crearSesionCaptura() {
+  return request<SesionCapturaApi>('/api/sesiones-captura', { method: 'POST' })
+}
+
+/** Polling del asesor: evidencias recibidas en la sesión. */
+export function estadoSesionCaptura(idSesion: string) {
+  return request<EstadoSesionApi>(`/api/sesiones-captura/${idSesion}`)
+}
+
+/** Evidencias ya enlazadas a una solicitud persistida. */
+export function listarEvidenciasSolicitud(idSolicitud: string) {
+  return request<EvidenciaApi[]>(`/api/solicitudes/${idSolicitud}/evidencias`)
+}
+
+/** URL del contenido binario de una evidencia (asesor autenticado). */
+export function urlEvidenciaContenido(idEvidencia: number) {
+  return `${API}/api/evidencias/${idEvidencia}/contenido`
+}
+
+/** Estado para la página móvil pública (autoriza el token del link). */
+export function estadoCaptura(token: string) {
+  return request<EstadoCapturaApi>(`/api/captura/${token}`)
+}
+
+export function subirEvidencia(
+  token: string,
+  tipo: TipoEvidencia,
+  archivo: Blob,
+  nombre: string,
+) {
+  const form = new FormData()
+  form.append('tipo', tipo)
+  form.append('archivo', archivo, nombre)
+  // multipart: el boundary lo pone el navegador; no fijar Content-Type.
+  return request<EvidenciaApi>(`/api/captura/${token}/evidencias`, {
+    method: 'POST',
+    headers: {},
+    body: form,
   })
 }

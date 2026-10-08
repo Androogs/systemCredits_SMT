@@ -105,4 +105,18 @@ frontend/.vite/
 *.rej
 *.pid
 *.seed
-*.tgzAGENTS.md
+*.tgz
+
+# Notas locales del proyecto (no versionar)
+AGENTS.md
+
+# ─────────────────────────────────────────────
+# Playwright E2E
+# ─────────────────────────────────────────────
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+e2e_playwright.db
+
+# Evidencias de captura remota (storage local del MVP)
+uploads/

@@ -1,9 +1,12 @@
 import { z } from 'zod'
 
+// VITE_API_URL vacío = llamadas relativas a /api (mismo origen): en dev las
+// reenvía el proxy de Vite (vite.config.ts → API_PROXY_TARGET); en
+// producción, definir la URL absoluta de la API publicada.
 const envSchema = z.object({
-  VITE_API_URL: z.string().url(),
+  VITE_API_URL: z.string().url().or(z.literal('')),
 })
 
 export const env = envSchema.parse({
-  VITE_API_URL: import.meta.env.VITE_API_URL ?? 'http://localhost:8000',
+  VITE_API_URL: import.meta.env.VITE_API_URL ?? '',
 })

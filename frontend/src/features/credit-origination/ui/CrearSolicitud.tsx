@@ -7,6 +7,7 @@ import {
   type IdentidadSolicitante,
 } from '../model/mapeos-api'
 import { ApiError, crearSolicitud } from '../api/originacionApi'
+import { erroresSolicitud } from '../model/solicitud-schema'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import './CrearSolicitud.css'
 
@@ -35,6 +36,8 @@ interface CrearSolicitudProps {
   inicial?: Partial<DatosSolicitud>
   /** Identidad capturada en los pasos 1-6 (habilita el POST real). */
   identidad?: IdentidadSolicitante
+  /** Token de la sesión de captura del paso 3: enlaza las evidencias. */
+  sesionCapturaToken?: string
 }
 
 const lineasCredito = [
@@ -62,17 +65,31 @@ const ocupaciones = [
   'Prestador de Servicios',
 ]
 
-const valoresIniciales: DatosSolicitud = {
-  lineaCredito: 'Inversiones Pacífico',
-  destinoCredito: 'Financiamiento de Vehículos',
-  plazoMeses: 36,
-  ocupacion: '',
-  empresa: '',
-  mesesContinuidad: 24,
-  aniosCamara: null,
-  ingresosMensuales: 4_500_000,
-  egresosMensuales: 1_800_000,
-}
+// Precarga de demostración solo en dev (import.meta.env.DEV); en el
+// build de producción los campos económicos arrancan vacíos.
+const valoresIniciales: DatosSolicitud = import.meta.env.DEV
+  ? {
+      lineaCredito: 'Inversiones Pacífico',
+      destinoCredito: 'Financiamiento de Vehículos',
+      plazoMeses: 36,
+      ocupacion: 'Empleado Término Indefinido',
+      empresa: 'Distribuciones del Pacífico S.A.S.',
+      mesesContinuidad: 24,
+      aniosCamara: null,
+      ingresosMensuales: 4_500_000,
+      egresosMensuales: 1_800_000,
+    }
+  : {
+      lineaCredito: 'Inversiones Pacífico',
+      destinoCredito: 'Financiamiento de Vehículos',
+      plazoMeses: 36,
+      ocupacion: '',
+      empresa: '',
+      mesesContinuidad: 0,
+      aniosCamara: null,
+      ingresosMensuales: 0,
+      egresosMensuales: 0,
+    }
 
 const formatoCOP = new Intl.NumberFormat('es-CO', {
   style: 'currency',
@@ -100,6 +117,7 @@ function CrearSolicitud({
   onBack,
   inicial,
   identidad,
+  sesionCapturaToken,
 }: CrearSolicitudProps) {
   const [datos, setDatos] = useState<DatosSolicitud>({
     ...valoresIniciales,
@@ -111,31 +129,7 @@ function CrearSolicitud({
   const [registrado, setRegistrado] = useState(false)
   const [errorApi, setErrorApi] = useState<string | null>(null)
 
-  const errores = useMemo(() => {
-    const lista: Partial<Record<keyof DatosSolicitud, string>> = {}
-    if (!datos.lineaCredito)
-      lista.lineaCredito = 'Selecciona la línea de crédito.'
-    if (!datos.destinoCredito)
-      lista.destinoCredito = 'Selecciona el destino del crédito.'
-    if (!datos.plazoMeses) lista.plazoMeses = 'Selecciona el plazo deseado.'
-    if (!datos.ocupacion) lista.ocupacion = 'Selecciona la ocupación principal.'
-    if (!datos.empresa.trim()) lista.empresa = 'Ingresa la empresa o empleador.'
-    if (datos.mesesContinuidad < 0)
-      lista.mesesContinuidad = 'La continuidad no puede ser negativa.'
-    if (
-      datos.ocupacion === 'Independiente' &&
-      (datos.aniosCamara === null || datos.aniosCamara <= 0)
-    )
-      lista.aniosCamara =
-        'Requerido para independientes: el motor rechaza sin Cámara de Comercio (R16).'
-    else if (datos.aniosCamara !== null && datos.aniosCamara < 0)
-      lista.aniosCamara = 'Los años de Cámara no pueden ser negativos.'
-    if (!datos.ingresosMensuales || datos.ingresosMensuales <= 0)
-      lista.ingresosMensuales = 'Ingresa los ingresos mensuales.'
-    if (datos.egresosMensuales < 0)
-      lista.egresosMensuales = 'Los egresos no pueden ser negativos.'
-    return lista
-  }, [datos])
+  const errores = useMemo(() => erroresSolicitud(datos), [datos])
 
   const mostrarError = (campo: keyof DatosSolicitud) =>
     Boolean(errores[campo]) && (intentado || tocados[campo])
@@ -203,7 +197,9 @@ function CrearSolicitud({
 
     setEnviando(true)
     setErrorApi(null)
-    crearSolicitud(construirCrearSolicitudPayload(identidad, datos))
+    crearSolicitud(
+      construirCrearSolicitudPayload(identidad, datos, sesionCapturaToken),
+    )
       .then((respuesta) => {
         setEnviando(false)
         setRegistrado(true)

@@ -66,6 +66,7 @@ export function primerApellido(apellidos: string): string {
 export function construirCrearSolicitudPayload(
   identidad: IdentidadSolicitante,
   solicitud: DatosSolicitud,
+  sesionCaptura?: string,
 ): CrearSolicitudPayload {
   const { ocupacion, tipoContrato } = ocupacionApi(solicitud.ocupacion)
   return {
@@ -90,6 +91,7 @@ export function construirCrearSolicitudPayload(
     linea_credito: solicitud.lineaCredito,
     destino_credito: solicitud.destinoCredito,
     plazo_deseado_meses: solicitud.plazoMeses,
+    ...(sesionCaptura ? { sesion_captura: sesionCaptura } : {}),
   }
 }
 

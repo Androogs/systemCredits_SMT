@@ -6,6 +6,7 @@
  * descarta, el borrador se elimina.
  */
 
+import { z } from 'zod'
 import type { DatosValidacion } from '../ui/ValidacionInicial'
 import type { DatosAutorizacion } from '../ui/AutorizacionDatos'
 import type { ResultadoBiometrico } from '../ui/CapturaCedula'
@@ -44,15 +45,24 @@ export interface BorradorOriginacion {
 
 const CLAVE = 'inversiones-pacifico:borrador-originacion'
 
+// Valida el sobre del borrador; el contexto interno queda passthrough:
+// cada paso valida su propia forma al consumirla.
+const borradorSchema = z.object({
+  version: z.literal(1),
+  paso: z.number().int().min(1).max(12),
+  contexto: z.custom<ContextoOriginacion>(
+    (valor) => typeof valor === 'object' && valor !== null,
+  ),
+  formalizacionIniciada: z.boolean(),
+  guardadoEn: z.string(),
+})
+
 export function cargarBorrador(): BorradorOriginacion | null {
   try {
     const crudo = localStorage.getItem(CLAVE)
     if (!crudo) return null
-    const borrador = JSON.parse(crudo) as BorradorOriginacion
-    if (borrador.version !== 1 || !borrador.contexto || !borrador.paso) {
-      return null
-    }
-    return borrador
+    const parseado = borradorSchema.safeParse(JSON.parse(crudo))
+    return parseado.success ? parseado.data : null
   } catch {
     return null
   }

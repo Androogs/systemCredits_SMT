@@ -100,6 +100,10 @@ class Settings(BaseSettings):
     rate_limit_habilitado: bool = True
     rate_limit_max_peticiones: int = 30  # métodos mutadores por IP
     rate_limit_ventana_seg: float = 60.0
+    # --- Captura remota de evidencias ---
+    evidencias_dir: str = "uploads/evidencias"  # storage local del MVP; S3 en producción
+    captura_ttl_minutos: int = 30  # vigencia del link con token
+    evidencia_max_mb: int = 25  # límite por archivo (videos)
     # --- Resiliencia Experian ---
     experian_reintentos: int = 2  # reintentos extra tras el primer intento
     experian_espera_reintento_seg: float = 1.0  # backoff base (x2 por intento)

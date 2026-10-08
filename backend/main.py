@@ -16,6 +16,7 @@ from backend.middlewares.rate_limit_middleware import RateLimitMiddleware
 from backend.routes import (
     auditoria_routes,
     catalogo_routes,
+    evidencia_routes,
     health_routes,
     motor_routes,
     parametros_routes,
@@ -80,6 +81,7 @@ def crear_app() -> FastAPI:
         auditoria_routes,
         parametros_routes,
         catalogo_routes,
+        evidencia_routes,
     ):
         app.include_router(modulo.router, prefix="/api")
     return app

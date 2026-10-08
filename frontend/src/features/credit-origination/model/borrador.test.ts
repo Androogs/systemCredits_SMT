@@ -76,6 +76,17 @@ describe('borrador de originación', () => {
       JSON.stringify({ version: 99, paso: 3, contexto: {} }),
     )
     expect(cargarBorrador()).toBeNull()
+    datos.set(
+      'inversiones-pacifico:borrador-originacion',
+      JSON.stringify({
+        version: 1,
+        paso: 'siete',
+        contexto: null,
+        formalizacionIniciada: false,
+        guardadoEn: '2026-10-07',
+      }),
+    )
+    expect(cargarBorrador()).toBeNull()
   })
 
   it('nunca lanza errores aunque localStorage falle', () => {

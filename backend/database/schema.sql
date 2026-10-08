@@ -1035,6 +1035,7 @@ CREATE TABLE motor_evaluacion_auditoria (
     fecha_evaluacion TIMESTAMPTZ  NOT NULL DEFAULT now(),
     ambiente         VARCHAR(20)  NOT NULL,
     origen_datos     VARCHAR(40)  NOT NULL,
+    parametros_huella VARCHAR(16),
     id_solicitud     VARCHAR(36),
     tipo_id          VARCHAR(2)   NOT NULL,
     numero_id        VARCHAR(20)  NOT NULL,
@@ -1052,3 +1053,32 @@ CREATE INDEX ix_motor_auditoria_fecha     ON motor_evaluacion_auditoria (fecha_e
 CREATE INDEX ix_motor_auditoria_numero_id ON motor_evaluacion_auditoria (numero_id);
 CREATE INDEX ix_motor_auditoria_decision  ON motor_evaluacion_auditoria (decision);
 CREATE INDEX ix_motor_auditoria_solicitud ON motor_evaluacion_auditoria (id_solicitud);
+
+-- Captura remota de evidencias documentales (cédula frontal/reverso y
+-- video de prueba de vida) desde el celular del cliente, por link con token.
+CREATE TABLE sesion_captura (
+    id_sesion    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    token        VARCHAR(64)  NOT NULL UNIQUE,
+    estado       VARCHAR(20)  NOT NULL DEFAULT 'pendiente',
+    id_solicitud UUID         REFERENCES solicitud_credito (id_solicitud),
+    expira_en    TIMESTAMPTZ  NOT NULL,
+    creado_en    TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE TABLE documento_evidencia (
+    id_evidencia    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_sesion       UUID         NOT NULL REFERENCES sesion_captura (id_sesion) ON DELETE CASCADE,
+    id_solicitud    UUID         REFERENCES solicitud_credito (id_solicitud),
+    tipo            VARCHAR(20)  NOT NULL,
+    ruta            VARCHAR(255) NOT NULL,
+    nombre_original VARCHAR(255),
+    mime            VARCHAR(60)  NOT NULL,
+    tamano_bytes    BIGINT       NOT NULL,
+    hash_sha256     VARCHAR(64)  NOT NULL,
+    creado_en       TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX ix_sesion_captura_estado    ON sesion_captura (estado);
+CREATE INDEX ix_sesion_captura_solicitud ON sesion_captura (id_solicitud);
+CREATE INDEX ix_evidencia_sesion         ON documento_evidencia (id_sesion);
+CREATE INDEX ix_evidencia_solicitud      ON documento_evidencia (id_solicitud);

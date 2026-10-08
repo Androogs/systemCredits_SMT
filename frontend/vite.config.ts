@@ -1,16 +1,32 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig, loadEnv } from 'vite'
+import { loadEnv } from 'vite'
+import { defineConfig } from 'vitest/config'
 
 export default defineConfig(({ mode }) => {
   const fileEnv = loadEnv(mode, process.cwd(), '')
-  const apiUrl = fileEnv.VITE_API_URL || 'http://localhost:8000'
+  // Destino del proxy /api en dev (independiente de VITE_API_URL, que puede
+  // quedar vacío para llamadas relativas del mismo origen — p. ej. cuando el
+  // celular entra por un túnel HTTPS hacia este dev server).
+  const apiUrl = fileEnv.API_PROXY_TARGET || 'http://localhost:8001'
 
   return {
     plugins: [react()],
     server: {
+      // Dominios de túneles gratuitos para probar la captura desde el celular
+      // (getUserMedia exige HTTPS).
+      allowedHosts: [
+        '.trycloudflare.com',
+        '.loca.lt',
+        '.ngrok-free.app',
+        '.ngrok.io',
+      ],
       proxy: {
         '/api': apiUrl,
       },
+    },
+    test: {
+      // Los specs de e2e/ son de Playwright (npm run test:e2e), no de Vitest.
+      exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
     },
   }
 })

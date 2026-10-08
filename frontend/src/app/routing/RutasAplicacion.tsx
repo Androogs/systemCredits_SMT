@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import ContenedorPanel from '../../widgets/app-shell/ContenedorPanel'
 import IniciarSesion from '../../pages/IniciarSesion'
+import CapturaMovil from '../../pages/CapturaMovil'
 import Resumen from '../../pages/Resumen'
 import Simulador from '../../pages/Simulador'
 import PanelAsesor from '../../pages/PanelAsesor'
@@ -23,6 +24,9 @@ export default function RutasAplicacion() {
   return (
     <Routes>
       <Route path="/login" element={<IniciarSesion />} />
+      {/* Captura remota de evidencias: el token del link es la única
+          autorización; el cliente no necesita sesión del asesor. */}
+      <Route path="/captura/:token" element={<CapturaMovil />} />
       <Route
         path="/"
         element={

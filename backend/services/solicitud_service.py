@@ -107,6 +107,7 @@ def _oferta_response(o) -> OfertaResponse:
 class SolicitudService:
     def __init__(self, db: Session) -> None:
         self.repo = SolicitudRepository(db)
+        self._db = db
 
     def crear(self, req: CrearSolicitudRequest) -> CrearSolicitudResponse:
         datos_cliente = req.cliente.model_dump(mode="python", exclude={"num_cedula"})
@@ -134,6 +135,12 @@ class SolicitudService:
                 "plazo_deseado_meses": req.plazo_deseado_meses,
             },
         )
+        if req.sesion_captura:
+            from backend.services.evidencia_service import EvidenciaService
+
+            EvidenciaService(self._db).enlazar_solicitud(
+                req.sesion_captura, solicitud.id_solicitud
+            )
         return CrearSolicitudResponse(
             id_solicitud=solicitud.id_solicitud,
             num_solicitud=solicitud.num_solicitud,

@@ -1,5 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
 import Skeleton from '../shared/ui/Skeleton'
@@ -13,11 +14,13 @@ import {
   obtenerSolicitud,
   registrarDesembolso,
   seleccionarOferta,
-  type AuditoriaDetalleApi,
-  type BancoApi,
+  listarEvidenciasSolicitud,
+  urlEvidenciaContenido,
+  type EvaluarSolicitudPayload,
+  type EvidenciaApi,
+  type RegistrarDesembolsoPayload,
   type SolicitudDetalleApi,
 } from '../features/credit-origination/api/originacionApi'
-import { cargarBorrador } from '../features/credit-origination/model/borrador'
 import {
   calcularCupoSugerido,
   TASA_MENSUAL_REFERENCIA,
@@ -111,74 +114,83 @@ const FORMAS_MONETARIAS = new Set([
 
 export default function DetalleSolicitud() {
   const { id } = useParams()
-  const [datos, setDatos] = useState<SolicitudDetalleApi | null>(null)
-  const [cargando, setCargando] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [noExiste, setNoExiste] = useState(false)
-  const [bancos, setBancos] = useState<BancoApi[]>([])
+  const qc = useQueryClient()
   const [bancoAch, setBancoAch] = useState('')
   const [numeroCuenta, setNumeroCuenta] = useState('')
   const [referenciaPago, setReferenciaPago] = useState('')
-  const [desembolsando, setDesembolsando] = useState(false)
-  const [errorDesembolso, setErrorDesembolso] = useState<string | null>(null)
-  const [evaluando, setEvaluando] = useState(false)
-  const [errorEvaluacion, setErrorEvaluacion] = useState<string | null>(null)
   const [montoTomar, setMontoTomar] = useState('')
   const [plazoTomar, setPlazoTomar] = useState('')
-  const [seleccionando, setSeleccionando] = useState(false)
-  const [errorSeleccion, setErrorSeleccion] = useState<string | null>(null)
-  const [auditoria, setAuditoria] = useState<AuditoriaDetalleApi | null>(null)
   const [jsonTab, setJsonTab] = useState<'resultado' | 'payload'>('resultado')
 
-  function recargar() {
-    if (!id) return
-    return obtenerSolicitud(id).then(setDatos)
-  }
+  const consultaSolicitud = useQuery<SolicitudDetalleApi>({
+    queryKey: ['solicitud', id],
+    queryFn: () => obtenerSolicitud(id!),
+    enabled: !!id,
+    retry: (count, err) =>
+      !(err instanceof ApiError && err.status === 404) && count < 1,
+  })
+  const datos = consultaSolicitud.data ?? null
+  const cargando = consultaSolicitud.isPending
+  const errorConsulta = consultaSolicitud.error
+  const noExiste =
+    errorConsulta instanceof ApiError && errorConsulta.status === 404
+  const error =
+    !noExiste && errorConsulta != null
+      ? errorConsulta instanceof Error
+        ? errorConsulta.message
+        : 'Error consultando la solicitud'
+      : null
 
-  useEffect(() => {
-    if (!id) return
-    setCargando(true)
-    obtenerSolicitud(id)
-      .then(setDatos)
-      .catch((err: unknown) => {
-        if (err instanceof ApiError && err.status === 404) {
-          setNoExiste(true)
-        } else {
-          setError(
-            err instanceof Error
-              ? err.message
-              : 'Error consultando la solicitud',
-          )
-        }
-      })
-      .finally(() => setCargando(false))
-    listarBancos()
-      .then(setBancos)
-      .catch(() => setBancos([]))
-  }, [id])
+  const { data: bancos = [] } = useQuery({
+    queryKey: ['bancos'],
+    queryFn: listarBancos,
+    staleTime: Infinity,
+    retry: 0,
+  })
+
+  const { data: evidencias = [] } = useQuery<EvidenciaApi[]>({
+    queryKey: ['evidencias-solicitud', datos?.id_solicitud],
+    enabled: datos != null,
+    queryFn: () => listarEvidenciasSolicitud(datos!.id_solicitud),
+  })
+  const evidenciaPorTipo = new Map(evidencias.map((e) => [e.tipo, e]))
 
   const idEvaluacion = datos?.evaluacion?.id_evaluacion
-  useEffect(() => {
-    if (!datos || idEvaluacion == null) {
-      setAuditoria(null)
-      return
-    }
-    let cancelado = false
-    listarAuditoriaSolicitud(datos.id_solicitud)
-      .then((lista) =>
-        lista.length > 0 ? obtenerAuditoria(lista[0].evaluacion_id) : null,
-      )
-      .then((det) => {
-        if (!cancelado) setAuditoria(det)
-      })
-      .catch(() => {
-        if (!cancelado) setAuditoria(null)
-      })
-    return () => {
-      cancelado = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idEvaluacion, datos?.id_solicitud])
+  const { data: auditoria = null } = useQuery({
+    queryKey: ['auditoria-solicitud', datos?.id_solicitud],
+    enabled: datos != null && idEvaluacion != null,
+    queryFn: async () => {
+      const lista = await listarAuditoriaSolicitud(datos!.id_solicitud)
+      return lista.length > 0 ? obtenerAuditoria(lista[0].evaluacion_id) : null
+    },
+  })
+
+  /** Tras una mutación el detalle y la lista del panel quedan frescos. */
+  function invalidar() {
+    qc.invalidateQueries({ queryKey: ['solicitud', id] })
+    qc.invalidateQueries({ queryKey: ['solicitudes'] })
+  }
+
+  const mutEvaluar = useMutation({
+    mutationFn: (payload: EvaluarSolicitudPayload) =>
+      evaluarSolicitud(datos!.id_solicitud, payload),
+    onSuccess: invalidar,
+  })
+  const mutSeleccionar = useMutation({
+    mutationFn: (vars: { idOferta: number; monto: number; plazo: number }) =>
+      seleccionarOferta(
+        datos!.id_solicitud,
+        vars.idOferta,
+        vars.monto,
+        vars.plazo,
+      ),
+    onSuccess: invalidar,
+  })
+  const mutDesembolso = useMutation({
+    mutationFn: (payload: RegistrarDesembolsoPayload) =>
+      registrarDesembolso(datos!.id_solicitud, payload),
+    onSuccess: invalidar,
+  })
 
   if (cargando) {
     return (
@@ -249,40 +261,24 @@ export default function DetalleSolicitud() {
     datos.estado === 'aprobada' && !ofertaSeleccionada && ofertaElegible != null
 
   const resultadoAuditoria = auditoria?.resultado ?? null
-  const borrador = cargarBorrador()
-  const cedulaBorrador = (
-    borrador?.contexto.validacion?.numeroDocumento ?? ''
-  ).replace(/\D/g, '')
-  const evidencia =
-    cedulaBorrador.length > 0 &&
-    cedulaBorrador === datos.num_cedula.replace(/\D/g, '')
-      ? (borrador?.contexto.biometria?.evidencia ?? null)
-      : null
+  const evidenciaFrontal = evidenciaPorTipo.get('cedula_frontal')
+  const evidenciaReverso = evidenciaPorTipo.get('cedula_reverso')
+  const evidenciaVideo = evidenciaPorTipo.get('video_prueba_vida')
+  const hayEvidencia = evidencias.length > 0
+
+  function mensajeError(err: unknown, fallback: string): string {
+    if (err instanceof ApiError && typeof err.detalle === 'string') {
+      return err.detalle
+    }
+    return err instanceof Error ? err.message : fallback
+  }
 
   function confirmarSeleccionOferta() {
     if (!datos || !ofertaElegible) return
     const monto = Number(montoTomar)
     const plazo = Number(plazoTomar)
     if (!(monto > 0) || !(plazo > 0)) return
-    setSeleccionando(true)
-    setErrorSeleccion(null)
-    seleccionarOferta(
-      datos.id_solicitud,
-      ofertaElegible.id_oferta,
-      monto,
-      plazo,
-    )
-      .then(() => recargar())
-      .catch((err: unknown) =>
-        setErrorSeleccion(
-          err instanceof ApiError && typeof err.detalle === 'string'
-            ? err.detalle
-            : err instanceof Error
-              ? err.message
-              : 'Error seleccionando la oferta',
-        ),
-      )
-      .finally(() => setSeleccionando(false))
+    mutSeleccionar.mutate({ idOferta: ofertaElegible.id_oferta, monto, plazo })
   }
 
   function evaluarPendiente() {
@@ -290,49 +286,21 @@ export default function DetalleSolicitud() {
     const plazo = datos.plazo_deseado_meses ?? 36
     const ingresos = numero(datos.datos_laborales?.ingreso_mensual) ?? 0
     const { monto } = calcularCupoSugerido(ingresos, 0, plazo)
-    setEvaluando(true)
-    setErrorEvaluacion(null)
-    evaluarSolicitud(datos.id_solicitud, {
+    mutEvaluar.mutate({
       saldo_financiar: Math.max(monto, 1),
       plazo,
       tasa: TASA_MENSUAL_REFERENCIA,
       consultar_experian: true,
     })
-      .then(() => recargar())
-      .catch((err: unknown) =>
-        setErrorEvaluacion(
-          err instanceof ApiError && typeof err.detalle === 'string'
-            ? err.detalle
-            : err instanceof Error
-              ? err.message
-              : 'Error evaluando la solicitud',
-        ),
-      )
-      .finally(() => setEvaluando(false))
   }
 
   function confirmarDesembolso() {
     if (!datos || !bancoAch || !numeroCuenta.trim()) return
-    setDesembolsando(true)
-    setErrorDesembolso(null)
-    registrarDesembolso(datos.id_solicitud, {
+    mutDesembolso.mutate({
       codigo_ach_banco: bancoAch,
       numero_cuenta_cliente: numeroCuenta.trim(),
       referencia_pago: referenciaPago.trim() || undefined,
     })
-      .then((d) =>
-        setDatos((prev) =>
-          prev ? { ...prev, estado: 'desembolsada', desembolso: d } : prev,
-        ),
-      )
-      .catch((err: unknown) =>
-        setErrorDesembolso(
-          err instanceof Error
-            ? err.message
-            : 'Error registrando el desembolso',
-        ),
-      )
-      .finally(() => setDesembolsando(false))
   }
 
   return (
@@ -478,50 +446,50 @@ export default function DetalleSolicitud() {
           <h3 className="font-semibold text-slate-900 mb-1 flex items-center gap-2">
             <FileImage size={18} /> Documentos del solicitante
           </h3>
-          {evidencia ? (
+          {hayEvidencia ? (
             <>
               <p className="text-xs text-slate-500 mb-4">
-                Evidencia biométrica capturada en este equipo durante la
-                radicación.
+                Evidencia capturada por el cliente desde su celular (enlace con
+                token del paso 3).
               </p>
               <div className="grid md:grid-cols-3 gap-6">
-                <EvidenciaImagen
-                  titulo="Cédula - Anverso"
-                  url={evidencia.anverso}
-                />
-                <EvidenciaImagen
-                  titulo="Cédula - Reverso"
-                  url={evidencia.reverso}
-                />
-                <EvidenciaImagen
-                  titulo="Selfie del titular"
-                  url={evidencia.selfie}
-                />
+                {evidenciaFrontal && (
+                  <EvidenciaImagen
+                    titulo="Cédula — frontal"
+                    url={urlEvidenciaContenido(evidenciaFrontal.id_evidencia)}
+                  />
+                )}
+                {evidenciaReverso && (
+                  <EvidenciaImagen
+                    titulo="Cédula — posterior"
+                    url={urlEvidenciaContenido(evidenciaReverso.id_evidencia)}
+                  />
+                )}
               </div>
-              {evidencia.video && (
+              {evidenciaVideo && (
                 <div className="mt-6 space-y-2 max-w-md">
                   <p className="text-xs uppercase text-slate-500 font-medium flex items-center gap-1">
-                    <Video size={14} /> Video de validación
+                    <Video size={14} /> Video de prueba de vida
                   </p>
                   <div className="rounded-xl overflow-hidden border border-slate-200 bg-black">
                     <video
                       controls
                       className="w-full h-48 object-cover"
-                      src={evidencia.video}
+                      src={urlEvidenciaContenido(evidenciaVideo.id_evidencia)}
                     />
                   </div>
                   <p className="text-[11px] text-slate-500">
-                    Evidencia de prueba de vida del cliente.
+                    Cliente con la cédula junto al rostro — pendiente de
+                    revisión.
                   </p>
                 </div>
               )}
             </>
           ) : (
             <p className="text-sm text-slate-500 mt-1">
-              Sin evidencia local registrada para esta solicitud. La captura
-              biométrica (cédula, selfie y prueba de vida) se guarda en el
-              equipo del asesor durante la radicación; el almacenamiento de
-              documentos en el backend aún no está integrado.
+              Sin evidencias registradas. Desde el paso 3 de la originación
+              puedes generar un enlace/QR para que el cliente las capture con su
+              celular.
             </p>
           )}
         </Tarjeta>
@@ -1050,21 +1018,26 @@ export default function DetalleSolicitud() {
                 </p>
               </div>
             </div>
-            {errorSeleccion && (
+            {mutSeleccionar.error && (
               <p role="alert" className="mt-3 text-sm text-red-600">
-                {errorSeleccion}
+                {mensajeError(
+                  mutSeleccionar.error,
+                  'Error seleccionando la oferta',
+                )}
               </p>
             )}
             <button
               className="btn-primary mt-4"
               disabled={
-                seleccionando ||
+                mutSeleccionar.isPending ||
                 !(Number(montoTomar) > 0) ||
                 !(Number(plazoTomar) > 0)
               }
               onClick={confirmarSeleccionOferta}
             >
-              {seleccionando ? 'Confirmando…' : 'Confirmar oferta seleccionada'}
+              {mutSeleccionar.isPending
+                ? 'Confirmando…'
+                : 'Confirmar oferta seleccionada'}
             </button>
           </Tarjeta>
         )}
@@ -1159,19 +1132,26 @@ export default function DetalleSolicitud() {
                 />
               </label>
             </div>
-            {errorDesembolso && (
+            {mutDesembolso.error && (
               <p role="alert" className="mt-3 text-sm text-red-600">
-                {errorDesembolso}
+                {mensajeError(
+                  mutDesembolso.error,
+                  'Error registrando el desembolso',
+                )}
               </p>
             )}
             <button
               className="btn-primary mt-4"
               disabled={
-                desembolsando || !bancoAch || numeroCuenta.trim().length < 4
+                mutDesembolso.isPending ||
+                !bancoAch ||
+                numeroCuenta.trim().length < 4
               }
               onClick={confirmarDesembolso}
             >
-              {desembolsando ? 'Registrando…' : 'Confirmar desembolso'}
+              {mutDesembolso.isPending
+                ? 'Registrando…'
+                : 'Confirmar desembolso'}
             </button>
           </Tarjeta>
         )}
@@ -1210,14 +1190,14 @@ export default function DetalleSolicitud() {
               <button
                 className="btn-primary"
                 onClick={evaluarPendiente}
-                disabled={evaluando}
+                disabled={mutEvaluar.isPending}
               >
-                {evaluando ? 'Evaluando…' : 'Evaluar con Experian'}
+                {mutEvaluar.isPending ? 'Evaluando…' : 'Evaluar con Experian'}
               </button>
             </div>
-            {errorEvaluacion && (
+            {mutEvaluar.error && (
               <p role="alert" className="mt-3 text-sm text-red-600">
-                {errorEvaluacion}
+                {mensajeError(mutEvaluar.error, 'Error evaluando la solicitud')}
               </p>
             )}
           </Tarjeta>
