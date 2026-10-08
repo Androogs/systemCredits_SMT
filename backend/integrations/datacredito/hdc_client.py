@@ -10,6 +10,7 @@ import httpx
 from backend.config import Settings, get_settings
 from backend.integrations.datacredito.auth import OktaAuth, get_auth
 from backend.integrations.datacredito.parsers.hdc_parser import HDCParser
+from backend.integrations.datacredito.resiliencia import llamar_con_resiliencia
 from backend.models.buro_models import RespuestaHDC
 from backend.models.enums import TipoIdentificacion
 from backend.services.motor_exceptions import DataCreditoError
@@ -64,13 +65,20 @@ class HDCRestClient:
             "parameters": [{"type": "0", "nameParameter": "codigos", "valueParameter": "TOM-001"}],
         }
         url = f"{self.settings.hdc_base_url}/cs/credit-history/v1/hdcplus"
-        try:
-            with httpx.Client(timeout=self.settings.timeout_experian_segundos, verify=True) as client:
-                response = client.post(url, headers=headers, json=body)
-        except httpx.RequestError as exc:
-            raise DataCreditoError("hdc_rest", None, f"Error de red: {exc}") from exc
-        if response.status_code != 200:
-            raise DataCreditoError("hdc_rest", response.status_code, response.text[:500])
+
+        def llamada() -> httpx.Response:
+            try:
+                with httpx.Client(
+                    timeout=self.settings.timeout_experian_segundos, verify=True
+                ) as client:
+                    resp = client.post(url, headers=headers, json=body)
+            except httpx.RequestError as exc:
+                raise DataCreditoError("hdc_rest", None, f"Error de red: {exc}") from exc
+            if resp.status_code != 200:
+                raise DataCreditoError("hdc_rest", resp.status_code, resp.text[:500])
+            return resp
+
+        response = llamar_con_resiliencia("hdc_rest", self.settings, llamada)
         try:
             payload: dict[str, Any] = response.json()
         except ValueError as exc:

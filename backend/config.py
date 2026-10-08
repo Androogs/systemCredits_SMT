@@ -96,6 +96,15 @@ class Settings(BaseSettings):
     server_ip_address: str = ""
 
     timeout_experian_segundos: float = 60.0
+    # --- Rate limiting ---
+    rate_limit_habilitado: bool = True
+    rate_limit_max_peticiones: int = 30  # métodos mutadores por IP
+    rate_limit_ventana_seg: float = 60.0
+    # --- Resiliencia Experian ---
+    experian_reintentos: int = 2  # reintentos extra tras el primer intento
+    experian_espera_reintento_seg: float = 1.0  # backoff base (x2 por intento)
+    experian_circuito_fallos: int = 5  # fallos consecutivos que abren el circuito
+    experian_circuito_espera_seg: float = 60.0  # tiempo que el circuito queda abierto
 
     def _por_ambiente(self, demo: str, prod: str) -> str:
         return demo if self.environment == "demo" else prod

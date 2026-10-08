@@ -108,22 +108,68 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(ruta: string, init?: RequestInit): Promise<T> {
-  const respuesta = await fetch(`${API}${ruta}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  })
-  const cuerpo = await respuesta.json().catch(() => null)
-  if (!respuesta.ok) {
-    const detalle =
-      cuerpo && typeof cuerpo === 'object'
-        ? ((cuerpo as Record<string, unknown>).detail ??
-          (cuerpo as Record<string, unknown>).error ??
-          cuerpo)
-        : `Error HTTP ${respuesta.status}`
-    throw new ApiError(respuesta.status, detalle)
+interface OpcionesRequest extends RequestInit {
+  /** Timeout por intento en ms (default 30s). */
+  timeoutMs?: number
+  /** Reintentos extra en fallos de red o 5xx (default: 2 para GET, 0 para el resto). */
+  reintentos?: number
+}
+
+const TIMEOUT_POR_DEFECTO_MS = 30_000
+const ESPERA_REINTENTO_MS = 400
+
+function esperar(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function request<T>(ruta: string, init?: OpcionesRequest): Promise<T> {
+  const {
+    timeoutMs = TIMEOUT_POR_DEFECTO_MS,
+    reintentos,
+    ...resto
+  } = init ?? {}
+  const esGet = (resto.method ?? 'GET') === 'GET'
+  // Los POST nunca se reintentan automáticamente: crear/evaluar/seleccionar/
+  // desembolsar no son idempotentes desde el punto de vista del cliente.
+  const intentos = 1 + (reintentos ?? (esGet ? 2 : 0))
+  let ultimoError: Error | null = null
+
+  for (let intento = 1; intento <= intentos; intento++) {
+    try {
+      const respuesta = await fetch(`${API}${ruta}`, {
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(timeoutMs),
+        ...resto,
+      })
+      const cuerpo = await respuesta.json().catch(() => null)
+      if (respuesta.ok) return cuerpo as T
+      const detalle =
+        cuerpo && typeof cuerpo === 'object'
+          ? ((cuerpo as Record<string, unknown>).detail ??
+            (cuerpo as Record<string, unknown>).error ??
+            cuerpo)
+          : `Error HTTP ${respuesta.status}`
+      if (respuesta.status >= 500 && intento < intentos) {
+        await esperar(ESPERA_REINTENTO_MS * intento)
+        continue
+      }
+      throw new ApiError(respuesta.status, detalle)
+    } catch (e) {
+      if (e instanceof ApiError) throw e
+      ultimoError = e instanceof Error ? e : new Error(String(e))
+      if (intento < intentos) {
+        await esperar(ESPERA_REINTENTO_MS * intento)
+        continue
+      }
+    }
   }
-  return cuerpo as T
+  const esTimeout = ultimoError?.name === 'TimeoutError'
+  throw new ApiError(
+    0,
+    esTimeout
+      ? `El servidor no respondió en ${Math.round(timeoutMs / 1000)}s. Reintenta.`
+      : 'No fue posible contactar el servidor. Verifica tu conexión.',
+  )
 }
 
 export function crearSolicitud(payload: CrearSolicitudPayload) {
@@ -140,6 +186,9 @@ export function evaluarSolicitud(
   return request<ResultadoMotorApi>(`/api/solicitudes/${idSolicitud}/evaluar`, {
     method: 'POST',
     body: JSON.stringify(payload),
+    // La evaluación consulta Experian en línea (token + HDC+ + Valor
+    // Ingreso + motor); puede tardar más que el default de 30s.
+    timeoutMs: 120_000,
   })
 }
 

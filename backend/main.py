@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.config import get_settings
 from backend.db_models import session as db_session
 from backend.middlewares.error_middleware import registrar_manejadores
+from backend.middlewares.rate_limit_middleware import RateLimitMiddleware
 from backend.routes import (
     auditoria_routes,
     catalogo_routes,
@@ -57,6 +58,12 @@ def crear_app() -> FastAPI:
         openapi_url="/api/openapi.json",
     )
 
+    if settings.rate_limit_habilitado:
+        app.add_middleware(
+            RateLimitMiddleware,
+            max_peticiones=settings.rate_limit_max_peticiones,
+            ventana_seg=settings.rate_limit_ventana_seg,
+        )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list(),

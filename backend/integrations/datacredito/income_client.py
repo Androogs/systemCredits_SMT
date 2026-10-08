@@ -7,6 +7,7 @@ import httpx
 from backend.config import Settings, get_settings
 from backend.integrations.datacredito.auth import OktaAuth, get_auth
 from backend.integrations.datacredito.parsers.income_parser import IncomeParser
+from backend.integrations.datacredito.resiliencia import llamar_con_resiliencia
 from backend.models.buro_models import RespuestaValorIngreso
 from backend.models.enums import TipoIdentificacion
 from backend.services.motor_exceptions import DataCreditoError
@@ -61,13 +62,20 @@ class IncomeRestClient:
             "ProductoConsulta": "1",
         }
         url = f"{self.settings.income_base_url}/cs/incomes/v1/income/indicator"
-        try:
-            with httpx.Client(timeout=self.settings.timeout_experian_segundos, verify=True) as client:
-                response = client.get(url, headers=headers, params=params)
-        except httpx.RequestError as exc:
-            raise DataCreditoError("income_rest", None, f"Error de red: {exc}") from exc
-        if response.status_code != 200:
-            raise DataCreditoError("income_rest", response.status_code, response.text[:500])
+
+        def llamada() -> httpx.Response:
+            try:
+                with httpx.Client(
+                    timeout=self.settings.timeout_experian_segundos, verify=True
+                ) as client:
+                    resp = client.get(url, headers=headers, params=params)
+            except httpx.RequestError as exc:
+                raise DataCreditoError("income_rest", None, f"Error de red: {exc}") from exc
+            if resp.status_code != 200:
+                raise DataCreditoError("income_rest", resp.status_code, resp.text[:500])
+            return resp
+
+        response = llamar_con_resiliencia("income_rest", self.settings, llamada)
         try:
             payload: dict[str, Any] = response.json()
         except ValueError as exc:
