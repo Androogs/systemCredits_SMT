@@ -19,6 +19,7 @@ class EvaluacionResumen(BaseModel):
     evaluacion_id: str
     fecha_evaluacion: str
     origen_datos: str
+    parametros_huella: str | None
     id_solicitud: str | None
     numero_id: str
     ocupacion: str
@@ -34,6 +35,7 @@ def _resumen(e) -> EvaluacionResumen:
         evaluacion_id=e.evaluacion_id,
         fecha_evaluacion=e.fecha_evaluacion.isoformat(),
         origen_datos=e.origen_datos,
+        parametros_huella=e.parametros_huella,
         id_solicitud=e.id_solicitud,
         numero_id=e.numero_id,
         ocupacion=e.ocupacion,

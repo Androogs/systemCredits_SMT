@@ -6,8 +6,8 @@ INSERT INTO rol (nombre, descripcion) VALUES
     ('contabilidad', 'Usuario de contabilidad')
 ON CONFLICT (nombre) DO NOTHING;
 
-INSERT INTO aliado_financiero (nit, nombre, tipo, sitio_web)
-VALUES ('814005081', 'INVERSIONES PACIFICO S.A.', 'otro', NULL)
+INSERT INTO aliado_financiero (nit, nombre, tipo, es_propio, activo)
+VALUES ('814005081', 'INVERSIONES PACIFICO S.A.', 'otro', TRUE, TRUE)
 ON CONFLICT (nit) DO NOTHING;
 
 UPDATE aliado_financiero
@@ -28,36 +28,36 @@ WHERE a.nit = '814005081'
     AND c.nombre IN ('TULUA MOTOS SA', 'SUMOTO SA PALMIRA', 'PIJAOS MOTOS S.A')
 ON CONFLICT (id_aliado, id_concesionario) DO NOTHING;
 
-INSERT INTO banco (codigo_ach, nombre, nit) VALUES
-    ('007', 'BANCOLOMBIA', '890903938'),
-    ('009', 'BANCO DE BOGOTA', '860002964'),
-    ('012', 'BBVA COLOMBIA', '860003020'),
-    ('013', 'BANCO DAVIVIENDA', '860034313'),
-    ('023', 'BANCO DE OCCIDENTE', '890300279'),
-    ('051', 'BANCO AV VILLAS', '860007336'),
-    ('052', 'BANCO CAJA SOCIAL', '860007338'),
-    ('100', 'BANCO W', '900091362'),
-    ('102', 'BANCO UNION', '890200486')
+INSERT INTO banco (codigo_ach, nombre, nit, activo) VALUES
+    ('007', 'BANCOLOMBIA', '890903938', TRUE),
+    ('009', 'BANCO DE BOGOTA', '860002964', TRUE),
+    ('012', 'BBVA COLOMBIA', '860003020', TRUE),
+    ('013', 'BANCO DAVIVIENDA', '860034313', TRUE),
+    ('023', 'BANCO DE OCCIDENTE', '890300279', TRUE),
+    ('051', 'BANCO AV VILLAS', '860007336', TRUE),
+    ('052', 'BANCO CAJA SOCIAL', '860007338', TRUE),
+    ('100', 'BANCO W', '900091362', TRUE),
+    ('102', 'BANCO UNION', '890200486', TRUE)
 ON CONFLICT (codigo_ach) DO NOTHING;
 
-INSERT INTO cuenta_bancaria (id_banco, tipo, numero, titular, nit_titular, id_aliado)
+INSERT INTO cuenta_bancaria (id_banco, tipo, numero, titular, nit_titular, id_aliado, activa)
 SELECT b.id_banco, 'ahorros', '0000000000', 'INVERSIONES PACIFICO S.A.',
-       '814005081', a.id_aliado
+       '814005081', a.id_aliado, TRUE
 FROM banco b, aliado_financiero a
 WHERE b.codigo_ach = '007'
     AND a.nit = '814005081'
 ON CONFLICT (id_banco, numero, tipo) DO NOTHING;
 
-INSERT INTO cuenta_bancaria (id_banco, tipo, numero, titular, id_concesionario)
+INSERT INTO cuenta_bancaria (id_banco, tipo, numero, titular, id_concesionario, activa)
 -- TODO: reemplazar los números de cuenta ficticios por cuentas reales antes de producción.
-SELECT b.id_banco, 'ahorros', c.nombre || '-CTA', c.nombre, c.id_concesionario
+SELECT b.id_banco, 'ahorros', c.nombre || '-CTA', c.nombre, c.id_concesionario, TRUE
 FROM banco b, concesionario c
 WHERE b.codigo_ach = '007'
     AND c.nombre IN ('TULUA MOTOS SA', 'SUMOTO SA PALMIRA', 'PIJAOS MOTOS S.A')
 ON CONFLICT (id_banco, numero, tipo) DO NOTHING;
 
-INSERT INTO aliado_producto (id_aliado, nombre)
-SELECT id_aliado, 'Financiacion de motocicleta'
+INSERT INTO aliado_producto (id_aliado, nombre, activo)
+SELECT id_aliado, 'Financiacion de motocicleta', TRUE
 FROM aliado_financiero
 WHERE nit = '814005081'
 ON CONFLICT (id_aliado, nombre) DO NOTHING;

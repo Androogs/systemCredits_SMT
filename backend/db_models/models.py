@@ -40,6 +40,7 @@ from sqlalchemy import (
     SmallInteger,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -305,6 +306,9 @@ class CapacidadPago(Base):
 
 class AliadoProducto(Base):
     __tablename__ = "aliado_producto"
+    __table_args__ = (
+        UniqueConstraint("id_aliado", "nombre", name="uq_aliado_producto"),
+    )
 
     id_aliado_producto: Mapped[int] = mapped_column(primary_key=True)
     id_aliado: Mapped[int] = mapped_column(ForeignKey("aliado_financiero.id_aliado"))
@@ -381,6 +385,9 @@ class Banco(Base):
 
 class CuentaBancaria(Base):
     __tablename__ = "cuenta_bancaria"
+    __table_args__ = (
+        UniqueConstraint("id_banco", "numero", "tipo", name="uq_cuenta_banco_numero_tipo"),
+    )
 
     id_cuenta: Mapped[int] = mapped_column(primary_key=True)
     id_banco: Mapped[int] = mapped_column(ForeignKey("banco.id_banco"))

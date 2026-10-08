@@ -19,6 +19,7 @@ class AuditoriaRepository:
         resultado: ResultadoMotor,
         origen_datos: str,
         id_solicitud: str | None = None,
+        parametros_huella: str | None = None,
     ) -> EvaluacionAuditoria:
         solicitud = resultado.solicitud
         registro = EvaluacionAuditoria(
@@ -26,6 +27,7 @@ class AuditoriaRepository:
             fecha_evaluacion=resultado.fecha_evaluacion,
             ambiente=resultado.ambiente,
             origen_datos=origen_datos,
+            parametros_huella=parametros_huella,
             id_solicitud=id_solicitud,
             tipo_id=solicitud.tipo_id.value,
             numero_id=solicitud.numero_id,

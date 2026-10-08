@@ -21,6 +21,8 @@ class EvaluacionAuditoria(Base):
     fecha_evaluacion: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora_utc, index=True)
     ambiente: Mapped[str] = mapped_column(String(20))
     origen_datos: Mapped[str] = mapped_column(String(40))  # mock:<escenario> | experian | archivos | cotizantes
+    # Huella sha256 corta del juego de parámetros vigente en la evaluación.
+    parametros_huella: Mapped[str | None] = mapped_column(String(16))
     id_solicitud: Mapped[str | None] = mapped_column(String(36), index=True)
     tipo_id: Mapped[str] = mapped_column(String(2))
     numero_id: Mapped[str] = mapped_column(String(20), index=True)

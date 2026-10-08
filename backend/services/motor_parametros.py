@@ -22,6 +22,7 @@ porcentajes entre 0 y 100, umbrales coherentes. Un archivo incoherente
 detiene la evaluación (ParametrosError) en vez de decidir con él.
 """
 
+import hashlib
 import json
 import os
 import threading
@@ -206,6 +207,16 @@ class MotorParametros(BaseModel):
     def snapshot(self) -> dict[str, Any]:
         """Valores vigentes serializables con números JSON (auditoría y archivo)."""
         return {k: _a_numero_json(v) for k, v in self.model_dump().items()}
+
+    def huella(self) -> str:
+        """Versión del juego de parámetros: sha256 corto del snapshot canónico.
+
+        Dos configuraciones idénticas producen la misma huella; cualquier cambio
+        en un parámetro la altera. Se persiste en cada evaluación auditada para
+        poder reconstruir el contexto exacto de una decisión.
+        """
+        canonic = json.dumps(self.snapshot(), sort_keys=True, ensure_ascii=False)
+        return hashlib.sha256(canonic.encode("utf-8")).hexdigest()[:16]
 
 
 def _a_numero_json(valor: Any) -> Any:

@@ -102,6 +102,8 @@ def test_auditoria(client):
     detalle = client.get(f"/api/auditoria/{ev['evaluacion_id']}").json()
     assert detalle["causales"][0]["codigo"] == "R2"
     assert "hdc_respuesta" not in detalle["resultado"]
+    assert detalle["parametros_huella"] == todos[0]["parametros_huella"]
+    assert len(detalle["parametros_huella"]) == 16
     assert client.get("/api/auditoria/no-existe").status_code == 404
 
 

@@ -195,7 +195,7 @@ class EvaluacionService:
             solicitud, reportes.hdc, reportes.valor_ingreso, reportes.advertencias, params
         )
         if self.db is not None:
-            AuditoriaRepository(self.db).guardar(resultado, reportes.origen)
+            AuditoriaRepository(self.db).guardar(resultado, reportes.origen, parametros_huella=params.huella())
         return resultado
 
     def evaluar_solicitud_db(self, id_solicitud: uuid.UUID, req: EvaluarSolicitudRequest) -> ResultadoMotor:
@@ -231,7 +231,7 @@ class EvaluacionService:
         )
         if resultado.decision == DecisionFinal.APROBADO:
             self._generar_ofertas(id_solicitud, resultado, repo)
-        AuditoriaRepository(self.db).guardar(resultado, reportes.origen, str(id_solicitud))
+        AuditoriaRepository(self.db).guardar(resultado, reportes.origen, str(id_solicitud), parametros_huella=params.huella())
         return resultado
 
     def _solicitud_desde_db(self, sc, req: EvaluarSolicitudRequest) -> Solicitud:

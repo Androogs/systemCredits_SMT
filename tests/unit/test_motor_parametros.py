@@ -100,3 +100,10 @@ def test_snapshot_es_json_numerico():
     assert snap["score_ep_1"] == 750 and isinstance(snap["score_ep_1"], int)
     assert snap["ingreso_e_1"] == 1.6
     json.dumps(snap)
+
+
+def test_huella_estable_y_sensible_a_cambios():
+    base = MotorParametros()
+    assert base.huella() == MotorParametros().huella()
+    assert len(base.huella()) == 16
+    assert MotorParametros(endeu_1=base.endeu_1 + 1).huella() != base.huella()
