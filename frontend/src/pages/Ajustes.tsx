@@ -2,6 +2,16 @@ import { useId, useState, useRef, useCallback, useEffect } from 'react'
 import type { ChangeEvent, InputHTMLAttributes, ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
+  actualizarParametros,
+  obtenerParametros,
+  restablecerParametros,
+} from '../features/settings/api/parametrosApi'
+import type {
+  ParametrosMotor,
+  ValorParametro,
+} from '../features/settings/api/parametrosApi'
+import { EditorParametros } from '../features/settings/ui/EditorParametros'
+import {
   User,
   Cpu,
   ShieldCheck,
@@ -23,7 +33,6 @@ import {
   Upload,
   Download,
   FileCheck,
-  Ban,
   Clock,
   AlertTriangle,
   Key,
@@ -58,60 +67,70 @@ type Usuario = {
 const SECCIONES: {
   id: SeccionId
   label: string
+  mobileLabel: string
   icon: LucideIcon
   desc: string
 }[] = [
   {
     id: 'perfil',
     label: 'Panel de Cuenta',
+    mobileLabel: 'Cuenta',
     icon: User,
     desc: 'Datos de sesión y seguridad',
   },
   {
     id: 'usuarios',
     label: 'Usuarios y Permisos',
+    mobileLabel: 'Usuarios',
     icon: Users,
     desc: 'Roles y Accesos',
   },
   {
     id: 'motor',
     label: 'Motor de Decisión',
+    mobileLabel: 'Motor',
     icon: Cpu,
     desc: 'Score, Quanto y límites',
   },
   {
     id: 'riesgo',
     label: 'Reglas de Riesgo',
+    mobileLabel: 'Riesgo',
     icon: ShieldCheck,
     desc: 'Filtros y listas',
   },
   {
     id: 'concesionarios',
     label: 'Concesionarios',
+    mobileLabel: 'Aliados',
     icon: Building2,
     desc: 'Aliados y cupos',
   },
   {
     id: 'documentos',
     label: 'Documentos y Plantillas',
+    mobileLabel: 'Documentos',
     icon: FileText,
     desc: 'Requisitos y formatos',
   },
   {
     id: 'auditoria',
     label: 'Auditoría y Logs',
+    mobileLabel: 'Auditoría',
     icon: LineChart,
     desc: 'Trazabilidad',
   },
   {
     id: 'seguridad',
     label: 'API y Seguridad',
+    mobileLabel: 'Seguridad',
     icon: KeyRound,
     desc: 'Keys, CORS',
   },
   {
     id: 'backup',
     label: 'Backup y Mantenimiento',
+    mobileLabel: 'Sistema',
     icon: HardDrive,
     desc: 'Respaldos y salud',
   },
@@ -128,8 +147,8 @@ const Card = ({
   desc?: string
   action?: ReactNode
 }) => (
-  <div className="rounded-lg border border-zinc-200 bg-white p-5">
-    <div className="flex flex-col gap-3 mb-5 sm:flex-row sm:items-start sm:justify-between">
+  <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
+    <div className="mb-4 flex flex-col gap-3 sm:mb-5 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <h3 className="font-semibold text-[14px] tracking-tight">{title}</h3>
         {desc && <p className="text-xs text-zinc-500 mt-1">{desc}</p>}
@@ -159,7 +178,7 @@ const Input = ({
       <input
         {...props}
         id={inputId}
-        className="h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-900"
+        className="h-11 w-full rounded-md border border-zinc-200 bg-white px-3 text-base focus:outline-none focus:ring-1 focus:ring-zinc-900 sm:h-9 sm:text-sm"
       />
     </div>
   )
@@ -226,6 +245,16 @@ export default function Ajustes() {
   ])
   const [nuevoConcesionario, setNuevoConcesionario] = useState('')
   const [showPass, setShowPass] = useState(false)
+  const [parametros, setParametros] = useState<ParametrosMotor | null>(null)
+  const [parametrosGuardados, setParametrosGuardados] =
+    useState<ParametrosMotor | null>(null)
+  const [bloqueadosPorEntorno, setBloqueadosPorEntorno] = useState<string[]>([])
+  const [cargandoParametros, setCargandoParametros] = useState(true)
+  const [guardandoParametros, setGuardandoParametros] = useState(false)
+  const [errorParametros, setErrorParametros] = useState<string | null>(null)
+  const [mensajeParametros, setMensajeParametros] = useState<string | null>(
+    null,
+  )
 
   // USUARIOS
   const [usuarios, setUsuarios] = useState<Usuario[]>([
@@ -390,6 +419,138 @@ export default function Ajustes() {
     backupRetencion: 30,
   })
 
+  const cargarParametros = useCallback(async () => {
+    setCargandoParametros(true)
+    setErrorParametros(null)
+    try {
+      const respuesta = await obtenerParametros()
+      setParametros(respuesta.parametros)
+      setParametrosGuardados(respuesta.parametros)
+      setBloqueadosPorEntorno(respuesta.bloqueados_por_entorno)
+      setMensajeParametros(null)
+    } catch (error) {
+      setErrorParametros(
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido al conectar con el backend.',
+      )
+    } finally {
+      setCargandoParametros(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void cargarParametros()
+  }, [cargarParametros])
+
+  const parametrosModificados =
+    parametros !== null &&
+    parametrosGuardados !== null &&
+    JSON.stringify(parametros) !== JSON.stringify(parametrosGuardados)
+
+  const recargarParametros = () => {
+    if (
+      parametrosModificados &&
+      !window.confirm(
+        'Hay cambios sin guardar. ¿Descartarlos y recargar desde el backend?',
+      )
+    ) {
+      return
+    }
+    void cargarParametros()
+  }
+
+  const handleParametroChange = (key: string, valor: ValorParametro) => {
+    setParametros((actuales) =>
+      actuales ? { ...actuales, [key]: valor } : actuales,
+    )
+    setErrorParametros(null)
+    setMensajeParametros(null)
+  }
+
+  const guardarCambios = async () => {
+    if (!parametros || !parametrosGuardados || !parametrosModificados) {
+      if (hasChanges) {
+        setErrorParametros(
+          'Las otras secciones aún no tienen endpoints de persistencia en el backend. No se guardaron esos cambios.',
+        )
+      }
+      return
+    }
+
+    const bloqueados = new Set(bloqueadosPorEntorno)
+    const cambios = Object.entries(parametros).reduce<ParametrosMotor>(
+      (resultado, [key, valor]) => {
+        if (
+          !bloqueados.has(key) &&
+          JSON.stringify(valor) !== JSON.stringify(parametrosGuardados[key])
+        ) {
+          resultado[key] = valor
+        }
+        return resultado
+      },
+      {},
+    )
+
+    if (Object.keys(cambios).length === 0) {
+      setParametros(parametrosGuardados)
+      setErrorParametros(
+        'No hay cambios editables: los valores modificados están fijados por el entorno.',
+      )
+      return
+    }
+
+    setGuardandoParametros(true)
+    setErrorParametros(null)
+    setMensajeParametros(null)
+    try {
+      const respuesta = await actualizarParametros(cambios)
+      setParametros(respuesta.parametros)
+      setParametrosGuardados(respuesta.parametros)
+      setBloqueadosPorEntorno(respuesta.bloqueados_por_entorno)
+      setMensajeParametros('Parámetros del motor guardados correctamente.')
+    } catch (error) {
+      setErrorParametros(
+        error instanceof Error
+          ? error.message
+          : 'No fue posible guardar los parámetros.',
+      )
+    } finally {
+      setGuardandoParametros(false)
+    }
+  }
+
+  const restablecerValores = async () => {
+    if (
+      !window.confirm(
+        '¿Restablecer los parámetros del motor a sus valores por defecto?',
+      )
+    ) {
+      return
+    }
+
+    setGuardandoParametros(true)
+    setErrorParametros(null)
+    setMensajeParametros(null)
+    try {
+      const respuesta = await restablecerParametros()
+      setParametros(respuesta.parametros)
+      setParametrosGuardados(respuesta.parametros)
+      setBloqueadosPorEntorno(respuesta.bloqueados_por_entorno)
+      setMensajeParametros(
+        'Parámetros del motor restablecidos a sus valores por defecto.',
+      )
+    } catch (error) {
+      setErrorParametros(
+        error instanceof Error
+          ? error.message
+          : 'No fue posible restablecer los parámetros.',
+      )
+    } finally {
+      setGuardandoParametros(false)
+    }
+  }
+
   const onChange = useCallback((k: string, v: unknown) => {
     setForm((s) => ({ ...s, [k]: v }))
     setHasChanges(true)
@@ -481,29 +642,43 @@ export default function Ajustes() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-zinc-900">
+    <div className="min-h-screen overflow-x-clip bg-[#F8FAFC] text-zinc-900">
       <div className="sticky top-0 z-20 border-b bg-white">
-        <div className="mx-auto max-w-[1400px] px-6 h-14 flex items-center justify-between">
-          <h1 className="text-sm font-semibold">
-            Ajustes{' '}
-            {hasChanges && (
-              <span className="ml-2 text-[11px] px-2 py-0.5 rounded bg-zinc-900 text-white">
-                Cambios sin guardar
+        <div className="mx-auto flex h-14 max-w-[1400px] items-center justify-between gap-2 pl-16 pr-3 sm:px-6">
+          <h1 className="flex min-w-0 items-center gap-2 text-base font-semibold">
+            Ajustes
+            {(hasChanges || parametrosModificados) && (
+              <span className="truncate rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-medium text-amber-900 sm:text-[11px]">
+                <span className="sm:hidden">Sin guardar</span>
+                <span className="hidden sm:inline">Cambios sin guardar</span>
               </span>
             )}
           </h1>
           <button
-            onClick={() => setHasChanges(false)}
-            disabled={!hasChanges}
-            className="h-8 px-4 rounded-md bg-zinc-900 text-white text-xs disabled:opacity-40"
+            onClick={() => void guardarCambios()}
+            disabled={
+              guardandoParametros || (!hasChanges && !parametrosModificados)
+            }
+            aria-label="Guardar cambios"
+            className="h-10 shrink-0 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-zinc-700 disabled:opacity-40 sm:px-4"
           >
-            Guardar cambios
+            {guardandoParametros ? (
+              'Guardando…'
+            ) : (
+              <>
+                <span className="sm:hidden">Guardar</span>
+                <span className="hidden sm:inline">Guardar cambios</span>
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      <div className="mx-auto max-w-[1400px] px-6 py-6 grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-6">
-        <div className="h-fit sticky top-[68px] space-y-1">
+      <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-4 px-3 py-4 sm:px-6 sm:py-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-6">
+        <nav
+          aria-label="Secciones de ajustes"
+          className="sticky top-14 z-10 -mx-3 flex min-w-0 snap-x snap-mandatory gap-2 overflow-x-auto border-b border-zinc-200 bg-[#F8FAFC]/95 px-3 py-2 backdrop-blur sm:-mx-6 sm:px-6 lg:top-[68px] lg:mx-0 lg:block lg:h-fit lg:space-y-1 lg:overflow-visible lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none"
+        >
           {SECCIONES.map((s) => {
             const Icon = s.icon
             const active = seccion === s.id
@@ -513,10 +688,15 @@ export default function Ajustes() {
                 type="button"
                 onClick={() => setSeccion(s.id)}
                 aria-pressed={active}
-                className={`w-full text-left rounded-md px-3 py-2.5 flex items-center gap-3 border ${active ? 'bg-zinc-900 text-white border-zinc-900' : 'border-transparent text-zinc-600 hover:bg-white hover:border-zinc-200'}`}
+                className={`flex min-h-11 shrink-0 snap-start items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors lg:mb-1 lg:w-full lg:justify-start lg:gap-3 lg:rounded-md lg:px-3 lg:py-2.5 lg:text-left lg:text-sm ${
+                  active
+                    ? 'border-zinc-900 bg-zinc-900 text-white shadow-sm'
+                    : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 lg:border-transparent lg:bg-transparent lg:shadow-none'
+                }`}
               >
-                <Icon className="h-[18px] w-[18px]" />
-                <div className="min-w-0">
+                <Icon className="h-4 w-4 shrink-0 lg:h-[18px] lg:w-[18px]" />
+                <span className="lg:hidden">{s.mobileLabel}</span>
+                <div className="hidden min-w-0 lg:block">
                   <p className="text-[13px] font-medium leading-none">
                     {s.label}
                   </p>
@@ -527,7 +707,7 @@ export default function Ajustes() {
               </button>
             )
           })}
-          <div className="pt-4 mt-4 border-t">
+          <div className="mt-4 hidden border-t pt-4 lg:block">
             <div className="rounded-md bg-white border p-3 text-xs">
               <p className="font-medium text-[11px] uppercase text-zinc-600">
                 Última conexión
@@ -541,9 +721,27 @@ export default function Ajustes() {
               </p>
             </div>
           </div>
-        </div>
+        </nav>
 
-        <div className="min-w-0 space-y-4 pb-24">
+        <div className="min-w-0 space-y-4 pb-28 sm:pb-24">
+          <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+            La configuración conectada al backend corresponde al motor de
+            decisión y sus reglas de riesgo. Las demás secciones aún no cuentan
+            con endpoints de persistencia y sus cambios no se guardan en el
+            servidor.
+          </div>
+          {(errorParametros || mensajeParametros) && (
+            <div
+              role={errorParametros ? 'alert' : 'status'}
+              className={`rounded-md border p-3 text-sm ${
+                errorParametros
+                  ? 'border-red-200 bg-red-50 text-red-800'
+                  : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              }`}
+            >
+              {errorParametros ?? mensajeParametros}
+            </div>
+          )}
           {seccion === 'perfil' && (
             <>
               <Card
@@ -634,7 +832,7 @@ export default function Ajustes() {
                         id="profile-role"
                         value={form.cargo}
                         onChange={(e) => onChange('cargo', e.target.value)}
-                        className="h-9 w-full rounded-md border px-3 text-sm"
+                        className="h-11 w-full rounded-lg border px-3 text-base sm:h-9 sm:rounded-md sm:text-sm"
                       >
                         <option>Super Admin</option>
                         <option>Administrador</option>
@@ -642,7 +840,7 @@ export default function Ajustes() {
                         <option>Asesor</option>
                       </select>
                     </div>
-                    <div className="col-span-2">
+                    <div className="sm:col-span-2">
                       <p className="text-[11px] uppercase text-zinc-600">
                         Concesionarios asignados
                       </p>
@@ -678,12 +876,12 @@ export default function Ajustes() {
                             e.key === 'Enter' && addConcesionario()
                           }
                           placeholder="Ej: Suzuki Yumbo"
-                          className="h-8 w-full min-w-0 rounded-md border px-3 text-sm sm:flex-1"
+                          className="h-11 w-full min-w-0 rounded-lg border px-3 text-base sm:h-9 sm:flex-1 sm:rounded-md sm:text-sm"
                         />
                         <button
                           type="button"
                           onClick={addConcesionario}
-                          className="h-8 px-3 rounded-md border bg-white text-xs flex items-center gap-1"
+                          className="flex h-11 items-center justify-center gap-1 rounded-lg border bg-white px-3 text-xs sm:h-9 sm:rounded-md"
                         >
                           <Plus className="h-3 w-3" /> Añadir
                         </button>
@@ -708,7 +906,7 @@ export default function Ajustes() {
                         value={form.passActual}
                         onChange={(e) => onChange('passActual', e.target.value)}
                         placeholder="••••••••"
-                        className="h-9 w-full rounded-md border px-3 pr-8 text-sm"
+                        className="h-11 w-full rounded-lg border px-3 pr-10 text-base sm:h-9 sm:rounded-md sm:text-sm"
                       />
                       <button
                         type="button"
@@ -746,7 +944,7 @@ export default function Ajustes() {
                     }
                   />
                 </div>
-                <div className="mt-6 grid md:grid-cols-2 gap-4">
+                <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="rounded-lg border p-4 flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium flex items-center gap-2">
@@ -775,7 +973,7 @@ export default function Ajustes() {
                       id="two-factor-method"
                       value={form.metodo2FA}
                       onChange={(e) => onChange('metodo2FA', e.target.value)}
-                      className="mt-1 h-8 w-full rounded-md border px-2 text-sm"
+                      className="mt-1 h-11 w-full rounded-lg border px-3 text-base sm:h-9 sm:rounded-md sm:px-2 sm:text-sm"
                     >
                       <option>App autenticadora</option>
                       <option>SMS</option>
@@ -789,7 +987,7 @@ export default function Ajustes() {
                   title="Preferencias"
                   action={<Palette className="h-4 w-4 text-zinc-400" />}
                 >
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-1.5">
                       <label
                         className="text-[11px] uppercase text-zinc-600"
@@ -801,7 +999,7 @@ export default function Ajustes() {
                         id="settings-theme"
                         value={form.tema}
                         onChange={(e) => onChange('tema', e.target.value)}
-                        className="h-9 w-full rounded-md border px-3 text-sm"
+                        className="h-11 w-full rounded-lg border px-3 text-base sm:h-9 sm:rounded-md sm:text-sm"
                       >
                         <option>Claro</option>
                         <option>Oscuro</option>
@@ -819,7 +1017,7 @@ export default function Ajustes() {
                         id="settings-language"
                         value={form.idioma}
                         onChange={(e) => onChange('idioma', e.target.value)}
-                        className="h-9 w-full rounded-md border px-3 text-sm"
+                        className="h-11 w-full rounded-lg border px-3 text-base sm:h-9 sm:rounded-md sm:text-sm"
                       >
                         <option>Español</option>
                         <option>English</option>
@@ -842,7 +1040,7 @@ export default function Ajustes() {
                       Activa
                     </span>
                   </div>
-                  <button className="w-full mt-3 h-8 rounded-md border text-xs flex items-center justify-center gap-1.5">
+                  <button className="mt-3 flex h-11 w-full items-center justify-center gap-1.5 rounded-lg border text-xs">
                     <LogOut className="h-3.5 w-3.5" /> Cerrar otras sesiones
                   </button>
                 </Card>
@@ -859,19 +1057,19 @@ export default function Ajustes() {
                 <button
                   onClick={openCreateModal}
                   type="button"
-                  className="h-8 px-3 rounded-md bg-zinc-900 text-white text-xs flex items-center gap-1"
+                  className="flex h-11 items-center justify-center gap-2 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white sm:h-9 sm:rounded-md"
                 >
-                  <Plus className="h-3 w-3" /> Crear
+                  <Plus className="h-4 w-4 sm:h-3 sm:w-3" /> Crear
                 </button>
                 <input
                   aria-label="Buscar usuarios"
                   value={searchUser}
                   onChange={(e) => setSearchUser(e.target.value)}
                   placeholder="Buscar..."
-                  className="h-8 w-full sm:w-64 min-w-0 rounded-md border px-3 text-sm"
+                  className="h-11 w-full min-w-0 rounded-lg border px-3 text-base sm:h-9 sm:w-64 sm:rounded-md sm:text-sm"
                 />
               </div>
-              <div className="overflow-auto rounded-md border">
+              <div className="hidden overflow-auto rounded-md border sm:block">
                 <table className="w-full text-sm">
                   <thead className="bg-zinc-50 text-[11px] uppercase text-zinc-500">
                     <tr>
@@ -945,253 +1143,151 @@ export default function Ajustes() {
                   </tbody>
                 </table>
               </div>
+              <div className="space-y-3 sm:hidden">
+                {usuarios
+                  .filter((u) =>
+                    u.n.toLowerCase().includes(searchUser.toLowerCase()),
+                  )
+                  .map((u) => (
+                    <article
+                      key={u.id}
+                      className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm"
+                    >
+                      <div className="flex min-w-0 items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold">
+                            {u.n}
+                          </p>
+                          <p className="mt-1 break-all text-xs text-zinc-500">
+                            {u.email}
+                          </p>
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] ${u.estado === 'Activo' ? 'border-green-200 bg-green-50 text-green-700' : 'border-zinc-200 bg-zinc-100 text-zinc-600'}`}
+                        >
+                          {u.estado}
+                        </span>
+                      </div>
+                      <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-zinc-100 pt-3">
+                        <div>
+                          <dt className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                            Rol
+                          </dt>
+                          <dd className="mt-1 text-xs font-medium">{u.r}</dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                            Concesionario
+                          </dt>
+                          <dd className="mt-1 truncate text-xs font-medium">
+                            {u.c}
+                          </dd>
+                        </div>
+                      </dl>
+                      <div className="mt-3 flex gap-2 border-t border-zinc-100 pt-3">
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(u)}
+                          className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg border text-xs font-medium"
+                        >
+                          <Pencil className="h-4 w-4" /> Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setUsuarios((actuales) =>
+                              actuales.filter((usuario) => usuario.id !== u.id),
+                            )
+                          }
+                          aria-label={`Eliminar usuario ${u.n}`}
+                          className="grid h-11 w-11 place-items-center rounded-lg border text-zinc-500 hover:bg-red-50 hover:text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+              </div>
             </Card>
           )}
 
           {seccion === 'motor' && (
             <>
-              <Card
-                title="Parámetros del Motor"
-                desc="POST /motor/evaluar - Auditado"
-              >
-                <div className="grid md:grid-cols-3 gap-4">
-                  <InputNumerico
-                    label="SMMLV"
-                    formatoMiles
-                    minimo={0}
-                    maximo={100_000_000}
-                    value={form.smmlv}
-                    onValor={(n) => onChange('smmlv', n ?? 0)}
-                  />
-                  <InputNumerico
-                    label="Score Mín"
-                    minimo={0}
-                    maximo={1000}
-                    value={form.scoreMin}
-                    onValor={(n) => onChange('scoreMin', n ?? 0)}
-                  />
-                  <InputNumerico
-                    label="Quanto Mín"
-                    decimales
-                    minimo={0}
-                    maximo={20}
-                    value={form.quantoMin}
-                    onValor={(n) => onChange('quantoMin', n ?? 0)}
-                  />
-                  <InputNumerico
-                    label="Capacidad Máx %"
-                    decimales
-                    minimo={0}
-                    maximo={100}
-                    value={form.capacidadMax}
-                    onValor={(n) => onChange('capacidadMax', n ?? 0)}
-                  />
-                  <InputNumerico
-                    label="Endeudamiento Máx %"
-                    decimales
-                    minimo={0}
-                    maximo={100}
-                    value={form.endeudamientoMax}
-                    onValor={(n) => onChange('endeudamientoMax', n ?? 0)}
-                  />
-                  <InputNumerico
-                    label="Ingreso Mín"
-                    formatoMiles
-                    minimo={0}
-                    maximo={500_000_000}
-                    value={form.ingresoMinimo}
-                    onValor={(n) => onChange('ingresoMinimo', n ?? 0)}
-                  />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-zinc-500">
+                  Parámetros activos del motor cargados desde el servidor.
+                </p>
+                <button
+                  type="button"
+                  onClick={recargarParametros}
+                  disabled={cargandoParametros || guardandoParametros}
+                  className="h-8 rounded-md border bg-white px-3 text-xs disabled:opacity-50"
+                >
+                  Recargar desde backend
+                </button>
+              </div>
+              <EditorParametros
+                seccion="motor"
+                parametros={parametros}
+                bloqueados={bloqueadosPorEntorno}
+                cargando={cargandoParametros}
+                deshabilitado={cargandoParametros || guardandoParametros}
+                error={errorParametros}
+                onRetry={recargarParametros}
+                onChange={handleParametroChange}
+              />
+              {parametros && (
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void restablecerValores()}
+                    disabled={guardandoParametros || cargandoParametros}
+                    className="h-9 rounded-md border bg-white px-4 text-xs disabled:opacity-50"
+                  >
+                    Restablecer valores por defecto
+                  </button>
                 </div>
-              </Card>
-              <Card
-                title="Límites de Aprobación por Rol"
-                desc="Define cuánto puede aprobar cada rol"
-              >
-                <div className="grid md:grid-cols-2 gap-4">
-                  {Object.entries(form.limitesRol).map(([rol, lim]) => {
-                    const inputId = `limite-${rol.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
-                    return (
-                      <div key={rol} className="space-y-1.5">
-                        <label
-                          className="text-[11px] uppercase text-zinc-600"
-                          htmlFor={inputId}
-                        >
-                          {rol}
-                        </label>
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                          <CampoNumerico
-                            id={inputId}
-                            formatoMiles
-                            mostrarCero
-                            minimo={0}
-                            maximo={500_000_000}
-                            value={lim}
-                            onValor={(n) =>
-                              onChange('limitesRol', {
-                                ...form.limitesRol,
-                                [rol]: n ?? 0,
-                              })
-                            }
-                            className="h-9 w-full min-w-0 rounded-md border px-3 text-sm sm:flex-1"
-                          />
-                          <span className="h-9 px-3 rounded-md border bg-zinc-50 flex items-center text-xs sm:grid sm:place-items-center">
-                            ${Number(lim).toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </Card>
+              )}
             </>
           )}
 
           {seccion === 'riesgo' && (
             <>
-              <Card
-                title="Reglas por Tipo de Empleo"
-                desc="Usa reglas_perfil.py"
-              >
-                <div className="overflow-auto rounded-md border">
-                  <table className="w-full text-sm">
-                    <thead className="bg-zinc-50 text-[11px] uppercase text-zinc-500">
-                      <tr>
-                        <th scope="col" className="text-left p-3">
-                          Tipo Empleo
-                        </th>
-                        <th scope="col" className="text-left p-3">
-                          Score Min
-                        </th>
-                        <th scope="col" className="text-left p-3">
-                          Ingresos (SMMLV)
-                        </th>
-                        <th scope="col" className="text-left p-3">
-                          Activo
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {form.reglasEmpleo.map((r, i) => (
-                        <tr key={r.tipo} className="border-t">
-                          <td className="p-3 font-medium">{r.tipo}</td>
-                          <td className="p-3">
-                            <CampoNumerico
-                              mostrarCero
-                              minimo={0}
-                              maximo={1000}
-                              value={r.scoreMin}
-                              aria-label={`Score mínimo para ${r.tipo}`}
-                              className="h-7 w-20 border rounded px-2 text-sm"
-                              onValor={(n) => {
-                                const c = [...form.reglasEmpleo]
-                                c[i].scoreMin = n ?? 0
-                                onChange('reglasEmpleo', c)
-                              }}
-                            />
-                          </td>
-                          <td className="p-3">
-                            <CampoNumerico
-                              decimales
-                              mostrarCero
-                              minimo={0}
-                              maximo={50}
-                              value={r.ingresoMin}
-                              aria-label={`Ingreso mínimo en SMMLV para ${r.tipo}`}
-                              className="h-7 w-20 border rounded px-2 text-sm"
-                              onValor={(n) => {
-                                const c = [...form.reglasEmpleo]
-                                c[i].ingresoMin = n ?? 0
-                                onChange('reglasEmpleo', c)
-                              }}
-                            />
-                          </td>
-                          <td className="p-3">
-                            <input
-                              type="checkbox"
-                              checked={r.activo}
-                              aria-label={`Regla activa para ${r.tipo}`}
-                              onChange={(e) => {
-                                const c = [...form.reglasEmpleo]
-                                c[i].activo = e.target.checked
-                                onChange('reglasEmpleo', c)
-                              }}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-              <div className="grid md:grid-cols-2 gap-4">
-                <Card
-                  title="Filtros Globales"
-                  desc="Aplican a todos los perfiles"
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-zinc-500">
+                  Reglas de elegibilidad, buró y endeudamiento del backend.
+                </p>
+                <button
+                  type="button"
+                  onClick={recargarParametros}
+                  disabled={cargandoParametros || guardandoParametros}
+                  className="h-8 rounded-md border bg-white px-3 text-xs disabled:opacity-50"
                 >
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <InputNumerico
-                      label="Edad Mín"
-                      minimo={0}
-                      maximo={120}
-                      value={form.edadMin}
-                      onValor={(n) => onChange('edadMin', n ?? 0)}
-                    />
-                    <InputNumerico
-                      label="Edad Máx"
-                      minimo={0}
-                      maximo={120}
-                      value={form.edadMax}
-                      onValor={(n) => onChange('edadMax', n ?? 0)}
-                    />
-                    <InputNumerico
-                      label="Mora Máx (días)"
-                      minimo={0}
-                      maximo={3650}
-                      value={form.moraMax}
-                      onValor={(n) => onChange('moraMax', n ?? 0)}
-                    />
-                  </div>
-                  <div className="mt-4 flex items-center justify-between rounded-md border p-3">
-                    <div>
-                      <p className="text-sm font-medium flex items-center gap-2">
-                        <Ban className="h-4 w-4" /> Lista negra interna
-                      </p>
-                      <p className="text-xs text-zinc-500">
-                        Bloquear cédulas reportadas manualmente
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onChange('listaNegra', !form.listaNegra)}
-                      aria-label="Lista negra interna"
-                      aria-pressed={form.listaNegra}
-                      className={`h-6 w-11 rounded-full flex items-center ${form.listaNegra ? 'bg-zinc-900 justify-end' : 'bg-zinc-200 justify-start'}`}
-                    >
-                      <span className="h-4 w-4 rounded-full bg-white shadow mx-1" />
-                    </button>
-                  </div>
-                </Card>
-                <Card
-                  title="Acciones Automáticas"
-                  desc="Qué hace el sistema al rechazar"
-                >
-                  <div className="space-y-3 text-sm">
-                    <label className="flex items-center justify-between p-3 border rounded-md">
-                      <span>Notificar al asesor por WhatsApp</span>
-                      <input type="checkbox" defaultChecked />
-                    </label>
-                    <label className="flex items-center justify-between p-3 border rounded-md">
-                      <span>Enviar a revisión manual si score &gt; 550</span>
-                      <input type="checkbox" defaultChecked />
-                    </label>
-                    <label className="flex items-center justify-between p-3 border rounded-md">
-                      <span>Bloquear intentos duplicados 24h</span>
-                      <input type="checkbox" defaultChecked />
-                    </label>
-                  </div>
-                </Card>
+                  Recargar desde backend
+                </button>
               </div>
+              <EditorParametros
+                seccion="riesgo"
+                parametros={parametros}
+                bloqueados={bloqueadosPorEntorno}
+                cargando={cargandoParametros}
+                deshabilitado={cargandoParametros || guardandoParametros}
+                error={errorParametros}
+                onRetry={recargarParametros}
+                onChange={handleParametroChange}
+              />
+              {parametros && (
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void restablecerValores()}
+                    disabled={guardandoParametros || cargandoParametros}
+                    className="h-9 rounded-md border bg-white px-4 text-xs disabled:opacity-50"
+                  >
+                    Restablecer valores por defecto
+                  </button>
+                </div>
+              )}
             </>
           )}
 
@@ -1207,12 +1303,12 @@ export default function Ajustes() {
                   onChange={(e) => setNuevoConcesionario(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addConcesionario()}
                   placeholder="Ej: Suzuki Yumbo"
-                  className="h-9 flex-1 rounded-md border px-3 text-sm"
+                  className="h-11 w-full flex-1 rounded-lg border px-3 text-base sm:h-9 sm:rounded-md sm:text-sm"
                 />
                 <button
                   type="button"
                   onClick={addConcesionario}
-                  className="h-9 px-4 rounded-md bg-zinc-900 text-white text-sm"
+                  className="h-11 w-full rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
                 >
                   Agregar
                 </button>
@@ -1236,7 +1332,7 @@ export default function Ajustes() {
                       type="button"
                       onClick={() => removeConcesionario(c)}
                       aria-label={`Quitar concesionario ${c}`}
-                      className="h-8 w-8 grid place-items-center rounded-md border hover:bg-red-50 text-zinc-500 hover:text-red-600"
+                      className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border text-zinc-500 hover:bg-red-50 hover:text-red-600 sm:h-9 sm:w-9 sm:rounded-md"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -1254,13 +1350,13 @@ export default function Ajustes() {
                 action={
                   <button
                     type="button"
-                    className="h-8 px-3 rounded-md bg-zinc-900 text-white text-xs flex items-center gap-1"
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
                   >
-                    <Upload className="h-3 w-3" /> Subir plantilla
+                    <Upload className="h-4 w-4 sm:h-3 sm:w-3" /> Subir plantilla
                   </button>
                 }
               >
-                <div className="overflow-auto rounded-md border">
+                <div className="hidden overflow-auto rounded-md border sm:block">
                   <table className="w-full text-sm">
                     <thead className="bg-zinc-50 text-[11px] uppercase text-zinc-500">
                       <tr>
@@ -1349,12 +1445,82 @@ export default function Ajustes() {
                     </tbody>
                   </table>
                 </div>
+                <div className="space-y-3 sm:hidden">
+                  {documentos.map((d) => (
+                    <article
+                      key={d.id}
+                      className="rounded-xl border border-zinc-200 bg-white p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-start gap-2">
+                          <FileCheck className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold">{d.nombre}</p>
+                            <p className="mt-1 text-xs text-zinc-500">
+                              {d.formato} · Máx. {d.max}
+                            </p>
+                          </div>
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-medium ${d.requerido ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-zinc-200 bg-zinc-50 text-zinc-600'}`}
+                        >
+                          {d.requerido ? 'Obligatorio' : 'Opcional'}
+                        </span>
+                      </div>
+                      <div className="mt-4 flex items-center justify-between border-t border-zinc-100 pt-3">
+                        <span className="text-xs font-medium text-zinc-600">
+                          {d.activo ? 'Documento activo' : 'Documento inactivo'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDocumentos((actuales) =>
+                              actuales.map((documento) =>
+                                documento.id === d.id
+                                  ? { ...documento, activo: !documento.activo }
+                                  : documento,
+                              ),
+                            )
+                          }
+                          aria-label={`Documento activo: ${d.nombre}`}
+                          aria-pressed={d.activo}
+                          className={`flex h-11 w-14 items-center rounded-full ${d.activo ? 'justify-end bg-zinc-900' : 'justify-start bg-zinc-200'}`}
+                        >
+                          <span className="mx-1 h-5 w-5 rounded-full bg-white shadow" />
+                        </button>
+                      </div>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          aria-label={`Descargar ${d.nombre}`}
+                          className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg border text-xs font-medium"
+                        >
+                          <Download className="h-4 w-4" /> Descargar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDocumentos((actuales) =>
+                              actuales.filter(
+                                (documento) => documento.id !== d.id,
+                              ),
+                            )
+                          }
+                          aria-label={`Eliminar documento ${d.nombre}`}
+                          className="grid h-11 w-11 place-items-center rounded-lg border text-zinc-500 hover:bg-red-50 hover:text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
               </Card>
               <Card
                 title="Plantilla de Contrato Base"
                 desc="PDF que se genera automáticamente al aprobar"
               >
-                <div className="border border-dashed rounded-lg p-8 text-center bg-zinc-50">
+                <div className="rounded-xl border border-dashed bg-zinc-50 p-5 text-center sm:p-8">
                   <FileText className="h-8 w-8 mx-auto text-zinc-400" />
                   <p className="text-sm font-medium mt-2">
                     contrato_base_v4.pdf
@@ -1362,16 +1528,16 @@ export default function Ajustes() {
                   <p className="text-xs text-zinc-500 mt-1">
                     Última actualización: 28/09/2026 • 2.4MB
                   </p>
-                  <div className="mt-4 flex justify-center gap-2">
+                  <div className="mt-4 grid grid-cols-1 gap-2 sm:flex sm:justify-center">
                     <button
                       type="button"
-                      className="h-8 px-3 rounded-md border bg-white text-xs"
+                      className="h-11 rounded-lg border bg-white px-3 text-xs sm:h-9 sm:rounded-md"
                     >
                       Ver PDF
                     </button>
                     <button
                       type="button"
-                      className="h-8 px-3 rounded-md bg-zinc-900 text-white text-xs"
+                      className="h-11 rounded-lg bg-zinc-900 px-3 text-xs text-white sm:h-9 sm:rounded-md"
                     >
                       Reemplazar
                     </button>
@@ -1387,10 +1553,10 @@ export default function Ajustes() {
                 title="Auditoría y Logs"
                 desc="Trazabilidad completa de cambios y evaluaciones"
                 action={
-                  <div className="flex gap-2">
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                     <button
                       type="button"
-                      className="h-8 px-3 rounded-md border bg-white text-xs"
+                      className="h-11 rounded-lg border bg-white px-3 text-xs sm:h-8 sm:rounded-md"
                     >
                       Exportar CSV
                     </button>
@@ -1403,7 +1569,7 @@ export default function Ajustes() {
                       onChange={(e) =>
                         onChange('retencionLogs', Number(e.target.value))
                       }
-                      className="h-8 rounded-md border px-2 text-xs"
+                      className="h-11 rounded-lg border px-3 text-xs sm:h-8 sm:rounded-md sm:px-2"
                     >
                       <option value={30}>30 días</option>
                       <option value={90}>90 días</option>
@@ -1413,15 +1579,15 @@ export default function Ajustes() {
                   </div>
                 }
               >
-                <div className="flex flex-col gap-2 mb-4 sm:flex-row">
+                <div className="mb-4 flex flex-col gap-2 sm:flex-row">
                   <input
                     aria-label="Buscar en el registro de auditoría"
                     placeholder="Buscar por usuario, acción o IP..."
-                    className="h-8 flex-1 rounded-md border px-3 text-sm"
+                    className="h-11 flex-1 rounded-lg border px-3 text-base sm:h-9 sm:rounded-md sm:text-sm"
                   />
                   <select
                     aria-label="Filtrar registros por acción"
-                    className="h-8 w-full min-w-0 rounded-md border px-2 text-sm sm:w-auto"
+                    className="h-11 w-full min-w-0 rounded-lg border px-3 text-base sm:h-9 sm:w-auto sm:rounded-md sm:px-2 sm:text-sm"
                   >
                     <option>Todas las acciones</option>
                     <option>Evaluaciones</option>
@@ -1429,7 +1595,7 @@ export default function Ajustes() {
                     <option>Login</option>
                   </select>
                 </div>
-                <div className="overflow-auto rounded-md border">
+                <div className="hidden overflow-auto rounded-md border sm:block">
                   <table className="w-full text-sm">
                     <thead className="bg-zinc-50 text-[11px] uppercase text-zinc-500">
                       <tr>
@@ -1462,6 +1628,28 @@ export default function Ajustes() {
                     </tbody>
                   </table>
                 </div>
+                <div className="space-y-3 sm:hidden">
+                  {logs.map((l) => (
+                    <article
+                      key={l.id}
+                      className="rounded-xl border border-zinc-200 bg-white p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-start gap-2">
+                          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
+                          <p className="text-xs font-medium">{l.fecha}</p>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-medium text-zinc-600">
+                          {l.ip}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm font-semibold">{l.usuario}</p>
+                      <p className="mt-1 text-xs leading-5 text-zinc-600">
+                        {l.accion}
+                      </p>
+                    </article>
+                  ))}
+                </div>
                 <div className="mt-3 flex items-center gap-2 text-[11px] text-zinc-500">
                   <AlertTriangle className="h-3 w-3" /> Los logs se retienen{' '}
                   {form.retencionLogs} días según tu configuración. Cumple con
@@ -1491,9 +1679,9 @@ export default function Ajustes() {
                         },
                       ])
                     }
-                    className="h-8 px-3 rounded-md bg-zinc-900 text-white text-xs flex items-center gap-1"
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
                   >
-                    <Key className="h-3 w-3" /> Nueva Key
+                    <Key className="h-4 w-4 sm:h-3 sm:w-3" /> Nueva Key
                   </button>
                 }
               >
@@ -1501,25 +1689,25 @@ export default function Ajustes() {
                   {apiKeys.map((k) => (
                     <div
                       key={k.id}
-                      className="flex items-center justify-between p-3 rounded-lg border bg-zinc-50"
+                      className="flex flex-col gap-3 rounded-xl border bg-zinc-50 p-3 sm:flex-row sm:items-center sm:justify-between"
                     >
-                      <div>
-                        <p className="text-sm font-medium flex items-center gap-2">
+                      <div className="min-w-0">
+                        <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
                           {k.nombre}{' '}
                           <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-50 border border-green-200 text-green-700">
                             Activa
                           </span>
                         </p>
-                        <p className="text-xs font-mono text-zinc-600 mt-1">
+                        <p className="mt-1 break-all text-xs font-mono text-zinc-600">
                           {k.key} • Creada: {k.creado} • Último uso:{' '}
                           {k.ultimoUso}
                         </p>
                       </div>
-                      <div className="flex gap-1">
+                      <div className="flex gap-2">
                         <button
                           type="button"
                           aria-label={`Copiar clave ${k.nombre}`}
-                          className="h-7 w-7 grid place-items-center rounded border bg-white"
+                          className="grid h-11 flex-1 place-items-center rounded-lg border bg-white sm:h-9 sm:w-9 sm:flex-none sm:rounded"
                         >
                           <Copy className="h-3.5 w-3.5" />
                         </button>
@@ -1529,7 +1717,7 @@ export default function Ajustes() {
                             setApiKeys((p) => p.filter((x) => x.id !== k.id))
                           }
                           aria-label={`Eliminar clave ${k.nombre}`}
-                          className="h-7 w-7 grid place-items-center rounded border bg-white hover:bg-red-50"
+                          className="grid h-11 flex-1 place-items-center rounded-lg border bg-white hover:bg-red-50 sm:h-9 sm:w-9 sm:flex-none sm:rounded"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -1554,7 +1742,7 @@ export default function Ajustes() {
                     id="allowed-domains"
                     value={cors}
                     onChange={(e) => setCors(e.target.value)}
-                    className="mt-1 w-full min-h-[80px] rounded-md border px-3 py-2 text-sm"
+                    className="mt-1 min-h-[96px] w-full rounded-lg border px-3 py-2 text-base sm:rounded-md sm:text-sm"
                     placeholder="https://..."
                   />
                   <p className="text-[11px] text-zinc-500 mt-2">
@@ -1566,7 +1754,7 @@ export default function Ajustes() {
                   title="Políticas de Seguridad"
                   desc="Bloqueos y complejidad"
                 >
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <InputNumerico
                       label="Timeout sesión (min)"
                       minimo={1}
@@ -1717,7 +1905,7 @@ export default function Ajustes() {
       </div>
 
       {showUserModal && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
           <div
             ref={userModalRef}
             role="dialog"
@@ -1746,9 +1934,9 @@ export default function Ajustes() {
                 first.focus()
               }
             }}
-            className="w-full max-w-[520px] rounded-xl bg-white shadow-2xl border"
+            className="flex max-h-[92dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-2xl border bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-xl"
           >
-            <div className="p-5 border-b flex items-center justify-between">
+            <div className="flex shrink-0 items-center justify-between border-b p-4 sm:p-5">
               <div>
                 <h3 id="user-modal-title" className="font-semibold text-sm">
                   {editingUser ? 'Editar usuario' : 'Nuevo usuario'}
@@ -1764,13 +1952,13 @@ export default function Ajustes() {
                 type="button"
                 onClick={() => setShowUserModal(false)}
                 aria-label="Cerrar diálogo"
-                className="h-8 w-8 rounded-full hover:bg-zinc-100 grid place-items-center"
+                className="grid h-11 w-11 place-items-center rounded-full hover:bg-zinc-100 sm:h-8 sm:w-8"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="p-5 grid gap-4">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-4 overflow-y-auto p-4 sm:p-5">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Input
                   label="Nombre *"
                   value={userForm.nombre}
@@ -1793,7 +1981,7 @@ export default function Ajustes() {
                   setUserForm((s) => ({ ...s, email: e.target.value }))
                 }
               />
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <label className="text-[11px] uppercase" htmlFor="modal-role">
                     Rol
@@ -1804,7 +1992,7 @@ export default function Ajustes() {
                     onChange={(e) =>
                       setUserForm((s) => ({ ...s, cargo: e.target.value }))
                     }
-                    className="h-9 w-full rounded-md border px-3 text-sm"
+                    className="h-11 w-full rounded-lg border px-3 text-base sm:h-9 sm:rounded-md sm:text-sm"
                   >
                     <option>Asesor</option>
                     <option>Analista</option>
@@ -1828,7 +2016,7 @@ export default function Ajustes() {
                         concesionario: e.target.value,
                       }))
                     }
-                    className="h-9 w-full rounded-md border px-3 text-sm"
+                    className="h-11 w-full rounded-lg border px-3 text-base sm:h-9 sm:rounded-md sm:text-sm"
                   >
                     {concesionarios.map((c) => (
                       <option key={c}>{c}</option>
@@ -1837,7 +2025,7 @@ export default function Ajustes() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <label
                     className="text-[11px] uppercase"
@@ -1851,7 +2039,7 @@ export default function Ajustes() {
                     onChange={(e) =>
                       setUserForm((s) => ({ ...s, estado: e.target.value }))
                     }
-                    className="h-9 w-full rounded-md border px-3 text-sm"
+                    className="h-11 w-full rounded-lg border px-3 text-base sm:h-9 sm:rounded-md sm:text-sm"
                   >
                     <option>Activo</option>
                     <option>Inactivo</option>
@@ -1867,18 +2055,18 @@ export default function Ajustes() {
                 />
               </div>
             </div>
-            <div className="p-4 bg-zinc-50 rounded-b-xl flex justify-end gap-2">
+            <div className="flex shrink-0 flex-col-reverse gap-2 rounded-b-xl bg-zinc-50 p-4 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={() => setShowUserModal(false)}
-                className="h-9 px-4 rounded-md border bg-white text-sm"
+                className="h-11 rounded-lg border bg-white px-4 text-sm sm:h-9 sm:rounded-md"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={handleSaveUser}
-                className="h-9 px-5 rounded-md bg-zinc-900 text-white text-sm"
+                className="h-11 rounded-lg bg-zinc-900 px-5 text-sm text-white sm:h-9 sm:rounded-md"
               >
                 {editingUser ? 'Guardar' : 'Crear'}
               </button>

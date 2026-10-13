@@ -1,221 +1,372 @@
+{
+  /* <span>demo@underwriting.io</span>
+  <span>demo1234</span>*/
+}
+
+import {
+  ArrowRight,
+  Eye,
+  EyeOff,
+  LockKeyhole,
+  Mail,
+  ShieldCheck,
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { FormEvent } from 'react'
+import {
+  ErrorAutenticacionApi,
+  iniciarSesion,
+} from '../features/auth/api/autenticacionApi'
 import { guardarRol, type RolSesion } from '../shared/lib/sesion'
+import './IniciarSesion.css'
+
+const USUARIO_DEMO = 'demo@underwriting.io'
+const CONTRASENA_DEMO = 'demo1234'
 
 export default function IniciarSesion() {
   const navigate = useNavigate()
   const headingRef = useRef<HTMLHeadingElement>(null)
-  const [email, setEmail] = useState('demo@underwriting.io')
-  const [password, setPassword] = useState('demo1234')
+  const [email, setEmail] = useState(USUARIO_DEMO)
+  const [password, setPassword] = useState(CONTRASENA_DEMO)
+  const [showPassword, setShowPassword] = useState(false)
   const [rol, setRol] = useState<RolSesion>('asesor')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
 
   useEffect(() => {
     document.title = 'Iniciar sesión | Inversiones Pacífico'
-    headingRef.current?.focus()
+    headingRef.current?.focus({ preventScroll: true })
   }, [])
 
-  const submit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    if (!email || !password) return setError('Completa todos los campos.')
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setError('')
+    setMessage('')
     setLoading(true)
-    setTimeout(() => {
+
+    try {
+      await iniciarSesion(email.trim(), password)
       localStorage.setItem('uw_auth', '1')
       guardarRol(rol)
       navigate('/dashboard')
-    }, 600)
+    } catch (cause) {
+      setError(
+        cause instanceof ErrorAutenticacionApi
+          ? cause.message
+          : 'No pudimos conectar con el servidor. Verifica que la API esté disponible e inténtalo de nuevo.',
+      )
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <>
-      <style>{`
-      .login-wrapper { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #edfaff 0%, #d5f3ff 100%); padding: 2rem; font-family: system-ui; }
-      .login { display: grid; grid-template-columns: 1fr 1fr; width: 100%; max-width: 1000px; min-height: 600px; border-radius: 24px; overflow: hidden; background: #ffffff; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.15); }
-      .login__welcome { position: relative; display: flex; flex-direction: column; justify-content: space-between; padding: 3rem 2rem; background: #000033; color: #fff; }
-      .login__welcome-content { display: flex; flex-direction: column; align-items: center; text-align: center; margin-top: 2rem; }
-      .login__icon-wrapper { display: flex; align-items: center; justify-content: center; width: 5rem; height: 5rem; margin-bottom: 1.5rem; border: 2px solid rgba(255,255,255,0.2); border-radius: 50%; background: rgba(255,255,255,0.05); }
-      .login__shield-icon { width: 2.5rem; height: 2.5rem; }
-      .login__heading { margin: 0 0 1rem; font-size: 2rem; font-weight: 700; }
-      .login__description { max-width: 24rem; color: #a0aec0; font-size: 1rem; line-height: 1.5; }
-      .login__welcome-image { display: flex; justify-content: center; margin-top: 2rem; }
-      .login__dashboard-mockup { display: flex; width: 100%; max-width: 320px; height: 160px; border-radius: 8px; background: #fff; overflow: hidden; }
-      .mockup-sidebar { width: 15%; background: #1a1f3a; }
-      .mockup-content { flex: 1; padding: 1rem; background: #f8fafc; }
-      .mockup-header { height: 15px; width: 40%; background: #e2e8f0; border-radius: 4px; margin-bottom: .75rem; }
-      .mockup-charts, .mockup-table { height: 40px; background: #e2e8f0; border-radius: 4px; margin-bottom: .75rem; }
-      .login__form-panel { display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
-      .login__content { display: flex; flex-direction: column; width: 100%; max-width: 360px; }
-      .login__form-header { margin-bottom: 1.5rem; }
-      .login__form-title { margin: 0 0 .5rem; color: #1d2939; font-size: 1.25rem; font-weight: 700; }
-      .login__form-subtitle { margin: 0; color: #667085; font-size: .85rem; }
-      .login__form { display: flex; flex-direction: column; gap: 1.25rem; }
-      .login__label { color: #475467; font-size: .8rem; font-weight: 600; }
-      .login__input { width: 100%; padding: .875rem 1rem; border: 1px solid transparent; border-radius: 8px; background: #f4f6f8; color: #1d2939; font-size: .9rem; }
-      .login__input:focus { background: #fff; border-color: #099dd7; outline: none; box-shadow: 0 0 0 3px rgba(9,157,215,0.15); }
-      .login__remember { display: flex; align-items: center; gap: .5rem; color: #667085; font-size: .85rem; cursor: pointer; }
-      .login__submit { padding: .875rem; border: none; border-radius: 8px; background: #1a1b41; color: #fff; font-weight: 600; cursor: pointer; }
-      .login__submit:hover { background: #2a2b5e; }
-      .login__credit { margin-top: 2.5rem; color: #667085; font-size: .7rem; text-align: center; }
-      .login__input:focus-visible, .login__submit:focus-visible { outline: 3px solid #099dd7; outline-offset: 3px; }
-      @media (max-width: 850px) {
-        .login-wrapper { padding: 1rem; }
-        .login { grid-template-columns: 1fr; min-height: auto; }
-        .login__welcome { padding: 2rem 1.5rem; }
-        .login__form-panel { padding: 2rem 1.5rem; }
-        .login__welcome-image { display: none; }
-      }
-    `}</style>
+    <div className="access-shell">
+      <main className="access-card">
+        <div className="access-mobile-brand">
+          <img
+            src="/brand/pacifico-blancos.png"
+            alt="Inversiones Pacífico"
+            width="580"
+            height="274"
+          />
+        </div>
 
-      <div className="login-wrapper">
-        <main className="login">
-          <section className="login__welcome">
-            <div className="login__welcome-content">
-              <div>
-                <img
-                  src="/brand/pacifico-blancos.png"
-                  alt="Inversiones Pacífico"
-                  width="1600"
-                  height="769"
-                  className="h-36 w-auto object-contain flex-1"
-                />
-              </div>
-              <h1 ref={headingRef} tabIndex={-1} className="login__heading">
-                Bienvenido.
-              </h1>
-              <p className="login__description">
-                Accede a tu cuenta y continuemos con tu solicitud de crédito en
-                5 minutos.
+        <section className="access-showcase" aria-label="Inversiones Pacífico">
+          <div className="access-showcase-glow" aria-hidden="true" />
+          <div className="access-brand">
+            <img
+              src="/brand/pacifico-blancos.png"
+              alt="Inversiones Pacífico"
+              width="580"
+              height="274"
+            />
+          </div>
+
+          <div className="access-showcase-content">
+            <h1 ref={headingRef} tabIndex={-1} className="access-title">
+              Bienvenido
+            </h1>
+            <p className="access-description">
+              Sigamos transformando vidas generando oportunidades de realización
+              personal.
+            </p>
+          </div>
+
+          <div className="access-finance-art" aria-hidden="true">
+            <svg
+              viewBox="0 0 440 190"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <rect
+                x="100"
+                y="20"
+                width="228"
+                height="148"
+                rx="16"
+                fill="white"
+                fillOpacity=".06"
+                stroke="white"
+                strokeOpacity=".3"
+                strokeWidth="2"
+              />
+              <rect
+                x="120"
+                y="39"
+                width="46"
+                height="7"
+                rx="3.5"
+                fill="#8DE3F7"
+                fillOpacity=".9"
+              />
+              <path
+                d="M120 62H250"
+                stroke="white"
+                strokeOpacity=".4"
+                strokeLinecap="round"
+                strokeWidth="3"
+              />
+              <rect
+                x="120"
+                y="79"
+                width="84"
+                height="67"
+                rx="9"
+                fill="#55C5E5"
+                fillOpacity=".18"
+              />
+              <path
+                d="M132 131V117M151 131V105M170 131V111M189 131V94"
+                stroke="#8DE3F7"
+                strokeLinecap="round"
+                strokeWidth="7"
+              />
+              <path
+                d="M220 91H294M220 109H278M220 127H287"
+                stroke="white"
+                strokeOpacity=".64"
+                strokeLinecap="round"
+                strokeWidth="5"
+              />
+              <path
+                d="M220 91H260"
+                stroke="#8DE3F7"
+                strokeLinecap="round"
+                strokeWidth="5"
+              />
+              <circle
+                cx="326"
+                cy="58"
+                r="35"
+                fill="#55C5E5"
+                stroke="#D6F8FF"
+                strokeWidth="3"
+              />
+              <circle
+                cx="326"
+                cy="58"
+                r="27"
+                stroke="white"
+                strokeOpacity=".55"
+                strokeWidth="1.5"
+              />
+              <text
+                x="326"
+                y="70"
+                fill="#00345C"
+                fontFamily="Inter, Arial, sans-serif"
+                fontSize="35"
+                fontWeight="700"
+                textAnchor="middle"
+              >
+                $
+              </text>
+              <path
+                d="m78 35 3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7Z"
+                fill="#B8F0FF"
+                fillOpacity=".8"
+              />
+            </svg>
+          </div>
+
+          <div className="access-showcase-footer">
+            <span>INVERSIONES PACÍFICO</span>
+            <span>Confianza que impulsa.</span>
+          </div>
+        </section>
+
+        <section className="access-form-panel" aria-labelledby="login-heading">
+          <div className="access-form-content">
+            <div className="access-security">
+              <span className="access-security-icon">
+                <ShieldCheck size={17} aria-hidden="true" />
+              </span>
+              <span>Acceso seguro | Tus datos están protegidos</span>
+            </div>
+
+            <header className="access-form-header">
+              <p className="access-welcome">Qué bueno tenerte de vuelta</p>
+              <h2 id="login-heading" className="access-form-title">
+                Inicia sesión
+              </h2>
+              <p className="access-form-subtitle">
+                Ingresa tus credenciales para continuar en tu espacio de
+                trabajo.
               </p>
-            </div>
-            <div className="login__welcome-image">
-              <div className="login__dashboard-mockup">
-                <div className="mockup-sidebar"></div>
-                <div className="mockup-content">
-                  <div className="mockup-header"></div>
-                  <div className="mockup-charts"></div>
-                  <div className="mockup-table"></div>
-                </div>
-              </div>
-            </div>
-          </section>
-          <section className="login__form-panel">
-            <div className="login__content">
-              <div className="login__form-header">
-                <h2 className="login__form-title">Ingresa a tu Sesión</h2>
-                <p className="login__form-subtitle">
-                  Ingresa tus credenciales para acceder.
-                </p>
-              </div>
-              <form className="login__form" onSubmit={submit}>
-                <div>
-                  <label className="login__label" htmlFor="login-username">
-                    Correo / Usuario
-                  </label>
+            </header>
+
+            <form className="access-form" onSubmit={submit}>
+              <div className="access-field">
+                <label htmlFor="login-username">Correo electrónico</label>
+                <div className="access-input-wrap">
+                  <Mail size={18} aria-hidden="true" />
                   <input
                     id="login-username"
-                    type="text"
-                    className="login__input"
+                    type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Ingresa el usuario asignado"
+                    onChange={(event) => {
+                      setEmail(event.target.value)
+                      setError('')
+                      setMessage('')
+                    }}
+                    placeholder="nombre@empresa.com"
                     autoComplete="username"
+                    maxLength={254}
                     required
                   />
                 </div>
-                <div>
-                  <label className="login__label" htmlFor="login-password">
-                    Contraseña
-                  </label>
+              </div>
+
+              <div className="access-field">
+                <div className="access-label-row">
+                  <label htmlFor="login-password">Contraseña</label>
+                  <button
+                    type="button"
+                    className="access-help-link"
+                    onClick={() =>
+                      setMessage(
+                        'Para restablecer tu contraseña, contacta al administrador de la plataforma.',
+                      )
+                    }
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
+                <div className="access-input-wrap">
+                  <LockKeyhole size={18} aria-hidden="true" />
                   <input
                     id="login-password"
-                    type="password"
-                    className="login__input"
+                    type={showPassword ? 'text' : 'password'}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Ingrese su contraseña"
+                    onChange={(event) => {
+                      setPassword(event.target.value)
+                      setError('')
+                      setMessage('')
+                    }}
+                    placeholder="Ingresa tu contraseña"
                     autoComplete="current-password"
+                    maxLength={256}
                     required
                   />
-                </div>
-                <fieldset>
-                  <legend className="login__label" style={{ marginBottom: 8 }}>
-                    Perfil de acceso
-                  </legend>
-                  <div
-                    role="group"
-                    aria-label="Perfil de acceso"
-                    style={{ display: 'flex', gap: 8 }}
+                  <button
+                    type="button"
+                    className="access-password-toggle"
+                    onClick={() => setShowPassword((current) => !current)}
+                    aria-label={
+                      showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'
+                    }
+                    aria-pressed={showPassword}
                   >
-                    {(
-                      [
-                        ['asesor', 'Asesor', 'Gestiona solicitudes'],
-                        [
-                          'administrador',
-                          'Administrador',
-                          'Ve score y causales',
-                        ],
-                      ] as const
-                    ).map(([valor, titulo, detalle]) => (
-                      <button
-                        key={valor}
-                        type="button"
-                        aria-pressed={rol === valor}
-                        onClick={() => setRol(valor)}
+                    {showPassword ? (
+                      <EyeOff size={18} aria-hidden="true" />
+                    ) : (
+                      <Eye size={18} aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <fieldset className="access-field">
+                <legend>Perfil de acceso</legend>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {(
+                    [
+                      ['asesor', 'Asesor', 'Gestiona solicitudes'],
+                      ['administrador', 'Administrador', 'Ve score y causales'],
+                    ] as const
+                  ).map(([valor, titulo, detalle]) => (
+                    <button
+                      key={valor}
+                      type="button"
+                      aria-pressed={rol === valor}
+                      onClick={() => setRol(valor)}
+                      style={{
+                        flex: 1,
+                        padding: '0.6rem',
+                        borderRadius: 8,
+                        border: `1.5px solid ${rol === valor ? '#099dd7' : '#e2e8f0'}`,
+                        background: rol === valor ? '#edfaff' : '#fff',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <span
                         style={{
-                          flex: 1,
-                          padding: '0.6rem',
-                          borderRadius: 8,
-                          border: `1.5px solid ${rol === valor ? '#099dd7' : '#e2e8f0'}`,
-                          background: rol === valor ? '#edfaff' : '#fff',
-                          cursor: 'pointer',
-                          textAlign: 'left',
+                          display: 'block',
+                          fontSize: '.82rem',
+                          fontWeight: 600,
+                          color: '#1d2939',
                         }}
                       >
-                        <span
-                          style={{
-                            display: 'block',
-                            fontSize: '.82rem',
-                            fontWeight: 600,
-                            color: '#1d2939',
-                          }}
-                        >
-                          {titulo}
-                        </span>
-                        <span style={{ fontSize: '.68rem', color: '#667085' }}>
-                          {detalle}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </fieldset>
-                {error && (
-                  <p
-                    role="alert"
-                    style={{ color: '#b91c1c', fontSize: '0.8rem' }}
-                  >
-                    {error}
-                  </p>
-                )}
-                <button
-                  type="submit"
-                  className="login__submit"
-                  disabled={loading}
-                  aria-busy={loading}
+                        {titulo}
+                      </span>
+                      <span style={{ fontSize: '.68rem', color: '#667085' }}>
+                        {detalle}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              {error && (
+                <p
+                  className="access-feedback access-feedback-error"
+                  role="alert"
                 >
-                  <span aria-live="polite">
-                    {loading ? 'Ingresando...' : 'Ingresar'}
-                  </span>
-                </button>
-              </form>
-              <p className="login__credit">
-                Desarrollado por el equipo de GaRi Software
-              </p>
+                  {error}
+                </p>
+              )}
+              {message && (
+                <p
+                  className="access-feedback access-feedback-info"
+                  role="status"
+                >
+                  {message}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                className="access-submit"
+                disabled={loading}
+                aria-busy={loading}
+              >
+                <span>
+                  {loading ? 'Verificando acceso...' : 'Ingresar a mi cuenta'}
+                </span>
+                <ArrowRight size={18} aria-hidden="true" />
+              </button>
+            </form>
+
+            <div className="access-form-footer">
+              <span>Desarrollado por GaRi Software</span>
             </div>
-          </section>
-        </main>
-      </div>
-    </>
+          </div>
+        </section>
+      </main>
+    </div>
   )
 }

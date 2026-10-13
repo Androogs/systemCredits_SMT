@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    demo_user_email: str = "demo@underwriting.io"
+    demo_user_password: str = "demo1234"
 
     def cors_origin_list(self) -> list[str]:
         return [

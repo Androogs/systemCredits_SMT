@@ -15,6 +15,7 @@ from backend.middlewares.error_middleware import registrar_manejadores
 from backend.middlewares.rate_limit_middleware import RateLimitMiddleware
 from backend.routes import (
     auditoria_routes,
+    auth_routes,
     catalogo_routes,
     evidencia_routes,
     health_routes,
@@ -76,6 +77,7 @@ def crear_app() -> FastAPI:
     registrar_manejadores(app)
     for modulo in (
         health_routes,
+        auth_routes,
         motor_routes,
         solicitud_routes,
         auditoria_routes,
