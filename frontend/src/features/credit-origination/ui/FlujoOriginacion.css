@@ -112,14 +112,9 @@
       .validacion,
       .autorizacion,
       .captura,
-      .ocr,
       .revision,
       .resultado,
       .solicitud,
-      .consulta,
-      .consulta-curso,
-      .informe-crediticio,
-      .evaluacion-integral,
       .resultado-credito
     ) {
     min-width: 0;
@@ -131,12 +126,9 @@
       .validacion__header,
       .autorizacion__header,
       .captura__header,
-      .ocr__header,
       .revision__header,
       .resultado__header,
       .solicitud__header,
-      .consulta__header,
-      .consulta-curso__encabezado,
       .cabecera-etapa
     ) {
     grid-template-columns: minmax(0, 1fr);
@@ -154,9 +146,6 @@
       .captura__eyebrow,
       .captura__subtitle,
       .captura__lede,
-      .ocr__eyebrow,
-      .ocr__subtitle,
-      .ocr__lede,
       .revision__eyebrow,
       .revision__subtitle,
       .revision__lede,
@@ -166,11 +155,6 @@
       .solicitud__eyebrow,
       .solicitud__subtitle,
       .solicitud__lede,
-      .consulta__eyebrow,
-      .consulta__subtitle,
-      .consulta__lede,
-      .consulta-curso__eyebrow,
-      .consulta-curso__descripcion,
       .cabecera-etapa__texto > p,
       .cabecera-etapa__texto > span
     ) {
@@ -182,12 +166,9 @@
       .validacion__panel,
       .autorizacion__panel,
       .captura__panel,
-      .ocr__panel,
       .revision__panel,
       .resultado__panel,
       .solicitud__panel,
-      .consulta__panel,
-      .consulta-curso__contexto,
       .cabecera-etapa__contexto
     ) {
     display: none;
@@ -198,12 +179,9 @@
       .validacion__header-copy h1,
       .autorizacion__header-copy h1,
       .captura__header-copy h1,
-      .ocr__header-copy h1,
       .revision__header-copy h1,
       .resultado__header-copy h1,
       .solicitud__header-copy h1,
-      .consulta__header-copy h1,
-      .consulta-curso__encabezado h1,
       .cabecera-etapa__texto h1
     ) {
     margin: 0;
@@ -256,15 +234,7 @@
       .captura__form,
       .revision__form,
       .solicitud__form,
-      .ocr__card,
       .resultado__card,
-      .consulta__card,
-      .consulta-curso__panel,
-      .informe-crediticio__puntaje,
-      .informe-crediticio__politica,
-      .informe-crediticio__obligaciones,
-      .evaluacion-integral__factores,
-      .evaluacion-integral__recomendacion,
       .resultado-credito__oferta,
       .resultado-credito__estados
     ) {
@@ -280,8 +250,7 @@
       .validacion__form-head,
       .autorizacion__form-head,
       .captura__form-head,
-      .revision__form-head,
-      .ocr__card-head
+      .revision__form-head
     ) {
     gap: 0.5rem;
     padding-bottom: 0.75rem;
@@ -293,7 +262,6 @@
       .autorizacion__form-head p,
       .captura__form-head p,
       .revision__form-head p,
-      .ocr__card-head > div > p,
       .solicitud__section-head p,
       .validacion__chip,
       .autorizacion__chip,
@@ -309,12 +277,7 @@
       .autorizacion__form-head h2,
       .captura__form-head h2,
       .revision__form-head h2,
-      .ocr__card-head h2,
       .resultado__card-head h2,
-      .consulta__card-head h2,
-      .consulta-curso__panel-encabezado h2,
-      .informe-crediticio__obligaciones h2,
-      .evaluacion-integral__factores h2,
       .resultado-credito__oferta h2,
       .resultado-credito__estados h2
     ) {
@@ -329,16 +292,7 @@
     gap: 0.75rem;
   }
 
-  .flujo-originacion
-    :is(
-      .ocr__grid,
-      .resultado__grid,
-      .consulta__grid,
-      .informe-crediticio__resumen,
-      .informe-crediticio__indicadores,
-      .evaluacion-integral__contenido,
-      .resultado-credito__contenido
-    ) {
+  .flujo-originacion :is(.resultado__grid, .resultado-credito__contenido) {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.75rem;
   }
@@ -374,8 +328,7 @@
       .validacion__actions-note,
       .autorizacion__actions-note,
       .captura__actions-note,
-      .solicitud__actions-note,
-      .consulta__actions-note
+      .solicitud__actions-note
     ) {
     display: none;
   }
@@ -401,11 +354,8 @@
       .autorizacion__legal-body p,
       .captura__modo-copy small,
       .captura__instrucciones,
-      .ocr__task small,
       .revision__hint,
-      .solicitud__hint,
-      .consulta__consent-text,
-      .consulta-curso__tarea-texto small
+      .solicitud__hint
     ) {
     font-size: 0.72rem;
     line-height: 1.45;
@@ -434,14 +384,9 @@
       .validacion__actions,
       .autorizacion__actions,
       .captura__actions,
-      .ocr__actions,
       .revision__actions,
       .resultado__actions,
       .solicitud__actions,
-      .consulta__actions,
-      .consulta-curso__acciones,
-      .informe-crediticio__acciones,
-      .evaluacion-integral__acciones,
       .resultado-credito__acciones,
       .flujo-originacion__acciones
     ) {
@@ -455,14 +400,9 @@
       .validacion__actions > button,
       .autorizacion__actions button,
       .captura__actions button,
-      .ocr__actions button,
       .revision__actions button,
       .resultado__actions button,
       .solicitud__actions button,
-      .consulta__actions button,
-      .consulta-curso__acciones button,
-      .informe-crediticio__acciones button,
-      .evaluacion-integral__acciones button,
       .resultado-credito__acciones button,
       .flujo-originacion__acciones button
     ) {
@@ -494,15 +434,7 @@
       .captura__form,
       .revision__form,
       .solicitud__form,
-      .ocr__card,
       .resultado__card,
-      .consulta__card,
-      .consulta-curso__panel,
-      .informe-crediticio__puntaje,
-      .informe-crediticio__politica,
-      .informe-crediticio__obligaciones,
-      .evaluacion-integral__factores,
-      .evaluacion-integral__recomendacion,
       .resultado-credito__oferta,
       .resultado-credito__estados
     ) {

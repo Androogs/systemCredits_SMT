@@ -117,6 +117,7 @@ frontend/test-results/
 frontend/playwright-report/
 frontend/blob-report/
 e2e_playwright.db
+motor_decision.db
 
 # Evidencias de captura remota (storage local del MVP)
 uploads/

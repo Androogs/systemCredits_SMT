@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import CapturaCedula, { type ResultadoBiometrico } from './CapturaCedula'
 import RevisionDatos, { type DatosRevisados } from './RevisionDatos'
-import type { ResultadoOCR } from './ProcesamientoOCR'
+import type { ResultadoOCR } from '../model/resultado-ocr'
 import CabeceraEtapaOriginacion from './CabeceraEtapaOriginacion'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import './CabeceraEtapaOriginacion.css'

@@ -1,7 +1,0 @@
-export { default as Alerta } from './Alerta'
-export { default as Boton } from './Boton'
-export { default as CampoEntrada } from './CampoEntrada'
-export { default as CampoNumerico } from './CampoNumerico'
-export { default as Selector } from './Selector'
-export { default as Skeleton, FilasSkeleton } from './Skeleton'
-export { default as Tarjeta } from './Tarjeta'
