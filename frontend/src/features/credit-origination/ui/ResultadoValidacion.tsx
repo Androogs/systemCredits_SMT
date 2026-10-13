@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
@@ -65,6 +65,7 @@ const nodo = 'Sede Bogotá Centro'
 function ResultadoValidacion({ onContinue, onBack }: ResultadoValidacionProps) {
   const [creado, setCreado] = useState(false)
   const [enviando, setEnviando] = useState(false)
+  const timeoutRef = useRef<number | null>(null)
 
   const aprobado = criterios.every((c) => c.estado === 'cumple')
 
@@ -74,7 +75,7 @@ function ResultadoValidacion({ onContinue, onBack }: ResultadoValidacionProps) {
 
     // Simulación de llamada al backend para radicar la solicitud.
     // En producción reemplaza esto por el POST real.
-    window.setTimeout(() => {
+    timeoutRef.current = window.setTimeout(() => {
       setEnviando(false)
       setCreado(true)
       onContinue?.({
@@ -88,6 +89,18 @@ function ResultadoValidacion({ onContinue, onBack }: ResultadoValidacionProps) {
       })
     }, 900)
   }
+
+  // Pantalla de solo confirmación: radica sola tras mostrar el resumen
+  // un momento; el botón queda para adelantar manualmente. Si el
+  // usuario vuelve atrás, el POST simulado queda cancelado.
+  useEffect(() => {
+    const avance = window.setTimeout(handleCrearSolicitud, 2000)
+    return () => {
+      window.clearTimeout(avance)
+      if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="resultado">
@@ -126,7 +139,7 @@ function ResultadoValidacion({ onContinue, onBack }: ResultadoValidacionProps) {
         </aside>
       </header>
 
-      <SeguimientoOriginacion pasoActual={6} />
+      <SeguimientoOriginacion pasoActual={5} />
 
       <div className="resultado__hero" role="status">
         <span className="resultado__hero-icon" aria-hidden="true">

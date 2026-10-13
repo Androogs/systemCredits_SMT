@@ -127,6 +127,21 @@ function ConsultaEnCurso({
     )
   }
 
+  // Paso pasivo: avanza solo cuando la simulación terminó y ya hay
+  // resultado del backend (o se corre en demo). Con error se queda
+  // esperando reintento o modo demostración.
+  useEffect(() => {
+    const listo =
+      completada &&
+      !consultando &&
+      !errorApi &&
+      (resultadoApi != null || !ejecutarConsulta)
+    if (!listo) return
+    const avance = window.setTimeout(continuar, 1200)
+    return () => window.clearTimeout(avance)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completada, consultando, errorApi, resultadoApi])
+
   return (
     <div className="consulta-curso">
       <header className="consulta-curso__encabezado">
@@ -174,7 +189,7 @@ function ConsultaEnCurso({
         </aside>
       </header>
 
-      <SeguimientoOriginacion pasoActual={9} />
+      <SeguimientoOriginacion pasoActual={5} />
 
       <section
         className="consulta-curso__panel"

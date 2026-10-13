@@ -510,6 +510,10 @@
   .resultado__header {
     grid-template-columns: 1fr;
   }
+
+  .resultado__panel {
+    display: none;
+  }
 }
 
 @media (max-width: 680px) {
@@ -539,5 +543,12 @@
 
   .resultado__actions .boton {
     width: 100%;
+  }
+}
+/* Compactacion movil: el seguimiento ya muestra la etapa; se ocultan duplicados */
+@media (max-width: 680px) {
+  .resultado__eyebrow,
+  .resultado__lede {
+    display: none;
   }
 }

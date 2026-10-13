@@ -364,7 +364,7 @@
 
 .solicitud__analisis-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
 }
 
@@ -375,6 +375,20 @@
   border: 1px solid #eef1f6;
   border-radius: 0.65rem;
   background: #fff;
+}
+
+.solicitud__analisis-card--primary {
+  border-color: #b3e3f3;
+  background: #f4fbfe;
+}
+
+.solicitud__analisis-card--destacado {
+  border-color: #0f7a4d;
+  background: #f0fbf6;
+}
+
+.solicitud__analisis-card--destacado .solicitud__analisis-valor {
+  color: #0f7a4d;
 }
 
 .solicitud__analisis-label {
@@ -396,6 +410,12 @@
   color: #566575;
   font-size: 0.68rem;
   line-height: 1.4;
+}
+
+@media (max-width: 680px) {
+  .solicitud__analisis-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .solicitud__analisis-card--alta {
@@ -529,11 +549,16 @@
   .solicitud__analisis-grid {
     grid-template-columns: 1fr;
   }
+
+  .solicitud__panel {
+    display: none;
+  }
 }
 
 @media (max-width: 680px) {
   .solicitud__grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.95rem 0.85rem;
   }
 
   .solicitud__actions {
@@ -543,5 +568,12 @@
 
   .solicitud__actions > .boton {
     width: 100%;
+  }
+}
+/* Compactacion movil: el seguimiento ya muestra la etapa; se ocultan duplicados */
+@media (max-width: 680px) {
+  .solicitud__eyebrow,
+  .solicitud__lede {
+    display: none;
   }
 }

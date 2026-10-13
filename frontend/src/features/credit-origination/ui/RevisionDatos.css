@@ -146,18 +146,6 @@
   font-weight: 700;
 }
 
-.revision__chip {
-  flex: 0 0 auto;
-  padding: 0.45rem 0.7rem;
-  border: 1px solid #e1e7ef;
-  border-radius: 99px;
-  background: #fff;
-  color: #617083;
-  font-size: 0.7rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
 /* ---------- Confianza global ---------- */
 
 .revision__confianza {
@@ -165,10 +153,16 @@
   grid-template-columns: minmax(0, 1fr) minmax(14rem, 22rem);
   gap: 1.25rem;
   align-items: center;
-  padding: 1rem 1.25rem 1.6rem;
+  padding: 1rem 1.25rem;
   border: 1px solid #eef1f6;
   border-radius: 0.75rem;
   background: #fbfcfe;
+}
+
+.revision__confianza-metrica {
+  display: grid;
+  gap: 0.4rem;
+  align-content: center;
 }
 
 .revision__confianza-copy {
@@ -190,9 +184,7 @@
 
 .revision__confianza-medidor {
   position: relative;
-  display: flex;
   height: 0.55rem;
-  align-items: center;
   border-radius: 99px;
   background: #e9eef5;
 }
@@ -214,9 +206,7 @@
 }
 
 .revision__confianza-valor {
-  position: absolute;
-  right: 0;
-  bottom: -1.4rem;
+  justify-self: end;
   color: #0f6b48;
   font-size: 0.78rem;
   font-weight: 700;
@@ -394,21 +384,6 @@
   line-height: 1.45;
 }
 
-.revision__confirmado {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: #0f6b48;
-  font-size: 0.74rem;
-  font-weight: 700;
-  animation: revision-pop 260ms ease-out;
-}
-
-.revision__confirmado svg {
-  width: 0.9rem;
-  height: 0.9rem;
-}
-
 /* ---------- Banners ---------- */
 
 .revision__banner {
@@ -482,14 +457,8 @@
     grid-template-columns: 1fr;
   }
 
-  .revision__confianza-valor {
-    position: static;
-    margin-top: 0.55rem;
-    text-align: right;
-  }
-
-  .revision__confianza-medidor {
-    margin-bottom: 0.4rem;
+  .revision__panel {
+    display: none;
   }
 }
 
@@ -499,12 +468,24 @@
   }
 
   .revision__grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem 0.75rem;
+  }
+
+  /* El aviso de campo dudoso (pendiente o ya confirmado) necesita ancho
+     completo para leer la ayuda y la acción */
+  .revision__field.has-aviso {
+    grid-column: 1 / -1;
   }
 
   .revision__actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  /* Estado de dudosos primero; los botones quedan juntos debajo */
+  .revision__actions-note {
+    order: -1;
   }
 
   .revision__actions .boton {
@@ -514,9 +495,15 @@
 
 @media (prefers-reduced-motion: reduce) {
   .revision__confianza-barra,
-  .revision__confianza-valor,
-  .revision__confirmado {
+  .revision__confianza-valor {
     animation: none;
     transition: none;
+  }
+}
+/* Compactacion movil: el seguimiento ya muestra la etapa; se ocultan duplicados */
+@media (max-width: 680px) {
+  .revision__eyebrow,
+  .revision__lede {
+    display: none;
   }
 }

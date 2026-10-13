@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { ArrowRight } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
+import CampoNumerico from '../../../shared/ui/CampoNumerico'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import {
   validacionInicialSchema,
@@ -124,7 +125,6 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
               obligatorios.
             </p>
           </div>
-          <span className="validacion__chip">Paso 1 de 12</span>
         </div>
 
         {resultado === 'ok' && (
@@ -214,16 +214,12 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
               </span>
             </label>
             <div className="validacion__input-group">
-              <input
+              <CampoNumerico
                 id="edad"
-                type="number"
-                min={EDAD_MINIMA}
-                max={EDAD_MAXIMA}
-                inputMode="numeric"
-                value={edad}
+                value={edad === '' ? null : Number(edad)}
                 aria-invalid={mostrarError('edad')}
-                onChange={(event) => {
-                  setEdad(event.target.value)
+                onValor={(n) => {
+                  setEdad(n == null ? '' : String(n))
                   limpiarResultado()
                 }}
                 onBlur={() => marcarTocado('edad')}
@@ -236,8 +232,8 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
               </p>
             ) : (
               <p className="validacion__hint">
-                Debe ser mayor de 18 años y menor de 75 años para radicación de
-                crédito.
+                Debe tener entre {EDAD_MINIMA} y {EDAD_MAXIMA} años para
+                radicación de crédito.
               </p>
             )}
           </div>

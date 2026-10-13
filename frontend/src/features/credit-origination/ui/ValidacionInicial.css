@@ -141,18 +141,6 @@
   font-size: 0.78rem;
 }
 
-.validacion__chip {
-  flex: 0 0 auto;
-  padding: 0.45rem 0.7rem;
-  border: 1px solid #e1e7ef;
-  border-radius: 99px;
-  background: #fff;
-  color: #617083;
-  font-size: 0.7rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
 .validacion__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -390,6 +378,10 @@
   .validacion__header {
     grid-template-columns: 1fr;
   }
+
+  .validacion__panel {
+    display: none;
+  }
 }
 
 @media (max-width: 680px) {
@@ -397,9 +389,20 @@
     flex-direction: column;
   }
 
-  .validacion__grid,
+  .validacion__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem 0.85rem;
+  }
+
+  /* Las opciones de multas llevan descripción larga: una por fila */
   .validacion__options {
     grid-template-columns: 1fr;
+  }
+
+  /* El badge "CC COLOMBIANA" deja el input sin espacio en media columna;
+     el tipo de documento ya se eligió en el campo anterior */
+  .validacion__badge {
+    display: none;
   }
 
   .validacion__actions {
@@ -409,5 +412,12 @@
 
   .validacion__actions .boton {
     width: 100%;
+  }
+}
+/* Compactacion movil: el seguimiento ya muestra la etapa; se ocultan duplicados */
+@media (max-width: 680px) {
+  .validacion__eyebrow,
+  .validacion__lede {
+    display: none;
   }
 }

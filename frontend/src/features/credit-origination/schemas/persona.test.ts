@@ -47,7 +47,7 @@ describe('validacionInicialSchema', () => {
     if (!vacia.success)
       expect(vacia.error.issues[0].message).toContain('Ingresa la edad')
     if (!fuera.success)
-      expect(fuera.error.issues[0].message).toContain('entre 18 y 66')
+      expect(fuera.error.issues[0].message).toContain('entre 18 y 65')
   })
 
   it('exige responder la pregunta de multas', () => {

@@ -5,16 +5,22 @@ import Tarjeta from '../shared/ui/Tarjeta'
 import { FilasSkeleton } from '../shared/ui/Skeleton'
 import InsigniaEstado from '../entities/credit/ui/InsigniaEstado'
 import { currency, dateShort } from '../shared/lib/formatters'
+import { useRol } from '../shared/lib/sesion'
 import {
-  estadoVisual,
+  estadoParaVista,
   etiquetaSolicitud,
   numero,
+  OCUPACION_LABELS,
   useSolicitudes,
   type EstadoVisual,
 } from '../entities/credit/model/solicitudesPanel'
-import { Search, RefreshCw } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Search, RefreshCw } from 'lucide-react'
+
+const TAMANOS_PAGINA = [10, 25, 50] as const
 
 export default function Solicitudes() {
+  const rol = useRol()
+  const esAsesor = rol === 'asesor'
   const {
     datos: solicitudes,
     cargando,
@@ -25,14 +31,29 @@ export default function Solicitudes() {
   })
   const [q, setQ] = useState('')
   const [estado, setEstado] = useState<'' | EstadoVisual>('')
+  const [ocupacion, setOcupacion] = useState('')
+  const [pagina, setPagina] = useState(1)
+  const [porPagina, setPorPagina] = useState<number>(10)
 
   const filtradas = solicitudes.filter((s) => {
     const texto =
       `${s.num_solicitud} ${s.nombre_cliente} ${s.num_cedula} ${s.linea_credito ?? ''} ${s.destino_credito ?? ''}`.toLowerCase()
     if (q && !texto.includes(q.toLowerCase())) return false
-    if (estado && estadoVisual(s) !== estado) return false
+    if (estado && estadoParaVista(s, esAsesor) !== estado) return false
+    if (ocupacion && s.ocupacion !== ocupacion) return false
     return true
   })
+
+  const totalPaginas = Math.max(1, Math.ceil(filtradas.length / porPagina))
+  const paginaActual = Math.min(pagina, totalPaginas)
+  const desde = (paginaActual - 1) * porPagina
+  const visibles = filtradas.slice(desde, desde + porPagina)
+  const columnas = esAsesor ? 7 : 8
+
+  const cambiarFiltro = (accion: () => void) => {
+    accion()
+    setPagina(1)
+  }
 
   return (
     <>
@@ -51,7 +72,7 @@ export default function Solicitudes() {
       />
       <div className="p-6 space-y-4 overflow-auto">
         <Tarjeta>
-          <div className="grid sm:grid-cols-3 gap-3">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="relative sm:col-span-2">
               <Search
                 size={16}
@@ -62,20 +83,43 @@ export default function Solicitudes() {
                 className="input-base pl-9"
                 placeholder="Buscar por número, cliente, cédula, línea…"
                 value={q}
-                onChange={(e) => setQ(e.target.value)}
+                onChange={(e) => cambiarFiltro(() => setQ(e.target.value))}
               />
             </div>
             <select
               aria-label="Filtrar solicitudes por estado"
               className="input-base"
               value={estado}
-              onChange={(e) => setEstado(e.target.value as '' | EstadoVisual)}
+              onChange={(e) =>
+                cambiarFiltro(() =>
+                  setEstado(e.target.value as '' | EstadoVisual),
+                )
+              }
             >
               <option value="">Todos los estados</option>
               <option value="APROBADO">Aprobado</option>
               <option value="RECHAZADO">Rechazado</option>
-              <option value="REQUIERE_REVISION">En revisión</option>
+              {/* El asesor no distingue la revisión del motor: para él es
+                  "pendiente" hasta que exista una decisión final */}
+              {!esAsesor && (
+                <option value="REQUIERE_REVISION">En revisión</option>
+              )}
               <option value="PENDIENTE">Pendiente de evaluación</option>
+            </select>
+            <select
+              aria-label="Filtrar solicitudes por ocupación"
+              className="input-base"
+              value={ocupacion}
+              onChange={(e) =>
+                cambiarFiltro(() => setOcupacion(e.target.value))
+              }
+            >
+              <option value="">Todas las ocupaciones</option>
+              {Object.entries(OCUPACION_LABELS).map(([valor, etiqueta]) => (
+                <option key={valor} value={valor}>
+                  {etiqueta}
+                </option>
+              ))}
             </select>
           </div>
         </Tarjeta>
@@ -116,9 +160,11 @@ export default function Solicitudes() {
                   <th scope="col" className="px-5 py-3">
                     Fecha de solicitud
                   </th>
-                  <th scope="col" className="px-5 py-3">
-                    Score
-                  </th>
+                  {!esAsesor && (
+                    <th scope="col" className="px-5 py-3">
+                      Score
+                    </th>
+                  )}
                   <th scope="col" className="px-5 py-3">
                     Cupo sugerido
                   </th>
@@ -128,10 +174,10 @@ export default function Solicitudes() {
                 </tr>
               </thead>
               <tbody aria-busy={cargando}>
-                {filtradas.map((s) => {
+                {visibles.map((s) => {
                   const cupo = numero(s.evaluacion?.cupo_sugerido)
                   const mostrarCupo =
-                    cupo != null && estadoVisual(s) === 'APROBADO'
+                    cupo != null && estadoParaVista(s, esAsesor) === 'APROBADO'
                   return (
                     <tr
                       key={s.id_solicitud}
@@ -157,25 +203,33 @@ export default function Solicitudes() {
                       <td className="px-5 py-3 text-slate-600 whitespace-nowrap">
                         {dateShort(s.fecha_hora)}
                       </td>
-                      <td className="px-5 py-3 font-medium">
-                        {s.evaluacion?.score != null
-                          ? Number(s.evaluacion.score)
-                          : '—'}
-                      </td>
+                      {!esAsesor && (
+                        <td className="px-5 py-3 font-medium">
+                          {s.evaluacion?.score != null
+                            ? Number(s.evaluacion.score)
+                            : '—'}
+                        </td>
+                      )}
                       <td className="px-5 py-3">
                         {mostrarCupo ? currency(cupo) : '—'}
                       </td>
                       <td className="px-5 py-3">
                         <span className="inline-flex items-center gap-2">
-                          <InsigniaEstado status={estadoVisual(s)} />
-                          <span className="text-xs text-slate-600">
-                            {s.decision
-                              ? s.decision === 'perfil_gris'
-                                ? (s.evaluacion?.decision_interna ??
-                                  'Perfil gris')
-                                : s.decision
-                              : 'Pendiente'}
-                          </span>
+                          <InsigniaEstado
+                            status={estadoParaVista(s, esAsesor)}
+                          />
+                          {/* La decisión interna del motor solo la ve el
+                              administrador; al asesor le basta el estado */}
+                          {!esAsesor && (
+                            <span className="text-xs text-slate-600">
+                              {s.decision
+                                ? s.decision === 'perfil_gris'
+                                  ? (s.evaluacion?.decision_interna ??
+                                    'Perfil gris')
+                                  : s.decision
+                                : 'Pendiente'}
+                            </span>
+                          )}
                         </span>
                       </td>
                     </tr>
@@ -184,7 +238,7 @@ export default function Solicitudes() {
                 {!cargando && filtradas.length === 0 && !error && (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={columnas}
                       className="px-5 py-10 text-center text-slate-500"
                     >
                       {solicitudes.length === 0
@@ -193,10 +247,59 @@ export default function Solicitudes() {
                     </td>
                   </tr>
                 )}
-                {cargando && <FilasSkeleton filas={5} columnas={8} />}
+                {cargando && <FilasSkeleton filas={5} columnas={columnas} />}
               </tbody>
             </table>
           </div>
+          {!cargando && filtradas.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-3 text-sm text-slate-600">
+              <p aria-live="polite">
+                Mostrando {desde + 1}–{desde + visibles.length} de{' '}
+                {filtradas.length}
+                {filtradas.length !== solicitudes.length &&
+                  ` (de ${solicitudes.length} totales)`}
+              </p>
+              <div className="flex items-center gap-3">
+                <select
+                  aria-label="Solicitudes por página"
+                  className="input-base w-auto py-1.5 text-xs"
+                  value={porPagina}
+                  onChange={(e) =>
+                    cambiarFiltro(() => setPorPagina(Number(e.target.value)))
+                  }
+                >
+                  {TAMANOS_PAGINA.map((n) => (
+                    <option key={n} value={n}>
+                      {n} por página
+                    </option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    className="btn-ghost !px-2 !py-1.5"
+                    aria-label="Página anterior"
+                    disabled={paginaActual <= 1}
+                    onClick={() => setPagina(paginaActual - 1)}
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className="min-w-16 text-center text-xs">
+                    {paginaActual} / {totalPaginas}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-ghost !px-2 !py-1.5"
+                    aria-label="Página siguiente"
+                    disabled={paginaActual >= totalPaginas}
+                    onClick={() => setPagina(paginaActual + 1)}
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </Tarjeta>
       </div>
     </>

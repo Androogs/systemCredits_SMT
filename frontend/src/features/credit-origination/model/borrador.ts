@@ -12,10 +12,7 @@ import type { DatosAutorizacion } from '../ui/AutorizacionDatos'
 import type { ResultadoBiometrico } from '../ui/CapturaCedula'
 import type { ResultadoOCR } from '../ui/ProcesamientoOCR'
 import type { DatosRevisados } from '../ui/RevisionDatos'
-import type { ResultadoFinal } from '../ui/ResultadoValidacion'
 import type { DatosSolicitud } from '../ui/CrearSolicitud'
-import type { DatosConsulta } from '../ui/PreparacionConsulta'
-import type { ResultadoConsultaEnCurso } from '../ui/ConsultaEnCurso'
 import type { OfertaSeleccionada } from '../ui/ResultadoCredito'
 import type { ResultadoEvaluacionCredito } from './resultado-evaluacion'
 
@@ -25,12 +22,9 @@ export interface ContextoOriginacion {
   biometria?: ResultadoBiometrico
   ocr?: ResultadoOCR
   revision?: DatosRevisados
-  resultado?: ResultadoFinal
   solicitud?: DatosSolicitud
-  /** ID persistido en POST /api/solicitudes (paso 7). */
+  /** ID persistido en POST /api/solicitudes. */
   idSolicitud?: string
-  consulta?: DatosConsulta
-  resultadoConsulta?: ResultadoConsultaEnCurso
   resultadoEvaluacion?: ResultadoEvaluacionCredito
   ofertaSeleccionada?: OfertaSeleccionada
 }
@@ -49,7 +43,7 @@ const CLAVE = 'inversiones-pacifico:borrador-originacion'
 // cada paso valida su propia forma al consumirla.
 const borradorSchema = z.object({
   version: z.literal(1),
-  paso: z.number().int().min(1).max(12),
+  paso: z.number().int().min(1).max(5),
   contexto: z.custom<ContextoOriginacion>(
     (valor) => typeof valor === 'object' && valor !== null,
   ),

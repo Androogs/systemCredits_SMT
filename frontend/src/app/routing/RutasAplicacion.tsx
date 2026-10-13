@@ -7,6 +7,7 @@ import Resumen from '../../pages/Resumen'
 import Simulador from '../../pages/Simulador'
 import PanelAsesor from '../../pages/PanelAsesor'
 import Solicitudes from '../../pages/Solicitudes'
+import BandejaComite from '../../pages/BandejaComite'
 import DetalleSolicitud from '../../pages/DetalleSolicitud'
 import Resultado from '../../pages/Resultado'
 import Originacion from '../../pages/Originacion'
@@ -51,6 +52,7 @@ export default function RutasAplicacion() {
         <Route path="solicitudes" element={<Solicitudes />} />
         <Route path="solicitudes/:id" element={<DetalleSolicitud />} />
         <Route path="solicitudes/:id/resultado" element={<Resultado />} />
+        <Route path="comite" element={<BandejaComite />} />
         <Route path="clientes" element={<Clientes />} />
         <Route path="riesgo" element={<Riesgo />} />
         <Route path="estados" element={<Estados />} />

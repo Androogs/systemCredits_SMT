@@ -65,13 +65,18 @@ const urlCaptura = (token: string) =>
 
 const urlEvidencia = (id: number) => `${API}/api/evidencias/${id}/contenido`
 
+interface CapturaCedulaProps {
+  onContinue?: (resultado: ResultadoBiometrico) => void
+  onBack?: () => void
+  /** Si es true, no renderiza header ni seguimiento (para usar dentro de otro paso). */
+  compacto?: boolean
+}
+
 function CapturaCedula({
   onContinue,
   onBack,
-}: {
-  onContinue?: (resultado: ResultadoBiometrico) => void
-  onBack?: () => void
-}) {
+  compacto = false,
+}: CapturaCedulaProps) {
   const [modo, setModo] = useState<Modo>('handoff')
   const qrRef = useRef<HTMLCanvasElement>(null)
 
@@ -147,42 +152,48 @@ function CapturaCedula({
 
   return (
     <div className="captura">
-      <header className="captura__header">
-        <div className="captura__header-copy">
-          <p className="captura__eyebrow">Originación Individual · Paso 3</p>
-          <h1>Captura del Documento de Identidad</h1>
-          <p className="captura__subtitle">Cédula y video de prueba de vida</p>
-          <p className="captura__lede">
-            El cliente captura su cédula y graba un video corto con el documento
-            junto a su rostro, desde su celular o en este dispositivo. Las
-            evidencias quedan asociadas a la solicitud.
-          </p>
-        </div>
+      {!compacto && (
+        <header className="captura__header">
+          <div className="captura__header-copy">
+            <p className="captura__eyebrow">Originación Individual · Paso 3</p>
+            <h1>Captura del Documento de Identidad</h1>
+            <p className="captura__subtitle">
+              Cédula y video de prueba de vida
+            </p>
+            <p className="captura__lede">
+              El cliente captura su cédula y graba un video corto con el
+              documento junto a su rostro, desde su celular o en este
+              dispositivo. Las evidencias quedan asociadas a la solicitud.
+            </p>
+          </div>
 
-        <aside
-          className="captura__panel"
-          aria-label="Contexto de la radicación"
-        >
-          <dl className="captura__meta">
-            <div>
-              <dt>Vigencia del enlace</dt>
-              <dd>
-                {sesion
-                  ? new Date(sesion.expira_en).toLocaleTimeString('es-CO')
-                  : '—'}
-              </dd>
-            </div>
-          </dl>
-          <span className="captura__server">
-            <span aria-hidden="true" />
-            Captura remota activa
-          </span>
-        </aside>
-      </header>
+          <aside
+            className="captura__panel"
+            aria-label="Contexto de la radicación"
+          >
+            <dl className="captura__meta">
+              <div>
+                <dt>Vigencia del enlace</dt>
+                <dd>
+                  {sesion
+                    ? new Date(sesion.expira_en).toLocaleTimeString('es-CO')
+                    : '—'}
+                </dd>
+              </div>
+            </dl>
+            <span className="captura__server">
+              <span aria-hidden="true" />
+              Captura remota activa
+            </span>
+          </aside>
+        </header>
+      )}
 
-      <SeguimientoOriginacion pasoActual={3} />
+      {!compacto && <SeguimientoOriginacion pasoActual={3} />}
 
-      <div className="captura__form">
+      <div
+        className={`captura__form${compacto ? ' captura__form--compacto' : ''}`}
+      >
         <div className="captura__form-head">
           <div>
             <h2>Captura remota de evidencias</h2>
@@ -191,7 +202,6 @@ function CapturaCedula({
               celular y usa la cámara directamente.
             </p>
           </div>
-          <span className="captura__chip">Paso 3 de 12</span>
         </div>
 
         {sesionMut.isError && (
@@ -541,7 +551,10 @@ function CapturaCedula({
                 className={`captura__dot${!completada ? ' captura__dot--live' : ''}`}
                 aria-hidden="true"
               />
-              {completada && 'Puedes continuar al procesamiento OCR.'}
+              {completada &&
+                (compacto
+                  ? 'Puedes continuar a la revisión de datos.'
+                  : 'Puedes continuar al procesamiento OCR.')}
               {expirada && 'Enlace expirado — genera uno nuevo.'}
               {!completada && !expirada && 'Esperando evidencias del cliente…'}
             </p>
@@ -574,7 +587,7 @@ function CapturaCedula({
               onClick={() => onContinue?.(resultado)}
               iconoFin={<ArrowRight size={15} aria-hidden="true" />}
             >
-              Continuar a Procedimiento
+              {compacto ? 'Continuar' : 'Continuar a Procedimiento'}
             </Boton>
           )}
         </div>

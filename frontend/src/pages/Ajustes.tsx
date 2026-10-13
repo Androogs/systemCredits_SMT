@@ -33,6 +33,7 @@ import {
   CheckCircle2,
   Copy,
 } from 'lucide-react'
+import CampoNumerico from '../shared/ui/CampoNumerico'
 
 type SeccionId =
   | 'perfil'
@@ -159,6 +160,54 @@ const Input = ({
         {...props}
         id={inputId}
         className="h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-900"
+      />
+    </div>
+  )
+}
+
+const CLASE_INPUT_NUMERICO =
+  'h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-900'
+
+const InputNumerico = ({
+  label,
+  id,
+  value,
+  onValor,
+  decimales,
+  formatoMiles,
+  minimo,
+  maximo,
+}: {
+  label: string
+  id?: string
+  value: number | null
+  onValor: (n: number | null) => void
+  decimales?: boolean
+  formatoMiles?: boolean
+  minimo?: number
+  maximo?: number
+}) => {
+  const generatedId = useId()
+  const inputId = id ?? generatedId
+
+  return (
+    <div className="space-y-1.5">
+      <label
+        htmlFor={inputId}
+        className="text-[11px] font-medium uppercase tracking-wide text-zinc-600"
+      >
+        {label}
+      </label>
+      <CampoNumerico
+        id={inputId}
+        className={CLASE_INPUT_NUMERICO}
+        value={value}
+        onValor={onValor}
+        decimales={decimales}
+        formatoMiles={formatoMiles}
+        minimo={minimo}
+        maximo={maximo}
+        mostrarCero
       />
     </div>
   )
@@ -906,54 +955,52 @@ export default function Ajustes() {
                 desc="POST /motor/evaluar - Auditado"
               >
                 <div className="grid md:grid-cols-3 gap-4">
-                  <Input
+                  <InputNumerico
                     label="SMMLV"
-                    type="number"
+                    formatoMiles
+                    minimo={0}
+                    maximo={100_000_000}
                     value={form.smmlv}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                      onChange('smmlv', Number(e.target.value))
-                    }
+                    onValor={(n) => onChange('smmlv', n ?? 0)}
                   />
-                  <Input
+                  <InputNumerico
                     label="Score Mín"
-                    type="number"
+                    minimo={0}
+                    maximo={1000}
                     value={form.scoreMin}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                      onChange('scoreMin', Number(e.target.value))
-                    }
+                    onValor={(n) => onChange('scoreMin', n ?? 0)}
                   />
-                  <Input
+                  <InputNumerico
                     label="Quanto Mín"
-                    type="number"
-                    step="0.1"
+                    decimales
+                    minimo={0}
+                    maximo={20}
                     value={form.quantoMin}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                      onChange('quantoMin', Number(e.target.value))
-                    }
+                    onValor={(n) => onChange('quantoMin', n ?? 0)}
                   />
-                  <Input
+                  <InputNumerico
                     label="Capacidad Máx %"
-                    type="number"
+                    decimales
+                    minimo={0}
+                    maximo={100}
                     value={form.capacidadMax}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                      onChange('capacidadMax', Number(e.target.value))
-                    }
+                    onValor={(n) => onChange('capacidadMax', n ?? 0)}
                   />
-                  <Input
+                  <InputNumerico
                     label="Endeudamiento Máx %"
-                    type="number"
+                    decimales
+                    minimo={0}
+                    maximo={100}
                     value={form.endeudamientoMax}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                      onChange('endeudamientoMax', Number(e.target.value))
-                    }
+                    onValor={(n) => onChange('endeudamientoMax', n ?? 0)}
                   />
-                  <Input
+                  <InputNumerico
                     label="Ingreso Mín"
-                    type="number"
+                    formatoMiles
+                    minimo={0}
+                    maximo={500_000_000}
                     value={form.ingresoMinimo}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                      onChange('ingresoMinimo', Number(e.target.value))
-                    }
+                    onValor={(n) => onChange('ingresoMinimo', n ?? 0)}
                   />
                 </div>
               </Card>
@@ -973,14 +1020,17 @@ export default function Ajustes() {
                           {rol}
                         </label>
                         <div className="flex flex-col gap-2 sm:flex-row">
-                          <input
+                          <CampoNumerico
                             id={inputId}
-                            type="number"
+                            formatoMiles
+                            mostrarCero
+                            minimo={0}
+                            maximo={500_000_000}
                             value={lim}
-                            onChange={(e) =>
+                            onValor={(n) =>
                               onChange('limitesRol', {
                                 ...form.limitesRol,
-                                [rol]: Number(e.target.value),
+                                [rol]: n ?? 0,
                               })
                             }
                             className="h-9 w-full min-w-0 rounded-md border px-3 text-sm sm:flex-1"
@@ -1026,28 +1076,32 @@ export default function Ajustes() {
                         <tr key={r.tipo} className="border-t">
                           <td className="p-3 font-medium">{r.tipo}</td>
                           <td className="p-3">
-                            <input
-                              type="number"
+                            <CampoNumerico
+                              mostrarCero
+                              minimo={0}
+                              maximo={1000}
                               value={r.scoreMin}
                               aria-label={`Score mínimo para ${r.tipo}`}
                               className="h-7 w-20 border rounded px-2 text-sm"
-                              onChange={(e) => {
+                              onValor={(n) => {
                                 const c = [...form.reglasEmpleo]
-                                c[i].scoreMin = Number(e.target.value)
+                                c[i].scoreMin = n ?? 0
                                 onChange('reglasEmpleo', c)
                               }}
                             />
                           </td>
                           <td className="p-3">
-                            <input
-                              type="number"
-                              step="0.1"
+                            <CampoNumerico
+                              decimales
+                              mostrarCero
+                              minimo={0}
+                              maximo={50}
                               value={r.ingresoMin}
                               aria-label={`Ingreso mínimo en SMMLV para ${r.tipo}`}
                               className="h-7 w-20 border rounded px-2 text-sm"
-                              onChange={(e) => {
+                              onValor={(n) => {
                                 const c = [...form.reglasEmpleo]
-                                c[i].ingresoMin = Number(e.target.value)
+                                c[i].ingresoMin = n ?? 0
                                 onChange('reglasEmpleo', c)
                               }}
                             />
@@ -1076,29 +1130,26 @@ export default function Ajustes() {
                   desc="Aplican a todos los perfiles"
                 >
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <Input
+                    <InputNumerico
                       label="Edad Mín"
-                      type="number"
+                      minimo={0}
+                      maximo={120}
                       value={form.edadMin}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                        onChange('edadMin', Number(e.target.value))
-                      }
+                      onValor={(n) => onChange('edadMin', n ?? 0)}
                     />
-                    <Input
+                    <InputNumerico
                       label="Edad Máx"
-                      type="number"
+                      minimo={0}
+                      maximo={120}
                       value={form.edadMax}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                        onChange('edadMax', Number(e.target.value))
-                      }
+                      onValor={(n) => onChange('edadMax', n ?? 0)}
                     />
-                    <Input
+                    <InputNumerico
                       label="Mora Máx (días)"
-                      type="number"
+                      minimo={0}
+                      maximo={3650}
                       value={form.moraMax}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                        onChange('moraMax', Number(e.target.value))
-                      }
+                      onValor={(n) => onChange('moraMax', n ?? 0)}
                     />
                   </div>
                   <div className="mt-4 flex items-center justify-between rounded-md border p-3">
@@ -1516,37 +1567,33 @@ export default function Ajustes() {
                   desc="Bloqueos y complejidad"
                 >
                   <div className="grid grid-cols-2 gap-4">
-                    <Input
+                    <InputNumerico
                       label="Timeout sesión (min)"
-                      type="number"
+                      minimo={1}
+                      maximo={1440}
                       value={form.timeoutSesion}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                        onChange('timeoutSesion', Number(e.target.value))
-                      }
+                      onValor={(n) => onChange('timeoutSesion', n ?? 0)}
                     />
-                    <Input
+                    <InputNumerico
                       label="Intentos fallidos"
-                      type="number"
+                      minimo={1}
+                      maximo={20}
                       value={form.intentosFallidos}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                        onChange('intentosFallidos', Number(e.target.value))
-                      }
+                      onValor={(n) => onChange('intentosFallidos', n ?? 0)}
                     />
-                    <Input
+                    <InputNumerico
                       label="Bloqueo (min)"
-                      type="number"
+                      minimo={1}
+                      maximo={1440}
                       value={form.bloqueoMin}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                        onChange('bloqueoMin', Number(e.target.value))
-                      }
+                      onValor={(n) => onChange('bloqueoMin', n ?? 0)}
                     />
-                    <Input
+                    <InputNumerico
                       label="Longitud mín pass"
-                      type="number"
+                      minimo={6}
+                      maximo={128}
                       value={form.longitudPass}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                        onChange('longitudPass', Number(e.target.value))
-                      }
+                      onValor={(n) => onChange('longitudPass', n ?? 0)}
                     />
                   </div>
                 </Card>
@@ -1655,13 +1702,12 @@ export default function Ajustes() {
                       onChange('backupHora', e.target.value)
                     }
                   />
-                  <Input
+                  <InputNumerico
                     label="Retención (días)"
-                    type="number"
+                    minimo={1}
+                    maximo={3650}
                     value={form.backupRetencion}
-                    onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                      onChange('backupRetencion', Number(e.target.value))
-                    }
+                    onValor={(n) => onChange('backupRetencion', n ?? 0)}
                   />
                 </div>
               </Card>

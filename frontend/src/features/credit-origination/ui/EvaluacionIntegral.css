@@ -88,6 +88,8 @@
 .evaluacion-integral__auditoria strong {
   color: #475467;
   font-weight: 650;
+  overflow-wrap: anywhere;
+  word-break: break-all;
 }
 
 .evaluacion-integral__recomendacion {

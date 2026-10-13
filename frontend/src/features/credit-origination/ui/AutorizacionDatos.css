@@ -141,18 +141,6 @@
   font-size: 0.78rem;
 }
 
-.autorizacion__chip {
-  flex: 0 0 auto;
-  padding: 0.45rem 0.7rem;
-  border: 1px solid #e1e7ef;
-  border-radius: 99px;
-  background: #fff;
-  color: #617083;
-  font-size: 0.7rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
 /* ---------- Bloques legales ---------- */
 
 .autorizacion__legal {
@@ -448,6 +436,10 @@
   .autorizacion__header {
     grid-template-columns: 1fr;
   }
+
+  .autorizacion__panel {
+    display: none;
+  }
 }
 
 @media (max-width: 680px) {
@@ -462,5 +454,12 @@
 
   .autorizacion__actions .boton {
     width: 100%;
+  }
+}
+/* Compactacion movil: el seguimiento ya muestra la etapa; se ocultan duplicados */
+@media (max-width: 680px) {
+  .autorizacion__eyebrow,
+  .autorizacion__lede {
+    display: none;
   }
 }

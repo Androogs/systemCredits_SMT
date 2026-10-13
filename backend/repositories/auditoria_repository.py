@@ -4,8 +4,21 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from backend.db_models.auditoria_models import EvaluacionAuditoria
-from backend.models.motor_models import ResultadoMotor
+from backend.models.motor_models import ResultadoMotor, ResultadoMotorResponse
 from backend.utils.fechas import calcular_edad
+
+
+def _resultado_json(resultado: ResultadoMotor, id_solicitud: str | None) -> str:
+    """Serializa el resultado con el detalle del buró del solicitante
+    (cuentas, tarjetas, endeudamiento, alertas, score) y los parámetros
+    del motor usados — insumo del detalle de evaluación del admin."""
+    datos = ResultadoMotorResponse.desde_resultado(
+        resultado, id_solicitud, incluir_detalle_buro=True
+    ).model_dump(mode="json")
+    datos["parametros_usados"] = json.loads(
+        json.dumps(resultado.parametros_usados, default=str)
+    )
+    return json.dumps(datos, ensure_ascii=False)
 
 
 class AuditoriaRepository:
@@ -38,8 +51,9 @@ class AuditoriaRepository:
             causales=json.dumps([c.model_dump(mode="json") for c in resultado.causales_detalle], ensure_ascii=False),
             tiempo_ms=resultado.tiempo_ms,
             request_json=solicitud.model_dump_json(),
-            # Sin respuestas completas del buró (datos personales de terceros).
-            resultado_json=resultado.model_dump_json(exclude={"hdc_respuesta", "valor_ingreso_respuesta"}),
+            # Detalle normalizado del buró del propio solicitante (no el
+            # JSON crudo del proveedor): suficiente para el comité.
+            resultado_json=_resultado_json(resultado, id_solicitud),
         )
         self.db.add(registro)
         self.db.flush()

@@ -1,15 +1,17 @@
 import { useParams, Link } from 'react-router-dom'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
 import Skeleton from '../shared/ui/Skeleton'
+import CampoNumerico from '../shared/ui/CampoNumerico'
 import InsigniaEstado from '../entities/credit/ui/InsigniaEstado'
 import {
   ApiError,
   evaluarSolicitud,
   listarAuditoriaSolicitud,
   listarBancos,
+  listarEscenariosMock,
   obtenerAuditoria,
   obtenerSolicitud,
   registrarDesembolso,
@@ -26,13 +28,14 @@ import {
   TASA_MENSUAL_REFERENCIA,
 } from '../features/credit-origination/model/resultado-evaluacion'
 import {
-  estadoVisual,
+  estadoParaVista,
   etiquetaSolicitud,
   numero,
   OCUPACION_LABELS,
 } from '../entities/credit/model/solicitudesPanel'
 import { currency, dateShort } from '../shared/lib/formatters'
 import { cuotaAnualidad } from '../shared/lib/finanzas'
+import { useRol } from '../shared/lib/sesion'
 import {
   ArrowLeft,
   AlertTriangle,
@@ -120,7 +123,22 @@ export default function DetalleSolicitud() {
   const [referenciaPago, setReferenciaPago] = useState('')
   const [montoTomar, setMontoTomar] = useState('')
   const [plazoTomar, setPlazoTomar] = useState('')
+  // Re-evaluación con parámetros editables (solo administrador).
+  const [reSaldo, setReSaldo] = useState<number | null>(null)
+  const [rePlazo, setRePlazo] = useState<number | null>(null)
+  const [reTasa, setReTasa] = useState('')
+  const [reOrigen, setReOrigen] = useState<'demo' | 'experian'>('demo')
+  const [reEscenario, setReEscenario] = useState('aprobado')
   const [jsonTab, setJsonTab] = useState<'resultado' | 'payload'>('resultado')
+  const [vista, setVista] = useState<'solicitud' | 'evaluacion' | 'gestion'>(
+    'solicitud',
+  )
+  // El asesor gestiona la solicitud pero no ve score, causales ni la
+  // auditoría del motor (dato sensible); esa vista es del administrador.
+  const esAsesor = useRol() === 'asesor'
+  useEffect(() => {
+    if (esAsesor && vista === 'evaluacion') setVista('solicitud')
+  }, [esAsesor, vista])
 
   const consultaSolicitud = useQuery<SolicitudDetalleApi>({
     queryKey: ['solicitud', id],
@@ -152,6 +170,14 @@ export default function DetalleSolicitud() {
     queryKey: ['evidencias-solicitud', datos?.id_solicitud],
     enabled: datos != null,
     queryFn: () => listarEvidenciasSolicitud(datos!.id_solicitud),
+  })
+
+  const { data: escenarios = {} } = useQuery({
+    queryKey: ['escenarios-mock'],
+    queryFn: listarEscenariosMock,
+    enabled: !esAsesor,
+    staleTime: Infinity,
+    retry: 0,
   })
   const evidenciaPorTipo = new Map(evidencias.map((e) => [e.tipo, e]))
 
@@ -247,7 +273,7 @@ export default function DetalleSolicitud() {
     )
   }
 
-  const visual = estadoVisual(datos)
+  const visual = estadoParaVista(datos, esAsesor)
   const evaluacion = datos.evaluacion
   const cupo = numero(evaluacion?.cupo_sugerido)
   const capacidad = numero(evaluacion?.capacidad_pago)
@@ -259,6 +285,10 @@ export default function DetalleSolicitud() {
     datos.estado === 'aprobada' && ofertaSeleccionada != null
   const puedeSeleccionarOferta =
     datos.estado === 'aprobada' && !ofertaSeleccionada && ofertaElegible != null
+  const plazoMaxOferta = Number(ofertaElegible?.plazo_ofrecido ?? 0)
+  const plazoInvalido =
+    plazoTomar !== '' &&
+    (Number(plazoTomar) < 12 || Number(plazoTomar) > plazoMaxOferta)
 
   const resultadoAuditoria = auditoria?.resultado ?? null
   const evidenciaFrontal = evidenciaPorTipo.get('cedula_frontal')
@@ -277,7 +307,7 @@ export default function DetalleSolicitud() {
     if (!datos || !ofertaElegible) return
     const monto = Number(montoTomar)
     const plazo = Number(plazoTomar)
-    if (!(monto > 0) || !(plazo > 0)) return
+    if (!(monto > 0) || !(plazo >= 12) || plazo > plazoMaxOferta) return
     mutSeleccionar.mutate({ idOferta: ofertaElegible.id_oferta, monto, plazo })
   }
 
@@ -285,12 +315,44 @@ export default function DetalleSolicitud() {
     if (!datos) return
     const plazo = datos.plazo_deseado_meses ?? 36
     const ingresos = numero(datos.datos_laborales?.ingreso_mensual) ?? 0
-    const { monto } = calcularCupoSugerido(ingresos, 0, plazo)
+    const { monto } = calcularCupoSugerido(ingresos, plazo)
     mutEvaluar.mutate({
       saldo_financiar: Math.max(monto, 1),
       plazo,
       tasa: TASA_MENSUAL_REFERENCIA,
       consultar_experian: true,
+    })
+  }
+
+  // Valores por defecto de la re-evaluación: los de la evaluación vigente.
+  const reSaldoDef =
+    numero(evaluacion?.cupo_sugerido) ??
+    Math.max(
+      calcularCupoSugerido(
+        numero(datos.datos_laborales?.ingreso_mensual) ?? 0,
+        datos.plazo_deseado_meses ?? 24,
+      ).monto,
+      1,
+    )
+  const rePlazoDef = evaluacion?.plazo_cupo ?? datos.plazo_deseado_meses ?? 24
+  const reTasaDef = (() => {
+    const tasaRequest = Number(
+      (auditoria?.request as Record<string, unknown> | undefined)?.tasa,
+    )
+    return Number.isFinite(tasaRequest) && tasaRequest > 0
+      ? tasaRequest
+      : TASA_MENSUAL_REFERENCIA
+  })()
+
+  /** Re-corre el motor con los parámetros editados por el administrador. */
+  function reevaluar() {
+    if (!datos) return
+    mutEvaluar.mutate({
+      saldo_financiar: reSaldo ?? reSaldoDef,
+      plazo: rePlazo ?? rePlazoDef,
+      tasa: reTasa !== '' ? Number(reTasa) : reTasaDef,
+      consultar_experian: reOrigen === 'experian',
+      escenario_mock: reOrigen === 'demo' ? reEscenario : null,
     })
   }
 
@@ -329,21 +391,29 @@ export default function DetalleSolicitud() {
             <div>
               <p className="text-xs uppercase text-slate-500">Resultado</p>
               <p className="font-semibold text-slate-900 capitalize">
-                {datos.decision
-                  ? (
-                      evaluacion?.decision_interna ?? datos.decision
-                    ).toLowerCase()
-                  : 'Pendiente de evaluación'}
+                {esAsesor
+                  ? visual === 'APROBADO'
+                    ? 'Aprobado'
+                    : visual === 'RECHAZADO'
+                      ? 'Rechazado'
+                      : 'Pendiente de evaluación'
+                  : datos.decision
+                    ? (
+                        evaluacion?.decision_interna ?? datos.decision
+                      ).toLowerCase()
+                    : 'Pendiente de evaluación'}
               </p>
             </div>
           </div>
           <div className="flex gap-8">
-            <div className="text-right">
-              <p className="text-xs uppercase text-slate-500">Score</p>
-              <p className="text-2xl font-bold text-slate-900">
-                {evaluacion?.score != null ? Number(evaluacion.score) : '—'}
-              </p>
-            </div>
+            {!esAsesor && (
+              <div className="text-right">
+                <p className="text-xs uppercase text-slate-500">Score</p>
+                <p className="text-2xl font-bold text-slate-900">
+                  {evaluacion?.score != null ? Number(evaluacion.score) : '—'}
+                </p>
+              </div>
+            )}
             <div className="text-right">
               <p className="text-xs uppercase text-slate-500">Fecha</p>
               <p className="text-sm font-medium text-slate-900">
@@ -368,769 +438,1058 @@ export default function DetalleSolicitud() {
           />
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-6">
-          <Tarjeta>
-            <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <User size={18} /> Datos personales
-            </h3>
-            <dl className="space-y-1 text-sm">
-              <Row k="Nombre" v={datos.nombre_cliente} />
-              <Row k="Documento" v={datos.num_cedula} />
-              <Row
-                k="Ocupación"
-                v={
-                  datos.ocupacion
-                    ? (OCUPACION_LABELS[datos.ocupacion] ?? datos.ocupacion)
-                    : '—'
-                }
-              />
-              <Row k="Línea de crédito" v={datos.linea_credito ?? '—'} />
-              <Row k="Destino" v={datos.destino_credito ?? '—'} />
-              <Row
-                k="Plazo deseado"
-                v={
-                  datos.plazo_deseado_meses != null
-                    ? `${datos.plazo_deseado_meses} meses`
-                    : '—'
-                }
-              />
-            </dl>
-          </Tarjeta>
-          <Tarjeta>
-            <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <Briefcase size={18} /> Datos laborales
-            </h3>
-            <dl className="space-y-1 text-sm">
-              <Row
-                k="Tipo de contrato"
-                v={
-                  datos.datos_laborales?.tipo_contrato
-                    ? (CONTRATO_LABELS[datos.datos_laborales.tipo_contrato] ??
-                      datos.datos_laborales.tipo_contrato)
-                    : '—'
-                }
-              />
-              <Row
-                k="Continuidad"
-                v={
-                  datos.datos_laborales?.meses_continuidad != null
-                    ? `${datos.datos_laborales.meses_continuidad} meses`
-                    : '—'
-                }
-              />
-              <Row
-                k="Ingreso declarado"
-                v={
-                  numero(datos.datos_laborales?.ingreso_mensual) != null
-                    ? currency(numero(datos.datos_laborales?.ingreso_mensual))
-                    : '—'
-                }
-              />
-              <Row
-                k="Otros ingresos"
-                v={
-                  numero(datos.datos_laborales?.otros_ingresos) != null
-                    ? currency(numero(datos.datos_laborales?.otros_ingresos))
-                    : '—'
-                }
-              />
-              <Row
-                k="Años Cámara de Comercio"
-                v={datos.datos_laborales?.anios_camara_comercio ?? '—'}
-              />
-            </dl>
-          </Tarjeta>
+        {/* Secciones del detalle */}
+        <div
+          className="flex flex-wrap gap-1 border-b border-slate-200"
+          role="tablist"
+          aria-label="Secciones del detalle"
+        >
+          <TabDetalle
+            activo={vista === 'solicitud'}
+            onClick={() => setVista('solicitud')}
+          >
+            Solicitud
+          </TabDetalle>
+          {!esAsesor && (
+            <TabDetalle
+              activo={vista === 'evaluacion'}
+              onClick={() => setVista('evaluacion')}
+            >
+              Evaluación
+            </TabDetalle>
+          )}
+          <TabDetalle
+            activo={vista === 'gestion'}
+            onClick={() => setVista('gestion')}
+          >
+            Gestión
+          </TabDetalle>
         </div>
 
-        <Tarjeta>
-          <h3 className="font-semibold text-slate-900 mb-1 flex items-center gap-2">
-            <FileImage size={18} /> Documentos del solicitante
-          </h3>
-          {hayEvidencia ? (
-            <>
-              <p className="text-xs text-slate-500 mb-4">
-                Evidencia capturada por el cliente desde su celular (enlace con
-                token del paso 3).
-              </p>
-              <div className="grid md:grid-cols-3 gap-6">
-                {evidenciaFrontal && (
-                  <EvidenciaImagen
-                    titulo="Cédula — frontal"
-                    url={urlEvidenciaContenido(evidenciaFrontal.id_evidencia)}
+        {vista === 'solicitud' && (
+          <>
+            <div className="grid lg:grid-cols-2 gap-6">
+              <Tarjeta>
+                <h3 className="font-semibold mb-4 flex items-center gap-2">
+                  <User size={18} /> Datos personales
+                </h3>
+                <dl className="space-y-1 text-sm">
+                  <Row k="Nombre" v={datos.nombre_cliente} />
+                  <Row k="Documento" v={datos.num_cedula} />
+                  <Row
+                    k="Ocupación"
+                    v={
+                      datos.ocupacion
+                        ? (OCUPACION_LABELS[datos.ocupacion] ?? datos.ocupacion)
+                        : '—'
+                    }
                   />
-                )}
-                {evidenciaReverso && (
-                  <EvidenciaImagen
-                    titulo="Cédula — posterior"
-                    url={urlEvidenciaContenido(evidenciaReverso.id_evidencia)}
+                  <Row k="Línea de crédito" v={datos.linea_credito ?? '—'} />
+                  <Row k="Destino" v={datos.destino_credito ?? '—'} />
+                  <Row
+                    k="Plazo deseado"
+                    v={
+                      datos.plazo_deseado_meses != null
+                        ? `${datos.plazo_deseado_meses} meses`
+                        : '—'
+                    }
                   />
-                )}
-              </div>
-              {evidenciaVideo && (
-                <div className="mt-6 space-y-2 max-w-md">
-                  <p className="text-xs uppercase text-slate-500 font-medium flex items-center gap-1">
-                    <Video size={14} /> Video de prueba de vida
-                  </p>
-                  <div className="rounded-xl overflow-hidden border border-slate-200 bg-black">
-                    <video
-                      controls
-                      className="w-full h-48 object-cover"
-                      src={urlEvidenciaContenido(evidenciaVideo.id_evidencia)}
-                    />
-                  </div>
-                  <p className="text-[11px] text-slate-500">
-                    Cliente con la cédula junto al rostro — pendiente de
-                    revisión.
-                  </p>
-                </div>
-              )}
-            </>
-          ) : (
-            <p className="text-sm text-slate-500 mt-1">
-              Sin evidencias registradas. Desde el paso 3 de la originación
-              puedes generar un enlace/QR para que el cliente las capture con su
-              celular.
-            </p>
-          )}
-        </Tarjeta>
-
-        {evaluacion && (
-          <Tarjeta>
-            <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <CreditCard size={18} /> Evaluación del motor
-            </h3>
-            <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm">
-              <Row
-                k="Score"
-                v={evaluacion.score != null ? Number(evaluacion.score) : '—'}
-              />
-              <Row
-                k="Perfil score / ingreso"
-                v={
-                  [evaluacion.perfil_score, evaluacion.perfil_ingreso]
-                    .filter(Boolean)
-                    .join(' · ') || '—'
-                }
-              />
-              <Row
-                k="Capacidad de pago"
-                v={capacidad != null ? currency(capacidad) : '—'}
-              />
-              <Row
-                k="Endeudamiento"
-                v={endeudamiento != null ? `${endeudamiento.toFixed(1)}%` : '—'}
-              />
-              <Row k="Versión evaluación" v={evaluacion.version} />
-              <Row
-                k="Decisión interna"
-                v={evaluacion.decision_interna ?? '—'}
-                highlight={visual === 'APROBADO'}
-              />
-            </dl>
-          </Tarjeta>
-        )}
-
-        {resultadoAuditoria && (
-          <div className="grid lg:grid-cols-2 gap-6">
-            <Tarjeta>
-              <h3 className="font-semibold mb-4 flex items-center gap-2">
-                <CreditCard size={18} /> Capacidad de pago
-              </h3>
-              <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm">
-                <Row
-                  k="Ingreso final"
-                  v={currency(Number(resultadoAuditoria.ingreso_final))}
-                />
-                <Row
-                  k="Fuente del ingreso"
-                  v={resultadoAuditoria.fuente_ingreso_final}
-                />
-                <Row
-                  k="Endeudamiento"
-                  v={`${Number(resultadoAuditoria.endeudamiento).toFixed(1)}%`}
-                />
-                <Row
-                  k="Disponible"
-                  v={currency(Number(resultadoAuditoria.disponible))}
-                  highlight
-                />
-                <Row
-                  k="Capacidad de pago"
-                  v={currency(Number(resultadoAuditoria.capacidad_pago))}
-                />
-                <Row
-                  k="Cuota sugerida"
-                  v={currency(Number(resultadoAuditoria.cuota_sugerida))}
-                />
-              </dl>
-            </Tarjeta>
-            <Tarjeta>
-              <h3 className="font-semibold mb-4">Trazabilidad del motor</h3>
-              <ul className="space-y-3">
-                {resultadoAuditoria.trazabilidad.map((paso) => (
-                  <li key={paso.etapa} className="flex gap-3 text-sm">
-                    {paso.causales.length > 0 ? (
-                      <XCircle
-                        size={18}
-                        className="shrink-0 mt-0.5 text-amber-600"
-                      />
-                    ) : (
-                      <CheckCircle2
-                        size={18}
-                        className="shrink-0 mt-0.5 text-emerald-600"
-                      />
-                    )}
-                    <div>
-                      <span className="font-medium text-slate-900">
-                        {ETAPA_LABELS[paso.etapa] ?? paso.etapa}
-                      </span>
-                      <p className="text-slate-600">{paso.resultado}</p>
-                      {paso.detalle.length > 0 && (
-                        <p className="text-xs text-slate-600">
-                          {paso.detalle.join(' · ')}
-                        </p>
-                      )}
-                      {paso.causales.length > 0 && (
-                        <p className="text-xs font-medium text-amber-700">
-                          Causales: {paso.causales.join(', ')}
-                        </p>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </Tarjeta>
-          </div>
-        )}
-
-        {auditoria && (
-          <Tarjeta>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h3 className="font-semibold flex items-center gap-2">
-                <Database size={18} /> Detalle de evaluación
-              </h3>
-              <div
-                className="flex max-w-full flex-wrap bg-slate-100 rounded-full p-1 text-xs"
-                role="group"
-                aria-label="Información de la evaluación"
-              >
-                <button
-                  type="button"
-                  onClick={() => setJsonTab('resultado')}
-                  aria-pressed={jsonTab === 'resultado'}
-                  className={`px-3 py-1.5 rounded-full ${jsonTab === 'resultado' ? 'bg-white shadow font-medium' : 'text-slate-500'}`}
-                >
-                  Desición Final
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setJsonTab('payload')}
-                  aria-pressed={jsonTab === 'payload'}
-                  className={`px-3 py-1.5 rounded-full ${jsonTab === 'payload' ? 'bg-white shadow font-medium' : 'text-slate-500'}`}
-                >
-                  Solicitud evaluada
-                </button>
-              </div>
+                </dl>
+              </Tarjeta>
+              <Tarjeta>
+                <h3 className="font-semibold mb-4 flex items-center gap-2">
+                  <Briefcase size={18} /> Datos laborales
+                </h3>
+                <dl className="space-y-1 text-sm">
+                  <Row
+                    k="Tipo de contrato"
+                    v={
+                      datos.datos_laborales?.tipo_contrato
+                        ? (CONTRATO_LABELS[
+                            datos.datos_laborales.tipo_contrato
+                          ] ?? datos.datos_laborales.tipo_contrato)
+                        : '—'
+                    }
+                  />
+                  <Row
+                    k="Continuidad"
+                    v={
+                      datos.datos_laborales?.meses_continuidad != null
+                        ? `${datos.datos_laborales.meses_continuidad} meses`
+                        : '—'
+                    }
+                  />
+                  <Row
+                    k="Ingreso declarado"
+                    v={
+                      numero(datos.datos_laborales?.ingreso_mensual) != null
+                        ? currency(
+                            numero(datos.datos_laborales?.ingreso_mensual),
+                          )
+                        : '—'
+                    }
+                  />
+                  <Row
+                    k="Otros ingresos"
+                    v={
+                      numero(datos.datos_laborales?.otros_ingresos) != null
+                        ? currency(
+                            numero(datos.datos_laborales?.otros_ingresos),
+                          )
+                        : '—'
+                    }
+                  />
+                  <Row
+                    k="Años Cámara de Comercio"
+                    v={datos.datos_laborales?.anios_camara_comercio ?? '—'}
+                  />
+                </dl>
+              </Tarjeta>
             </div>
 
-            {jsonTab === 'resultado' ? (
-              <div className="space-y-5">
-                <section aria-labelledby="auditoria-decision">
-                  <h4
-                    id="auditoria-decision"
-                    className="mb-2 text-sm font-semibold text-slate-900"
-                  >
-                    Decisión y perfil
-                  </h4>
-                  <dl className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
-                    <Row k="Decisión" v={auditoria.resultado.decision} />
-                    <Row
-                      k="Decisión interna"
-                      v={auditoria.resultado.decision_interna}
-                    />
-                    <Row
-                      k="Score consultado"
-                      v={auditoria.resultado.score_consultado ?? '—'}
-                    />
-                    <Row
-                      k="Tipo de score"
-                      v={auditoria.resultado.score_tipo ?? '—'}
-                    />
-                    <Row
-                      k="Perfil de score"
-                      v={auditoria.resultado.perfil_score ?? '—'}
-                    />
-                    <Row
-                      k="Perfil de ingreso"
-                      v={auditoria.resultado.perfil_ingreso ?? '—'}
-                    />
-                  </dl>
-                </section>
+            <Tarjeta>
+              <h3 className="font-semibold text-slate-900 mb-1 flex items-center gap-2">
+                <FileImage size={18} /> Documentos del solicitante
+              </h3>
+              {hayEvidencia ? (
+                <>
+                  <p className="text-xs text-slate-500 mb-4">
+                    Evidencia capturada por el cliente desde su celular (enlace
+                    con token del paso 3).
+                  </p>
+                  <div className="grid md:grid-cols-3 gap-6">
+                    {evidenciaFrontal && (
+                      <EvidenciaImagen
+                        titulo="Cédula — frontal"
+                        url={urlEvidenciaContenido(
+                          evidenciaFrontal.id_evidencia,
+                        )}
+                      />
+                    )}
+                    {evidenciaReverso && (
+                      <EvidenciaImagen
+                        titulo="Cédula — posterior"
+                        url={urlEvidenciaContenido(
+                          evidenciaReverso.id_evidencia,
+                        )}
+                      />
+                    )}
+                  </div>
+                  {evidenciaVideo && (
+                    <div className="mt-6 space-y-2 max-w-md">
+                      <p className="text-xs uppercase text-slate-500 font-medium flex items-center gap-1">
+                        <Video size={14} /> Video de prueba de vida
+                      </p>
+                      <div className="rounded-xl overflow-hidden border border-slate-200 bg-black">
+                        <video
+                          controls
+                          className="w-full h-48 object-cover"
+                          src={urlEvidenciaContenido(
+                            evidenciaVideo.id_evidencia,
+                          )}
+                        />
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        Cliente con la cédula junto al rostro — pendiente de
+                        revisión.
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-slate-500 mt-1">
+                  Sin evidencias registradas. Desde el paso 3 de la originación
+                  puedes generar un enlace/QR para que el cliente las capture
+                  con su celular.
+                </p>
+              )}
+            </Tarjeta>
+          </>
+        )}
 
-                <section aria-labelledby="auditoria-ingresos">
-                  <h4
-                    id="auditoria-ingresos"
-                    className="mb-2 text-sm font-semibold text-slate-900"
-                  >
-                    Ingresos y capacidad de pago
-                  </h4>
-                  <dl className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
+        {vista === 'evaluacion' && !esAsesor && (
+          <>
+            {evaluacion && (
+              <Tarjeta>
+                <h3 className="font-semibold mb-4 flex items-center gap-2">
+                  <CreditCard size={18} /> Evaluación del motor
+                </h3>
+                <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm">
+                  <Row
+                    k="Score"
+                    v={
+                      evaluacion.score != null ? Number(evaluacion.score) : '—'
+                    }
+                  />
+                  <Row
+                    k="Perfil score / ingreso"
+                    v={
+                      [evaluacion.perfil_score, evaluacion.perfil_ingreso]
+                        .filter(Boolean)
+                        .join(' · ') || '—'
+                    }
+                  />
+                  <Row
+                    k="Capacidad de pago"
+                    v={capacidad != null ? currency(capacidad) : '—'}
+                  />
+                  <Row
+                    k="Endeudamiento"
+                    v={
+                      endeudamiento != null
+                        ? `${endeudamiento.toFixed(1)}%`
+                        : '—'
+                    }
+                  />
+                  <Row k="Versión evaluación" v={evaluacion.version} />
+                  <Row
+                    k="Decisión interna"
+                    v={evaluacion.decision_interna ?? '—'}
+                    highlight={visual === 'APROBADO'}
+                  />
+                </dl>
+              </Tarjeta>
+            )}
+
+            {resultadoAuditoria && (
+              <div className="grid lg:grid-cols-2 gap-6">
+                <Tarjeta>
+                  <h3 className="font-semibold mb-4 flex items-center gap-2">
+                    <CreditCard size={18} /> Capacidad de pago
+                  </h3>
+                  <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm">
                     <Row
-                      k="Ingreso reportado por la evaluación"
-                      v={formatCurrencyValue(auditoria.resultado.valor_ingreso)}
-                    />
-                    <Row
-                      k="Estimación de ingreso HDC+ (Quanto)"
-                      v={formatCurrencyValue(auditoria.resultado.quanto_medio)}
-                    />
-                    <Row
-                      k="Ingreso usado por el motor"
-                      v={formatCurrencyValue(auditoria.resultado.ingreso_final)}
-                      highlight
+                      k="Ingreso final"
+                      v={currency(Number(resultadoAuditoria.ingreso_final))}
                     />
                     <Row
                       k="Fuente del ingreso"
-                      v={auditoria.resultado.fuente_ingreso_final}
-                    />
-                    <Row
-                      k="Ingreso en SMMLV"
-                      v={auditoria.resultado.ingreso_final_smmlv}
+                      v={resultadoAuditoria.fuente_ingreso_final}
                     />
                     <Row
                       k="Endeudamiento"
-                      v={formatPercentageValue(
-                        auditoria.resultado.endeudamiento,
-                      )}
+                      v={`${Number(resultadoAuditoria.endeudamiento).toFixed(1)}%`}
                     />
                     <Row
                       k="Disponible"
-                      v={formatCurrencyValue(auditoria.resultado.disponible)}
+                      v={currency(Number(resultadoAuditoria.disponible))}
+                      highlight
                     />
                     <Row
                       k="Capacidad de pago"
-                      v={formatCurrencyValue(
-                        auditoria.resultado.capacidad_pago,
-                      )}
-                    />
-                    <Row
-                      k="Cupo sugerido"
-                      v={formatCurrencyValue(auditoria.resultado.cupo_sugerido)}
+                      v={currency(Number(resultadoAuditoria.capacidad_pago))}
                     />
                     <Row
                       k="Cuota sugerida"
-                      v={formatCurrencyValue(
-                        auditoria.resultado.cuota_sugerida,
-                      )}
+                      v={currency(Number(resultadoAuditoria.cuota_sugerida))}
                     />
                   </dl>
-                </section>
-
-                <section aria-labelledby="auditoria-historial">
-                  <h4
-                    id="auditoria-historial"
-                    className="mb-2 text-sm font-semibold text-slate-900"
-                  >
-                    Indicadores del historial crediticio
-                  </h4>
-                  {Object.entries(auditoria.resultado.indicadores_buro).filter(
-                    ([, value]) =>
-                      value == null ||
-                      ['string', 'number', 'boolean'].includes(typeof value),
-                  ).length > 0 ? (
-                    <dl className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
-                      {Object.entries(auditoria.resultado.indicadores_buro)
-                        .filter(
-                          ([, value]) =>
-                            value == null ||
-                            ['string', 'number', 'boolean'].includes(
-                              typeof value,
-                            ),
-                        )
-                        .map(([key, value]) => (
-                          <Row
-                            key={key}
-                            k={INDICADOR_LABELS[key] ?? labelReadable(key)}
-                            v={formatReadableValue(value)}
+                </Tarjeta>
+                <Tarjeta>
+                  <h3 className="font-semibold mb-4">Trazabilidad del motor</h3>
+                  <ul className="space-y-3">
+                    {resultadoAuditoria.trazabilidad.map((paso) => (
+                      <li key={paso.etapa} className="flex gap-3 text-sm">
+                        {paso.causales.length > 0 ? (
+                          <XCircle
+                            size={18}
+                            className="shrink-0 mt-0.5 text-amber-600"
                           />
-                        ))}
-                    </dl>
-                  ) : (
-                    <p className="text-sm text-slate-500">
-                      La auditoría no contiene indicadores de historial
-                      crediticio para esta evaluación.
+                        ) : (
+                          <CheckCircle2
+                            size={18}
+                            className="shrink-0 mt-0.5 text-emerald-600"
+                          />
+                        )}
+                        <div>
+                          <span className="font-medium text-slate-900">
+                            {ETAPA_LABELS[paso.etapa] ?? paso.etapa}
+                          </span>
+                          <p className="text-slate-600">{paso.resultado}</p>
+                          {paso.detalle.length > 0 && (
+                            <p className="text-xs text-slate-600">
+                              {paso.detalle.join(' · ')}
+                            </p>
+                          )}
+                          {paso.causales.length > 0 && (
+                            <p className="text-xs font-medium text-amber-700">
+                              Causales: {paso.causales.join(', ')}
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </Tarjeta>
+              </div>
+            )}
+
+            {auditoria && (
+              <Tarjeta>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <Database size={18} /> Detalle de evaluación
+                  </h3>
+                  <div
+                    className="flex max-w-full flex-wrap bg-slate-100 rounded-full p-1 text-xs"
+                    role="group"
+                    aria-label="Información de la evaluación"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setJsonTab('resultado')}
+                      aria-pressed={jsonTab === 'resultado'}
+                      className={`px-3 py-1.5 rounded-full ${jsonTab === 'resultado' ? 'bg-white shadow font-medium' : 'text-slate-500'}`}
+                    >
+                      Desición Final
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setJsonTab('payload')}
+                      aria-pressed={jsonTab === 'payload'}
+                      className={`px-3 py-1.5 rounded-full ${jsonTab === 'payload' ? 'bg-white shadow font-medium' : 'text-slate-500'}`}
+                    >
+                      Solicitud evaluada
+                    </button>
+                  </div>
+                </div>
+
+                {jsonTab === 'resultado' ? (
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    <SeccionAuditoria titulo="Decisión y perfil">
+                      <Campo
+                        k="Decisión"
+                        v={auditoria.resultado.decision}
+                        tono={tonoDecision(auditoria.resultado.decision)}
+                      />
+                      <Campo
+                        k="Decisión interna"
+                        v={auditoria.resultado.decision_interna}
+                        tono={tonoDecision(
+                          auditoria.resultado.decision_interna,
+                        )}
+                      />
+                      <Campo
+                        k="Score consultado"
+                        v={auditoria.resultado.score_consultado ?? '—'}
+                      />
+                      <Campo
+                        k="Tipo de score"
+                        v={auditoria.resultado.score_tipo ?? '—'}
+                      />
+                      <Campo
+                        k="Perfil de score"
+                        v={auditoria.resultado.perfil_score ?? '—'}
+                      />
+                      <Campo
+                        k="Perfil de ingreso"
+                        v={auditoria.resultado.perfil_ingreso ?? '—'}
+                      />
+                    </SeccionAuditoria>
+
+                    <SeccionAuditoria titulo="Ingresos y capacidad de pago">
+                      <Campo
+                        k="Ingreso reportado por la evaluación"
+                        v={formatCurrencyValue(
+                          auditoria.resultado.valor_ingreso,
+                        )}
+                      />
+                      <Campo
+                        k="Estimación de ingreso HDC+ (Quanto)"
+                        v={formatCurrencyValue(
+                          auditoria.resultado.quanto_medio,
+                        )}
+                      />
+                      <Campo
+                        k="Ingreso usado por el motor"
+                        v={formatCurrencyValue(
+                          auditoria.resultado.ingreso_final,
+                        )}
+                        tono="emerald"
+                      />
+                      <Campo
+                        k="Fuente del ingreso"
+                        v={auditoria.resultado.fuente_ingreso_final}
+                      />
+                      <Campo
+                        k="Ingreso en SMMLV"
+                        v={auditoria.resultado.ingreso_final_smmlv}
+                      />
+                      <Campo
+                        k="Gastos personales estimados"
+                        v={formatCurrencyValue(
+                          auditoria.resultado.gastos_personales,
+                        )}
+                      />
+                      <Campo
+                        k="Gastos financieros rotativos"
+                        v={formatCurrencyValue(
+                          auditoria.resultado.gasto_financiero_rotativo,
+                        )}
+                      />
+                      <Campo
+                        k="Gastos financieros no rotativos"
+                        v={formatCurrencyValue(
+                          auditoria.resultado.gastos_financieros_no_rotativos,
+                        )}
+                      />
+                      <Campo
+                        k="Endeudamiento"
+                        v={formatPercentageValue(
+                          auditoria.resultado.endeudamiento,
+                        )}
+                      />
+                      <Campo
+                        k="Disponible"
+                        v={formatCurrencyValue(auditoria.resultado.disponible)}
+                      />
+                      <Campo
+                        k="Capacidad de pago"
+                        v={formatCurrencyValue(
+                          auditoria.resultado.capacidad_pago,
+                        )}
+                      />
+                      <Campo
+                        k="Cupo sugerido"
+                        v={formatCurrencyValue(
+                          auditoria.resultado.cupo_sugerido,
+                        )}
+                      />
+                      <Campo
+                        k="Cuota sugerida"
+                        v={formatCurrencyValue(
+                          auditoria.resultado.cuota_sugerida,
+                        )}
+                      />
+                      <Campo
+                        k="Cuota de la moto solicitada"
+                        v={formatCurrencyValue(auditoria.resultado.cuota_moto)}
+                      />
+                    </SeccionAuditoria>
+
+                    <SeccionAuditoria
+                      titulo="Indicadores del historial crediticio"
+                      columnas="lg:grid-cols-3"
+                      className="xl:col-span-2"
+                    >
+                      {Object.entries(
+                        auditoria.resultado.indicadores_buro,
+                      ).filter(
+                        ([, value]) =>
+                          value == null ||
+                          ['string', 'number', 'boolean'].includes(
+                            typeof value,
+                          ),
+                      ).length > 0 ? (
+                        Object.entries(auditoria.resultado.indicadores_buro)
+                          .filter(
+                            ([, value]) =>
+                              value == null ||
+                              ['string', 'number', 'boolean'].includes(
+                                typeof value,
+                              ),
+                          )
+                          .map(([key, value]) => (
+                            <Campo
+                              key={key}
+                              k={INDICADOR_LABELS[key] ?? labelReadable(key)}
+                              v={formatReadableValue(value)}
+                            />
+                          ))
+                      ) : (
+                        <div className="sm:col-span-2 lg:col-span-3">
+                          <p className="text-sm text-slate-500">
+                            La auditoría no contiene indicadores de historial
+                            crediticio para esta evaluación.
+                          </p>
+                        </div>
+                      )}
+                    </SeccionAuditoria>
+
+                    {/* Obligaciones reportadas en centrales (cuando la
+                    auditoría conserva el detalle del buró) */}
+                    {(
+                      [
+                        'tarjetas_credito',
+                        'cuentas_cartera',
+                        'endeudamiento_global',
+                      ] as const
+                    ).map((clave) => {
+                      const filas = listaBuro(
+                        auditoria.resultado.indicadores_buro,
+                        clave,
+                      )
+                      if (filas.length === 0) return null
+                      return (
+                        <SeccionAuditoria
+                          key={clave}
+                          titulo={
+                            clave === 'tarjetas_credito'
+                              ? 'Tarjetas de crédito y rotativos'
+                              : clave === 'cuentas_cartera'
+                                ? 'Obligaciones de cartera'
+                                : 'Endeudamiento global por entidad'
+                          }
+                          columnas="1"
+                          className="xl:col-span-2"
+                        >
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b border-slate-200 text-left text-slate-500">
+                                  <th className="py-2 pr-3 font-medium">
+                                    Entidad
+                                  </th>
+                                  {clave === 'tarjetas_credito' && (
+                                    <th className="py-2 pr-3 font-medium">
+                                      Franquicia
+                                    </th>
+                                  )}
+                                  {clave === 'cuentas_cartera' && (
+                                    <th className="py-2 pr-3 font-medium">
+                                      Tipo
+                                    </th>
+                                  )}
+                                  {clave === 'endeudamiento_global' && (
+                                    <>
+                                      <th className="py-2 pr-3 font-medium">
+                                        Sector
+                                      </th>
+                                      <th className="py-2 pr-3 font-medium">
+                                        Tipo crédito
+                                      </th>
+                                    </>
+                                  )}
+                                  {clave === 'tarjetas_credito' && (
+                                    <th className="py-2 pr-3 font-medium text-right">
+                                      Cupo
+                                    </th>
+                                  )}
+                                  <th className="py-2 pr-3 font-medium text-right">
+                                    {clave === 'endeudamiento_global'
+                                      ? 'Saldo pendiente'
+                                      : 'Saldo'}
+                                  </th>
+                                  {clave !== 'endeudamiento_global' && (
+                                    <th className="py-2 pr-3 font-medium text-right">
+                                      Cuota
+                                    </th>
+                                  )}
+                                  <th className="py-2 pr-3 font-medium">
+                                    {clave === 'endeudamiento_global'
+                                      ? 'Créditos'
+                                      : 'Estado'}
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {filas.map((fila, i) => (
+                                  <tr
+                                    key={i}
+                                    className="border-b border-slate-100 text-slate-700"
+                                  >
+                                    <td className="py-2 pr-3 font-medium">
+                                      {str(fila.entidad)}
+                                    </td>
+                                    {clave === 'tarjetas_credito' && (
+                                      <td className="py-2 pr-3">
+                                        {str(fila.franquicia ?? fila.clase)}
+                                      </td>
+                                    )}
+                                    {clave === 'cuentas_cartera' && (
+                                      <td className="py-2 pr-3">
+                                        {str(fila.tipo_cuenta)}
+                                      </td>
+                                    )}
+                                    {clave === 'endeudamiento_global' && (
+                                      <>
+                                        <td className="py-2 pr-3">
+                                          {str(fila.sector)}
+                                        </td>
+                                        <td className="py-2 pr-3">
+                                          {str(fila.tipo_credito)}
+                                        </td>
+                                      </>
+                                    )}
+                                    {clave === 'tarjetas_credito' && (
+                                      <td className="py-2 pr-3 text-right">
+                                        {formatCurrencyValue(fila.cupo_total)}
+                                      </td>
+                                    )}
+                                    <td className="py-2 pr-3 text-right">
+                                      {formatCurrencyValue(
+                                        clave === 'endeudamiento_global'
+                                          ? fila.saldo_pendiente
+                                          : fila.saldo_actual,
+                                      )}
+                                    </td>
+                                    {clave !== 'endeudamiento_global' && (
+                                      <td className="py-2 pr-3 text-right">
+                                        {formatCurrencyValue(fila.cuota)}
+                                      </td>
+                                    )}
+                                    <td className="py-2 pr-3">
+                                      {clave === 'endeudamiento_global'
+                                        ? str(fila.numero_creditos)
+                                        : str(
+                                            fila.estado_cuenta_desc ??
+                                              fila.estado_cuenta ??
+                                              fila.estado_pago ??
+                                              fila.calificacion_desc ??
+                                              fila.calificacion,
+                                          )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </SeccionAuditoria>
+                      )
+                    })}
+
+                    {/* Alertas del buró (multa/alertas reportadas) */}
+                    {listaBuro(auditoria.resultado.indicadores_buro, 'alertas')
+                      .length > 0 && (
+                      <SeccionAuditoria
+                        titulo="Alertas de centrales de riesgo"
+                        columnas="1"
+                        className="xl:col-span-2"
+                      >
+                        <ul className="space-y-1.5 text-sm text-slate-700">
+                          {listaBuro(
+                            auditoria.resultado.indicadores_buro,
+                            'alertas',
+                          ).map((a, i) => (
+                            <li key={i} className="flex gap-2">
+                              <span className="font-mono text-xs text-amber-700">
+                                {str(a.codigo)}
+                              </span>
+                              <span>{str(a.texto)}</span>
+                              {a.fuente != null && (
+                                <span className="text-xs text-slate-500">
+                                  ({str(a.fuente)})
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </SeccionAuditoria>
+                    )}
+
+                    {/* Parámetros del motor usados en esta evaluación */}
+                    {auditoria.resultado.parametros_usados != null &&
+                      Object.keys(auditoria.resultado.parametros_usados)
+                        .length > 0 && (
+                        <SeccionAuditoria
+                          titulo="Parámetros del motor usados"
+                          columnas="lg:grid-cols-4"
+                          className="xl:col-span-2"
+                        >
+                          {Object.entries(auditoria.resultado.parametros_usados)
+                            .filter(
+                              ([, v]) =>
+                                v == null ||
+                                ['string', 'number', 'boolean'].includes(
+                                  typeof v,
+                                ),
+                            )
+                            .map(([k, v]) => (
+                              <Campo
+                                key={k}
+                                k={labelReadable(k)}
+                                v={formatReadableValue(v)}
+                              />
+                            ))}
+                        </SeccionAuditoria>
+                      )}
+
+                    {auditoria.resultado.advertencias.length > 0 && (
+                      <section
+                        aria-label="Advertencias"
+                        className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 xl:col-span-2"
+                      >
+                        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-amber-800">
+                          Advertencias
+                        </h4>
+                        <ul className="list-disc space-y-1 pl-5 text-sm text-amber-800">
+                          {auditoria.resultado.advertencias.map(
+                            (advertencia, index) => (
+                              <li key={`${index}-${advertencia}`}>
+                                {advertencia}
+                              </li>
+                            ),
+                          )}
+                        </ul>
+                      </section>
+                    )}
+                  </div>
+                ) : (
+                  <SeccionAuditoria
+                    titulo="Datos usados para la evaluación"
+                    columnas="lg:grid-cols-4"
+                  >
+                    {Object.entries(auditoria.request).map(([key, value]) => (
+                      <Campo
+                        key={key}
+                        k={SOLICITUD_LABELS[key] ?? labelReadable(key)}
+                        v={
+                          key === 'numero_id'
+                            ? enmascararIdentificacion(value)
+                            : FORMAS_MONETARIAS.has(key)
+                              ? formatCurrencyValue(value)
+                              : key === 'tasa'
+                                ? `${formatReadableValue(value)}% m.v.`
+                                : key === 'plazo'
+                                  ? `${formatReadableValue(value)} meses`
+                                  : key === 'antiguedad_meses'
+                                    ? `${formatReadableValue(value)} meses`
+                                    : formatReadableValue(value)
+                        }
+                      />
+                    ))}
+                  </SeccionAuditoria>
+                )}
+
+                <p className="mt-4 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
+                  Se muestran los resultados normalizados, las obligaciones del
+                  buró y los parámetros usados por el motor en esta evaluación.
+                </p>
+                <p className="mt-2 text-[11px] text-slate-500">
+                  Evaluación {auditoria.evaluacion_id} · origen{' '}
+                  {auditoria.origen_datos} · {auditoria.tiempo_ms} ms ·{' '}
+                  {dateShort(auditoria.fecha_evaluacion)}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const blob = new Blob(
+                      [
+                        JSON.stringify(
+                          jsonTab === 'resultado'
+                            ? auditoria.resultado
+                            : auditoria.request,
+                          null,
+                          2,
+                        ),
+                      ],
+                      { type: 'application/json' },
+                    )
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `${datos.id_solicitud}_${jsonTab}.json`
+                    a.click()
+                    URL.revokeObjectURL(url)
+                  }}
+                  className="mt-3 inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700"
+                >
+                  <Download size={14} /> Descargar datos técnicos
+                </button>
+              </Tarjeta>
+            )}
+          </>
+        )}
+
+        {vista === 'gestion' && (
+          <>
+            {ofertaElegible && (
+              <Tarjeta>
+                <h3 className="font-semibold mb-4 flex items-center gap-2">
+                  <BadgePercent size={18} />
+                  {ofertaSeleccionada
+                    ? 'Oferta seleccionada'
+                    : 'Oferta elegible'}
+                </h3>
+                <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm">
+                  <Row
+                    k="Monto aprobado"
+                    v={
+                      ofertaElegible.monto_aprobado != null
+                        ? currency(Number(ofertaElegible.monto_aprobado))
+                        : '—'
+                    }
+                  />
+                  <Row
+                    k="Tasa ofrecida"
+                    v={
+                      ofertaElegible.tasa_ofrecida != null
+                        ? `${Number(ofertaElegible.tasa_ofrecida)}% m.v.`
+                        : '—'
+                    }
+                  />
+                  <Row
+                    k="Plazo"
+                    v={
+                      ofertaElegible.plazo_ofrecido != null
+                        ? `${ofertaElegible.plazo_ofrecido} meses`
+                        : '—'
+                    }
+                  />
+                  <Row
+                    k="Cuota mensual"
+                    v={
+                      ofertaElegible.cuota_mensual != null
+                        ? currency(Number(ofertaElegible.cuota_mensual))
+                        : '—'
+                    }
+                  />
+                </dl>
+              </Tarjeta>
+            )}
+
+            {datos.desembolso && (
+              <Tarjeta className="border-emerald-200 bg-emerald-50/40">
+                <h3 className="font-semibold text-emerald-900 mb-4 flex items-center gap-2">
+                  <Landmark size={18} /> Desembolso{' '}
+                  {datos.desembolso.num_desembolso ?? ''}
+                </h3>
+                <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm text-emerald-900">
+                  <Row k="Estado" v={datos.desembolso.estado} />
+                  <Row
+                    k="Capital"
+                    v={currency(Number(datos.desembolso.capital))}
+                  />
+                  <Row k="Cuota" v={currency(Number(datos.desembolso.cuota))} />
+                  <Row
+                    k="Tasa / plazo"
+                    v={`${Number(datos.desembolso.tasa)}% m.v. · ${datos.desembolso.plazo} meses`}
+                  />
+                  <Row k="Emisor" v={datos.desembolso.emisor} />
+                  <Row k="Receptor" v={datos.desembolso.receptor} />
+                  <Row
+                    k="Referencia"
+                    v={datos.desembolso.referencia_pago ?? '—'}
+                  />
+                  <Row
+                    k="Fecha"
+                    v={
+                      datos.desembolso.fecha_desembolso
+                        ? dateShort(datos.desembolso.fecha_desembolso)
+                        : '—'
+                    }
+                  />
+                </dl>
+              </Tarjeta>
+            )}
+
+            {puedeSeleccionarOferta && ofertaElegible && (
+              <Tarjeta>
+                <h3 className="font-semibold mb-1 flex items-center gap-2">
+                  <BadgePercent size={18} /> Seleccionar oferta
+                </h3>
+                <p className="text-xs text-slate-500 mb-4">
+                  El cliente puede tomar un monto menor al cupo aprobado o un
+                  plazo más corto del ofertado. La cuota se recalcula con la
+                  tasa de la oferta ({Number(ofertaElegible.tasa_ofrecida ?? 0)}
+                  % m.v.).
+                </p>
+                <div className="grid sm:grid-cols-3 gap-3 text-sm">
+                  <label className="block">
+                    <span className="text-xs uppercase text-slate-500">
+                      Monto a tomar (máx.{' '}
+                      {currency(Number(ofertaElegible.monto_aprobado ?? 0))})
+                    </span>
+                    <CampoNumerico
+                      className="input-base mt-1 w-full"
+                      formatoMiles
+                      minimo={0}
+                      maximo={Number(ofertaElegible.monto_aprobado ?? 0)}
+                      value={montoTomar === '' ? null : Number(montoTomar)}
+                      onValor={(n) => setMontoTomar(n == null ? '' : String(n))}
+                      placeholder={String(
+                        Number(ofertaElegible.monto_aprobado ?? 0),
+                      )}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs uppercase text-slate-500">
+                      Plazo (12 a {ofertaElegible.plazo_ofrecido ?? 0} meses)
+                    </span>
+                    <CampoNumerico
+                      className="input-base mt-1 w-full"
+                      value={plazoTomar === '' ? null : Number(plazoTomar)}
+                      onValor={(n) => setPlazoTomar(n == null ? '' : String(n))}
+                      aria-invalid={plazoInvalido}
+                      aria-describedby="plazo-tomar-ayuda"
+                    />
+                  </label>
+                  <p id="plazo-tomar-ayuda" className="text-xs text-slate-500">
+                    Entre 12 y {ofertaElegible.plazo_ofrecido ?? 0} meses.
+                  </p>
+                  {plazoInvalido && (
+                    <p className="text-xs text-red-600" role="alert">
+                      El plazo debe estar entre 12 y{' '}
+                      {ofertaElegible.plazo_ofrecido ?? 0} meses.
                     </p>
                   )}
-                </section>
-
-                {auditoria.resultado.advertencias.length > 0 && (
-                  <section aria-labelledby="auditoria-advertencias">
-                    <h4
-                      id="auditoria-advertencias"
-                      className="mb-2 text-sm font-semibold text-slate-900"
-                    >
-                      Advertencias
-                    </h4>
-                    <ul className="list-disc space-y-1 pl-5 text-sm text-amber-800">
-                      {auditoria.resultado.advertencias.map(
-                        (advertencia, index) => (
-                          <li key={`${index}-${advertencia}`}>{advertencia}</li>
-                        ),
-                      )}
-                    </ul>
-                  </section>
+                  <div>
+                    <span className="text-xs uppercase text-slate-500">
+                      Cuota estimada
+                    </span>
+                    <p className="mt-1 text-lg font-bold text-slate-900">
+                      {Number(montoTomar) > 0 && Number(plazoTomar) > 0
+                        ? currency(
+                            Math.round(
+                              cuotaAnualidad(
+                                Number(montoTomar),
+                                Number(ofertaElegible.tasa_ofrecida ?? 0),
+                                Number(plazoTomar),
+                              ),
+                            ),
+                          )
+                        : '—'}
+                    </p>
+                  </div>
+                </div>
+                {mutSeleccionar.error && (
+                  <p role="alert" className="mt-3 text-sm text-red-600">
+                    {mensajeError(
+                      mutSeleccionar.error,
+                      'Error seleccionando la oferta',
+                    )}
+                  </p>
                 )}
-              </div>
-            ) : (
-              <section aria-labelledby="auditoria-solicitud">
-                <h4
-                  id="auditoria-solicitud"
-                  className="mb-2 text-sm font-semibold text-slate-900"
+                <button
+                  className="btn-primary mt-4"
+                  disabled={
+                    mutSeleccionar.isPending ||
+                    !(Number(montoTomar) > 0) ||
+                    !(Number(plazoTomar) > 0)
+                  }
+                  onClick={confirmarSeleccionOferta}
                 >
-                  Datos usados para la evaluación
-                </h4>
-                <dl className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
-                  {Object.entries(auditoria.request).map(([key, value]) => (
-                    <Row
-                      key={key}
-                      k={SOLICITUD_LABELS[key] ?? labelReadable(key)}
-                      v={
-                        key === 'numero_id'
-                          ? enmascararIdentificacion(value)
-                          : FORMAS_MONETARIAS.has(key)
-                            ? formatCurrencyValue(value)
-                            : key === 'tasa'
-                              ? `${formatReadableValue(value)}% m.v.`
-                              : key === 'plazo'
-                                ? `${formatReadableValue(value)} meses`
-                                : key === 'antiguedad_meses'
-                                  ? `${formatReadableValue(value)} meses`
-                                  : formatReadableValue(value)
-                      }
-                    />
-                  ))}
-                </dl>
-              </section>
+                  {mutSeleccionar.isPending
+                    ? 'Confirmando…'
+                    : 'Confirmar oferta seleccionada'}
+                </button>
+              </Tarjeta>
             )}
 
-            <p className="mt-4 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
-              Se muestran los resultados normalizados y los indicadores usados
-              por el motor. Las respuestas JSON originales de Historia de
-              Crédito y Valor Ingreso no se conservan en la auditoría.
-            </p>
-            <p className="mt-2 text-[11px] text-slate-500">
-              Evaluación {auditoria.evaluacion_id} · origen{' '}
-              {auditoria.origen_datos} · {auditoria.tiempo_ms} ms ·{' '}
-              {dateShort(auditoria.fecha_evaluacion)}
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                const blob = new Blob(
-                  [
-                    JSON.stringify(
-                      jsonTab === 'resultado'
-                        ? auditoria.resultado
-                        : auditoria.request,
-                      null,
-                      2,
-                    ),
-                  ],
-                  { type: 'application/json' },
-                )
-                const url = URL.createObjectURL(blob)
-                const a = document.createElement('a')
-                a.href = url
-                a.download = `${datos.id_solicitud}_${jsonTab}.json`
-                a.click()
-                URL.revokeObjectURL(url)
-              }}
-              className="mt-3 inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700"
-            >
-              <Download size={14} /> Descargar datos técnicos
-            </button>
-          </Tarjeta>
-        )}
-
-        {ofertaElegible && (
-          <Tarjeta>
-            <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <BadgePercent size={18} />
-              {ofertaSeleccionada ? 'Oferta seleccionada' : 'Oferta elegible'}
-            </h3>
-            <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm">
-              <Row
-                k="Monto aprobado"
-                v={
-                  ofertaElegible.monto_aprobado != null
-                    ? currency(Number(ofertaElegible.monto_aprobado))
-                    : '—'
-                }
-              />
-              <Row
-                k="Tasa ofrecida"
-                v={
-                  ofertaElegible.tasa_ofrecida != null
-                    ? `${Number(ofertaElegible.tasa_ofrecida)}% m.v.`
-                    : '—'
-                }
-              />
-              <Row
-                k="Plazo"
-                v={
-                  ofertaElegible.plazo_ofrecido != null
-                    ? `${ofertaElegible.plazo_ofrecido} meses`
-                    : '—'
-                }
-              />
-              <Row
-                k="Cuota mensual"
-                v={
-                  ofertaElegible.cuota_mensual != null
-                    ? currency(Number(ofertaElegible.cuota_mensual))
-                    : '—'
-                }
-              />
-            </dl>
-          </Tarjeta>
-        )}
-
-        {datos.desembolso && (
-          <Tarjeta className="border-emerald-200 bg-emerald-50/40">
-            <h3 className="font-semibold text-emerald-900 mb-4 flex items-center gap-2">
-              <Landmark size={18} /> Desembolso{' '}
-              {datos.desembolso.num_desembolso ?? ''}
-            </h3>
-            <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm text-emerald-900">
-              <Row k="Estado" v={datos.desembolso.estado} />
-              <Row k="Capital" v={currency(Number(datos.desembolso.capital))} />
-              <Row k="Cuota" v={currency(Number(datos.desembolso.cuota))} />
-              <Row
-                k="Tasa / plazo"
-                v={`${Number(datos.desembolso.tasa)}% m.v. · ${datos.desembolso.plazo} meses`}
-              />
-              <Row k="Emisor" v={datos.desembolso.emisor} />
-              <Row k="Receptor" v={datos.desembolso.receptor} />
-              <Row k="Referencia" v={datos.desembolso.referencia_pago ?? '—'} />
-              <Row
-                k="Fecha"
-                v={
-                  datos.desembolso.fecha_desembolso
-                    ? dateShort(datos.desembolso.fecha_desembolso)
-                    : '—'
-                }
-              />
-            </dl>
-          </Tarjeta>
-        )}
-
-        {puedeSeleccionarOferta && ofertaElegible && (
-          <Tarjeta>
-            <h3 className="font-semibold mb-1 flex items-center gap-2">
-              <BadgePercent size={18} /> Seleccionar oferta
-            </h3>
-            <p className="text-xs text-slate-500 mb-4">
-              El cliente puede tomar un monto menor al cupo aprobado o un plazo
-              más corto del ofertado. La cuota se recalcula con la tasa de la
-              oferta ({Number(ofertaElegible.tasa_ofrecida ?? 0)}% m.v.).
-            </p>
-            <div className="grid sm:grid-cols-3 gap-3 text-sm">
-              <label className="block">
-                <span className="text-xs uppercase text-slate-500">
-                  Monto a tomar (máx.{' '}
-                  {currency(Number(ofertaElegible.monto_aprobado ?? 0))})
-                </span>
-                <input
-                  className="input-base mt-1 w-full"
-                  type="number"
-                  min={0}
-                  max={Number(ofertaElegible.monto_aprobado ?? 0)}
-                  step={50000}
-                  value={montoTomar}
-                  onChange={(e) => setMontoTomar(e.target.value)}
-                  placeholder={String(
-                    Number(ofertaElegible.monto_aprobado ?? 0),
-                  )}
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs uppercase text-slate-500">
-                  Plazo (máx. {ofertaElegible.plazo_ofrecido ?? 0} meses)
-                </span>
-                <select
-                  className="input-base mt-1 w-full"
-                  value={plazoTomar}
-                  onChange={(e) => setPlazoTomar(e.target.value)}
-                >
-                  <option value="">Seleccionar…</option>
-                  {[12, 18, 24, 30, 36, 42, 48]
-                    .filter(
-                      (p) => p <= Number(ofertaElegible.plazo_ofrecido ?? 0),
-                    )
-                    .map((p) => (
-                      <option key={p} value={p}>
-                        {p} meses
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <div>
-                <span className="text-xs uppercase text-slate-500">
-                  Cuota estimada
-                </span>
-                <p className="mt-1 text-lg font-bold text-slate-900">
-                  {Number(montoTomar) > 0 && Number(plazoTomar) > 0
-                    ? currency(
-                        Math.round(
-                          cuotaAnualidad(
-                            Number(montoTomar),
-                            Number(ofertaElegible.tasa_ofrecida ?? 0),
-                            Number(plazoTomar),
-                          ),
-                        ),
-                      )
-                    : '—'}
+            {!datos.desembolso && puedeDesembolsar && (
+              <Tarjeta>
+                <h3 className="font-semibold mb-1 flex items-center gap-2">
+                  <Landmark size={18} /> Confirmar desembolso
+                </h3>
+                <p className="text-xs text-slate-500 mb-4">
+                  Formaliza el crédito sobre la oferta seleccionada y registra
+                  la transferencia a la cuenta de ahorros del cliente.
                 </p>
-              </div>
-            </div>
-            {mutSeleccionar.error && (
-              <p role="alert" className="mt-3 text-sm text-red-600">
-                {mensajeError(
-                  mutSeleccionar.error,
-                  'Error seleccionando la oferta',
+                {ofertaSeleccionada && (
+                  <dl className="grid sm:grid-cols-4 gap-x-8 gap-y-1 text-sm mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div>
+                      <dt className="text-xs uppercase text-slate-500">
+                        Monto a desembolsar
+                      </dt>
+                      <dd className="text-lg font-bold text-slate-900">
+                        {ofertaSeleccionada.monto_aprobado != null
+                          ? currency(Number(ofertaSeleccionada.monto_aprobado))
+                          : '—'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase text-slate-500">
+                        Cuota
+                      </dt>
+                      <dd className="text-lg font-semibold text-slate-900">
+                        {ofertaSeleccionada.cuota_mensual != null
+                          ? currency(Number(ofertaSeleccionada.cuota_mensual))
+                          : '—'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase text-slate-500">
+                        Tasa / plazo
+                      </dt>
+                      <dd className="text-lg font-semibold text-slate-900">
+                        {ofertaSeleccionada.tasa_ofrecida != null
+                          ? `${Number(ofertaSeleccionada.tasa_ofrecida)}% m.v.`
+                          : '—'}
+                        {ofertaSeleccionada.plazo_ofrecido != null
+                          ? ` · ${ofertaSeleccionada.plazo_ofrecido} meses`
+                          : ''}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase text-slate-500">
+                        Receptor
+                      </dt>
+                      <dd className="text-sm font-semibold text-slate-900 mt-1">
+                        {datos.nombre_cliente}
+                      </dd>
+                    </div>
+                  </dl>
                 )}
-              </p>
-            )}
-            <button
-              className="btn-primary mt-4"
-              disabled={
-                mutSeleccionar.isPending ||
-                !(Number(montoTomar) > 0) ||
-                !(Number(plazoTomar) > 0)
-              }
-              onClick={confirmarSeleccionOferta}
-            >
-              {mutSeleccionar.isPending
-                ? 'Confirmando…'
-                : 'Confirmar oferta seleccionada'}
-            </button>
-          </Tarjeta>
-        )}
-
-        {!datos.desembolso && puedeDesembolsar && (
-          <Tarjeta>
-            <h3 className="font-semibold mb-1 flex items-center gap-2">
-              <Landmark size={18} /> Confirmar desembolso
-            </h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Formaliza el crédito sobre la oferta seleccionada y registra la
-              transferencia a la cuenta de ahorros del cliente.
-            </p>
-            {ofertaSeleccionada && (
-              <dl className="grid sm:grid-cols-4 gap-x-8 gap-y-1 text-sm mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                <div>
-                  <dt className="text-xs uppercase text-slate-500">
-                    Monto a desembolsar
-                  </dt>
-                  <dd className="text-lg font-bold text-slate-900">
-                    {ofertaSeleccionada.monto_aprobado != null
-                      ? currency(Number(ofertaSeleccionada.monto_aprobado))
-                      : '—'}
-                  </dd>
+                <div className="grid sm:grid-cols-3 gap-3 text-sm">
+                  <label className="block">
+                    <span className="text-xs uppercase text-slate-500">
+                      Banco
+                    </span>
+                    <select
+                      className="input-base mt-1 w-full"
+                      value={bancoAch}
+                      onChange={(e) => setBancoAch(e.target.value)}
+                    >
+                      <option value="">Seleccionar…</option>
+                      {bancos.map((b) => (
+                        <option key={b.id_banco} value={b.codigo_ach ?? ''}>
+                          {b.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-xs uppercase text-slate-500">
+                      Cuenta de ahorros del cliente
+                    </span>
+                    <input
+                      className="input-base mt-1 w-full"
+                      value={numeroCuenta}
+                      onChange={(e) => setNumeroCuenta(e.target.value)}
+                      placeholder="Número de cuenta"
+                      inputMode="numeric"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs uppercase text-slate-500">
+                      Referencia de pago (opcional)
+                    </span>
+                    <input
+                      className="input-base mt-1 w-full"
+                      value={referenciaPago}
+                      onChange={(e) => setReferenciaPago(e.target.value)}
+                      placeholder="TRX-…"
+                    />
+                  </label>
                 </div>
-                <div>
-                  <dt className="text-xs uppercase text-slate-500">Cuota</dt>
-                  <dd className="text-lg font-semibold text-slate-900">
-                    {ofertaSeleccionada.cuota_mensual != null
-                      ? currency(Number(ofertaSeleccionada.cuota_mensual))
-                      : '—'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase text-slate-500">
-                    Tasa / plazo
-                  </dt>
-                  <dd className="text-lg font-semibold text-slate-900">
-                    {ofertaSeleccionada.tasa_ofrecida != null
-                      ? `${Number(ofertaSeleccionada.tasa_ofrecida)}% m.v.`
-                      : '—'}
-                    {ofertaSeleccionada.plazo_ofrecido != null
-                      ? ` · ${ofertaSeleccionada.plazo_ofrecido} meses`
-                      : ''}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase text-slate-500">Receptor</dt>
-                  <dd className="text-sm font-semibold text-slate-900 mt-1">
-                    {datos.nombre_cliente}
-                  </dd>
-                </div>
-              </dl>
-            )}
-            <div className="grid sm:grid-cols-3 gap-3 text-sm">
-              <label className="block">
-                <span className="text-xs uppercase text-slate-500">Banco</span>
-                <select
-                  className="input-base mt-1 w-full"
-                  value={bancoAch}
-                  onChange={(e) => setBancoAch(e.target.value)}
+                {mutDesembolso.error && (
+                  <p role="alert" className="mt-3 text-sm text-red-600">
+                    {mensajeError(
+                      mutDesembolso.error,
+                      'Error registrando el desembolso',
+                    )}
+                  </p>
+                )}
+                <button
+                  className="btn-primary mt-4"
+                  disabled={
+                    mutDesembolso.isPending ||
+                    !bancoAch ||
+                    numeroCuenta.trim().length < 4
+                  }
+                  onClick={confirmarDesembolso}
                 >
-                  <option value="">Seleccionar…</option>
-                  {bancos.map((b) => (
-                    <option key={b.id_banco} value={b.codigo_ach ?? ''}>
-                      {b.nombre}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-xs uppercase text-slate-500">
-                  Cuenta de ahorros del cliente
-                </span>
-                <input
-                  className="input-base mt-1 w-full"
-                  value={numeroCuenta}
-                  onChange={(e) => setNumeroCuenta(e.target.value)}
-                  placeholder="Número de cuenta"
-                  inputMode="numeric"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs uppercase text-slate-500">
-                  Referencia de pago (opcional)
-                </span>
-                <input
-                  className="input-base mt-1 w-full"
-                  value={referenciaPago}
-                  onChange={(e) => setReferenciaPago(e.target.value)}
-                  placeholder="TRX-…"
-                />
-              </label>
-            </div>
-            {mutDesembolso.error && (
-              <p role="alert" className="mt-3 text-sm text-red-600">
-                {mensajeError(
-                  mutDesembolso.error,
-                  'Error registrando el desembolso',
-                )}
-              </p>
+                  {mutDesembolso.isPending
+                    ? 'Registrando…'
+                    : 'Confirmar desembolso'}
+                </button>
+              </Tarjeta>
             )}
-            <button
-              className="btn-primary mt-4"
-              disabled={
-                mutDesembolso.isPending ||
-                !bancoAch ||
-                numeroCuenta.trim().length < 4
-              }
-              onClick={confirmarDesembolso}
-            >
-              {mutDesembolso.isPending
-                ? 'Registrando…'
-                : 'Confirmar desembolso'}
-            </button>
-          </Tarjeta>
+          </>
         )}
 
-        {datos.causales.length > 0 && (
+        {/* Causales: dato sensible, solo visible para el administrador */}
+        {vista === 'evaluacion' && !esAsesor && datos.causales.length > 0 && (
           <Tarjeta className="border-amber-200 bg-amber-50/40">
             <h3 className="font-semibold text-amber-900 mb-3 flex items-center gap-2">
               <AlertTriangle size={18} /> Causales de la evaluación
@@ -1153,7 +1512,7 @@ export default function DetalleSolicitud() {
           </Tarjeta>
         )}
 
-        {!evaluacion && (
+        {vista === 'gestion' && !evaluacion && (
           <Tarjeta className="text-sm text-slate-600">
             <div className="flex flex-wrap items-center gap-3">
               <ListChecks size={18} className="text-slate-400" />
@@ -1177,8 +1536,220 @@ export default function DetalleSolicitud() {
             )}
           </Tarjeta>
         )}
+
+        {/* Re-evaluar con parámetros editables: solo administrador, cuando
+            ya existe una evaluación. Sirve para probar con qué parámetros
+            pasaría la solicitud en un futuro. */}
+        {vista === 'gestion' && !esAsesor && evaluacion && (
+          <Tarjeta>
+            <h3 className="font-semibold mb-1 flex items-center gap-2">
+              <ListChecks size={18} /> Re-evaluar con otros parámetros
+            </h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Corre una nueva evaluación del motor con otros valores para
+              comparar el resultado. Los campos vacíos usan los valores de la
+              evaluación vigente.
+            </p>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+              <label className="block">
+                <span className="text-xs uppercase text-slate-500">
+                  Saldo a financiar
+                </span>
+                <CampoNumerico
+                  className="input-base mt-1 w-full"
+                  formatoMiles
+                  minimo={1}
+                  value={reSaldo}
+                  onValor={(n) => setReSaldo(n)}
+                  placeholder={String(Math.round(reSaldoDef))}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs uppercase text-slate-500">
+                  Plazo (meses)
+                </span>
+                <CampoNumerico
+                  className="input-base mt-1 w-full"
+                  minimo={1}
+                  value={rePlazo}
+                  onValor={(n) => setRePlazo(n)}
+                  placeholder={String(rePlazoDef)}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs uppercase text-slate-500">
+                  Tasa mensual (% m.v.)
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="input-base mt-1 w-full"
+                  value={reTasa}
+                  onChange={(e) => setReTasa(e.target.value)}
+                  placeholder={String(reTasaDef)}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs uppercase text-slate-500">
+                  Origen de la consulta
+                </span>
+                <select
+                  className="input-base mt-1 w-full"
+                  value={reOrigen}
+                  onChange={(e) =>
+                    setReOrigen(e.target.value as 'demo' | 'experian')
+                  }
+                >
+                  <option value="demo">Escenario de demostración</option>
+                  <option value="experian">Experian en línea</option>
+                </select>
+              </label>
+              {reOrigen === 'demo' && (
+                <label className="block sm:col-span-2">
+                  <span className="text-xs uppercase text-slate-500">
+                    Escenario simulado
+                  </span>
+                  <select
+                    className="input-base mt-1 w-full"
+                    value={reEscenario}
+                    onChange={(e) => setReEscenario(e.target.value)}
+                  >
+                    {Object.entries(escenarios).map(([codigo, desc]) => (
+                      <option key={codigo} value={codigo}>
+                        {desc || codigo}
+                      </option>
+                    ))}
+                    {Object.keys(escenarios).length === 0 && (
+                      <option value={reEscenario}>{reEscenario}</option>
+                    )}
+                  </select>
+                </label>
+              )}
+            </div>
+            {mutEvaluar.error && (
+              <p role="alert" className="mt-3 text-sm text-red-600">
+                {mensajeError(
+                  mutEvaluar.error,
+                  'Error re-evaluando la solicitud',
+                )}
+              </p>
+            )}
+            {mutEvaluar.isSuccess && (
+              <p role="status" className="mt-3 text-sm text-emerald-700">
+                Nueva evaluación registrada — la pestaña Evaluación ya muestra
+                la versión vigente.
+              </p>
+            )}
+            <button
+              className="btn-primary mt-4"
+              disabled={mutEvaluar.isPending}
+              onClick={reevaluar}
+            >
+              {mutEvaluar.isPending
+                ? 'Evaluando…'
+                : 'Ejecutar nueva evaluación'}
+            </button>
+          </Tarjeta>
+        )}
       </div>
     </>
+  )
+}
+
+function tonoDecision(valor: unknown): 'emerald' | 'red' | 'amber' | undefined {
+  const v = String(valor ?? '').toLowerCase()
+  if (v.includes('aprobad')) return 'emerald'
+  if (v.includes('rechaz')) return 'red'
+  if (v.trim() !== '') return 'amber'
+  return undefined
+}
+
+/** Sub-tarjeta del detalle de auditoría: agrupa campos con aire visual. */
+function SeccionAuditoria({
+  titulo,
+  children,
+  columnas = 'lg:grid-cols-3',
+  className = '',
+}: {
+  titulo: string
+  children: ReactNode
+  columnas?: string
+  className?: string
+}) {
+  return (
+    <section
+      aria-label={titulo}
+      className={`rounded-xl border border-slate-200 bg-slate-50/40 p-4 ${className}`}
+    >
+      <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-600">
+        {titulo}
+      </h4>
+      <dl
+        className={`grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 ${columnas}`}
+      >
+        {children}
+      </dl>
+    </section>
+  )
+}
+
+/** Campo apilado (label encima del valor): más legible que label|valor en línea. */
+function Campo({
+  k,
+  v,
+  tono,
+}: {
+  k: string
+  v: ReactNode
+  tono?: 'emerald' | 'red' | 'amber'
+}) {
+  const color =
+    tono === 'emerald'
+      ? 'text-emerald-700'
+      : tono === 'red'
+        ? 'text-red-700'
+        : tono === 'amber'
+          ? 'text-amber-700'
+          : 'text-slate-900'
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+        {k}
+      </dt>
+      <dd
+        className={`mt-0.5 text-sm font-semibold ${color}`}
+        title={typeof v === 'string' ? v : undefined}
+      >
+        {v}
+      </dd>
+    </div>
+  )
+}
+
+function TabDetalle({
+  activo,
+  onClick,
+  children,
+}: {
+  activo: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={activo}
+      onClick={onClick}
+      className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition ${
+        activo
+          ? 'border-brand-600 text-brand-700'
+          : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800'
+      }`}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -1268,6 +1839,26 @@ function formatReadableValue(value: unknown): ReactNode {
       : 'Sin registros'
   }
   return typeof value === 'string' ? value : 'Sin dato'
+}
+
+/** Lista de objetos dentro de indicadores_buro (cuentas, tarjetas…). */
+function listaBuro(
+  indicadores: Record<string, unknown>,
+  clave: string,
+): Record<string, unknown>[] {
+  const valor = indicadores[clave]
+  return Array.isArray(valor)
+    ? valor.filter(
+        (v): v is Record<string, unknown> =>
+          v != null && typeof v === 'object' && !Array.isArray(v),
+      )
+    : []
+}
+
+/** Texto corto de un valor del buró ('—' cuando viene vacío). */
+function str(valor: unknown): string {
+  if (valor == null || valor === '') return '—'
+  return String(valor)
 }
 
 function labelReadable(value: string) {

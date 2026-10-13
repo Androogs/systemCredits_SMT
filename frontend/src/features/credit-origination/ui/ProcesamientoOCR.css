@@ -524,6 +524,10 @@
   .ocr__header {
     grid-template-columns: 1fr;
   }
+
+  .ocr__panel {
+    display: none;
+  }
 }
 
 @media (max-width: 680px) {
@@ -556,5 +560,12 @@
 
   .ocr__progress-bar {
     transition: none;
+  }
+}
+/* Compactacion movil: el seguimiento ya muestra la etapa; se ocultan duplicados */
+@media (max-width: 680px) {
+  .ocr__eyebrow,
+  .ocr__lede {
+    display: none;
   }
 }

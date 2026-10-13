@@ -1,7 +1,9 @@
 import { z } from 'zod'
 
 export const EDAD_MINIMA = 18
-export const EDAD_MAXIMA = 66
+// El motor (R13) rechaza edad >= edad_maxima_be (=66), así que el
+// máximo permitido para radicar es 65 inclusive.
+export const EDAD_MAXIMA = 65
 
 /** Número de documento tal como lo digita el asesor: solo dígitos. */
 export const numeroDocumentoSchema = z

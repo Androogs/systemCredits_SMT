@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
+import { emitirToast } from '../../../shared/lib/toastBus'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import { datosPersonalesSchema } from '../schemas/persona'
 import './RevisionDatos.css'
@@ -21,6 +22,8 @@ interface RevisionDatosProps {
   onBack?: () => void
   /** Valores extraídos por el OCR / digitados en el paso 1. */
   inicial?: Partial<DatosRevisados>
+  /** Si es true, no renderiza header ni seguimiento (para usar dentro de otro paso). */
+  compacto?: boolean
 }
 
 const CONFIANZA_BASE = 98.4
@@ -53,7 +56,7 @@ const campos: DefinicionCampo[] = [
   { id: 'apellidos', label: 'Apellidos', tipo: 'text' },
   {
     id: 'numeroIdentificacion',
-    label: 'Número de Identificación (CC)',
+    label: 'N° de Identificación',
     tipo: 'text',
     soloLectura: true,
   },
@@ -73,7 +76,7 @@ const campos: DefinicionCampo[] = [
   },
   {
     id: 'fechaExpedicion',
-    label: 'Fecha de Expedición del Documento',
+    label: 'Fecha de Expedición',
     tipo: 'date',
   },
   {
@@ -109,7 +112,12 @@ const valoresIniciales: DatosRevisados = import.meta.env.DEV
       ciudadExpedicion: '',
     }
 
-function RevisionDatos({ onContinue, onBack, inicial }: RevisionDatosProps) {
+function RevisionDatos({
+  onContinue,
+  onBack,
+  inicial,
+  compacto = false,
+}: RevisionDatosProps) {
   const [datos, setDatos] = useState<DatosRevisados>(() => ({
     ...valoresIniciales,
     ...Object.fromEntries(
@@ -171,6 +179,15 @@ function RevisionDatos({ onContinue, onBack, inicial }: RevisionDatosProps) {
   const marcarTocado = (campo: CampoId) =>
     setTocados((prev) => ({ ...prev, [campo]: true }))
 
+  const confirmarDudoso = (campo: DefinicionCampo) => {
+    setDudososConfirmados((prev) => ({ ...prev, [campo.id]: true }))
+    emitirToast({
+      tipo: 'exito',
+      titulo: 'Campo confirmado',
+      mensaje: `${campo.label} fue validado por el asesor.`,
+    })
+  }
+
   const actualizar = (campo: CampoId, valor: string) => {
     setDatos((prev) => ({ ...prev, [campo]: valor }))
     setRegistrado(false)
@@ -191,51 +208,56 @@ function RevisionDatos({ onContinue, onBack, inicial }: RevisionDatosProps) {
 
   return (
     <div className="revision">
-      <header className="revision__header">
-        <div className="revision__header-copy">
-          <p className="revision__eyebrow">Originación Individual · Paso 5</p>
-          <h1>Revisión de Datos Extraídos</h1>
-          <p className="revision__subtitle">Confirmación de Datos OCR</p>
-          <p className="revision__lede">
-            Valida la precisión de los datos extraídos por el sistema. Los
-            campos marcados en amarillo requieren confirmación manual debido a
-            bajo nivel de confianza.
-          </p>
-        </div>
+      {!compacto && (
+        <header className="revision__header">
+          <div className="revision__header-copy">
+            <p className="revision__eyebrow">Originación Individual · Paso 3</p>
+            <h1>Revisión de Datos Extraídos</h1>
+            <p className="revision__subtitle">Confirmación de Datos OCR</p>
+            <p className="revision__lede">
+              Valida la precisión de los datos extraídos por el sistema. Los
+              campos marcados en amarillo requieren confirmación manual debido a
+              bajo nivel de confianza.
+            </p>
+          </div>
 
-        <aside
-          className="revision__panel"
-          aria-label="Contexto de la radicación"
-        >
-          <dl className="revision__meta">
-            <div>
-              <dt>Asesor</dt>
-              <dd>Carlos Mendoza</dd>
-            </div>
-            <div>
-              <dt>Sede</dt>
-              <dd>Palmira - Centro Interno</dd>
-            </div>
-          </dl>
-          <span className="revision__server">
-            <span aria-hidden="true" />
-            Servidor de Validación Activo v2.4.12-Prod (SSL)
-          </span>
-        </aside>
-      </header>
+          <aside
+            className="revision__panel"
+            aria-label="Contexto de la radicación"
+          >
+            <dl className="revision__meta">
+              <div>
+                <dt>Asesor</dt>
+                <dd>Carlos Mendoza</dd>
+              </div>
+              <div>
+                <dt>Sede</dt>
+                <dd>Palmira - Centro Interno</dd>
+              </div>
+            </dl>
+            <span className="revision__server">
+              <span aria-hidden="true" />
+              Servidor de Validación Activo v2.4.12-Prod (SSL)
+            </span>
+          </aside>
+        </header>
+      )}
 
-      <SeguimientoOriginacion pasoActual={5} />
+      {!compacto && <SeguimientoOriginacion pasoActual={3} />}
 
-      <form className="revision__form" onSubmit={handleSubmit} noValidate>
+      <form
+        className={`revision__form${compacto ? ' revision__form--compacto' : ''}`}
+        onSubmit={handleSubmit}
+        noValidate
+      >
         <div className="revision__form-head">
           <div>
-            <h2>Datos Extraídos de Cédula</h2>
+            <h2>Datos extraídos de la cédula</h2>
             <p>
               Los campos marcados con <span aria-hidden="true">*</span> son
               obligatorios.
             </p>
           </div>
-          <span className="revision__chip">Paso 5 de 12</span>
         </div>
 
         <div className="revision__confianza" role="note">
@@ -257,14 +279,16 @@ function RevisionDatos({ onContinue, onBack, inicial }: RevisionDatosProps) {
             </small>
           </div>
 
-          <div className="revision__confianza-medidor">
-            <span
-              className={`revision__confianza-barra${
-                confianzaCompleta ? ' is-completa' : ''
-              }`}
-              style={{ width: `${confianzaActual}%` }}
-              aria-hidden="true"
-            />
+          <div className="revision__confianza-metrica">
+            <div className="revision__confianza-medidor">
+              <span
+                className={`revision__confianza-barra${
+                  confianzaCompleta ? ' is-completa' : ''
+                }`}
+                style={{ width: `${confianzaActual}%` }}
+                aria-hidden="true"
+              />
+            </div>
             <strong
               key={confianzaActual}
               className={`revision__confianza-valor${
@@ -312,7 +336,9 @@ function RevisionDatos({ onContinue, onBack, inicial }: RevisionDatosProps) {
                 key={campo.id}
                 className={`revision__field${error ? ' has-error' : ''}${
                   dudosoPendiente ? ' is-dudoso' : ''
-                }${esSoloLectura ? ' is-readonly' : ''}`}
+                }${dudosoPendiente ? ' has-aviso' : ''}${
+                  esSoloLectura ? ' is-readonly' : ''
+                }`}
               >
                 <label htmlFor={`rev-${campo.id}`}>
                   {campo.label}{' '}
@@ -365,7 +391,7 @@ function RevisionDatos({ onContinue, onBack, inicial }: RevisionDatosProps) {
                   />
                 )}
 
-                {campo.dudoso && (
+                {campo.dudoso && dudosoPendiente && (
                   <div className="revision__aviso-dudoso">
                     <span className="revision__aviso-icon" aria-hidden="true">
                       <svg viewBox="0 0 24 24" focusable="false">
@@ -387,35 +413,14 @@ function RevisionDatos({ onContinue, onBack, inicial }: RevisionDatosProps) {
                     </span>
                     <div className="revision__aviso-body">
                       <p>{campo.ayudaDudoso}</p>
-                      {dudosoPendiente ? (
-                        <Boton
-                          variante="terciario"
-                          tamano="compacto"
-                          type="button"
-                          onClick={() =>
-                            setDudososConfirmados((prev) => ({
-                              ...prev,
-                              [campo.id]: true,
-                            }))
-                          }
-                        >
-                          Confirmar campo
-                        </Boton>
-                      ) : (
-                        <span className="revision__confirmado">
-                          <svg viewBox="0 0 24 24" focusable="false">
-                            <path
-                              d="M5 12.5 10 17l9-10"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2.4"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                          Confirmado por el asesor
-                        </span>
-                      )}
+                      <Boton
+                        variante="terciario"
+                        tamano="compacto"
+                        type="button"
+                        onClick={() => confirmarDudoso(campo)}
+                      >
+                        Confirmar campo
+                      </Boton>
                     </div>
                   </div>
                 )}

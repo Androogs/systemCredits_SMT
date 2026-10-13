@@ -1,19 +1,23 @@
 import { useParams, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
 import Skeleton from '../shared/ui/Skeleton'
+import CampoNumerico from '../shared/ui/CampoNumerico'
 import {
   ApiError,
   obtenerSolicitud,
+  resolverSolicitud,
   type SolicitudDetalleApi,
 } from '../features/credit-origination/api/originacionApi'
 import {
-  estadoVisual,
+  estadoParaVista,
   etiquetaSolicitud,
   numero,
 } from '../entities/credit/model/solicitudesPanel'
 import { currency, dateShort } from '../shared/lib/formatters'
+import { useRol } from '../shared/lib/sesion'
 import type { EstadoSolicitud } from '../entities/credit/model/underwritingEngine'
 import {
   ArrowLeft,
@@ -97,7 +101,29 @@ export default function Resultado() {
     retry: (count, err) =>
       !(err instanceof ApiError && err.status === 404) && count < 1,
   })
-  const datos = consulta.data ?? null
+  const queryClient = useQueryClient()
+  const esAsesor = useRol() === 'asesor'
+  const [comentarioComite, setComentarioComite] = useState('')
+  // El comité puede aprobar por un monto/plazo distinto al sugerido.
+  const [montoComite, setMontoComite] = useState<number | null>(null)
+  const [plazoComite, setPlazoComite] = useState<number | null>(null)
+  const resolverMut = useMutation({
+    mutationFn: (decision: 'aprobado' | 'rechazado') =>
+      resolverSolicitud(
+        id!,
+        decision,
+        comentarioComite || undefined,
+        montoComite ?? undefined,
+        plazoComite ?? undefined,
+      ),
+    onSuccess: (detalle) => {
+      queryClient.setQueryData(['solicitud', id], detalle)
+      queryClient.invalidateQueries({ queryKey: ['solicitudes'] })
+      setComentarioComite('')
+    },
+  })
+
+  const datos = consulta.data ?? resolverMut.data ?? null
   const cargando = consulta.isPending
   const noExiste =
     consulta.error instanceof ApiError && consulta.error.status === 404
@@ -163,8 +189,12 @@ export default function Resultado() {
     )
   }
 
-  const visual = estadoVisual(datos)
+  // Al asesor solo se le muestra el resultado binario: en_revision se
+  // ve como pendiente, sin exponer Estudio/Requiere Codeudor interno.
+  const visual = estadoParaVista(datos, esAsesor)
   const evaluacion = datos.evaluacion
+  // El asesor ve la decisión pero no el score ni las causales (dato
+  // sensible del cliente); la resolución de comité es del administrador.
   const oferta =
     datos.ofertas.find((o) => o.seleccionada) ??
     datos.ofertas.find((o) => o.elegible)
@@ -193,8 +223,9 @@ export default function Resultado() {
               <Icon size={32} strokeWidth={2.5} />
             </div>
             <h2 className="mt-5 text-2xl font-bold text-slate-900">
-              {evaluacion?.decision_interna === 'Estudio' ||
-              evaluacion?.decision_interna === 'Requiere Codeudor'
+              {!esAsesor &&
+              (evaluacion?.decision_interna === 'Estudio' ||
+                evaluacion?.decision_interna === 'Requiere Codeudor')
                 ? `Solicitud en estudio (${evaluacion.decision_interna})`
                 : cfg.titulo}
             </h2>
@@ -244,12 +275,16 @@ export default function Resultado() {
                         : '—'
                     }
                   />
-                  <Fila
-                    k="Score crediticio"
-                    v={
-                      evaluacion?.score != null ? Number(evaluacion.score) : '—'
-                    }
-                  />
+                  {!esAsesor && (
+                    <Fila
+                      k="Score crediticio"
+                      v={
+                        evaluacion?.score != null
+                          ? Number(evaluacion.score)
+                          : '—'
+                      }
+                    />
+                  )}
                   <Fila
                     k="Capacidad de pago"
                     v={
@@ -287,28 +322,30 @@ export default function Resultado() {
 
           {visual === 'RECHAZADO' && (
             <>
-              <Tarjeta className="border-red-200">
-                <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                  <FileSearch size={18} /> Causales de rechazo
-                </h3>
-                <ul className="space-y-2 text-sm">
-                  {causales.length > 0 ? (
-                    causales.map((r, i) => (
-                      <li key={i} className="flex gap-3 text-slate-700">
-                        <XCircle
-                          size={17}
-                          className="text-red-600 shrink-0 mt-0.5"
-                        />
-                        <span>{r}</span>
+              {!esAsesor && (
+                <Tarjeta className="border-red-200">
+                  <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                    <FileSearch size={18} /> Causales de rechazo
+                  </h3>
+                  <ul className="space-y-2 text-sm">
+                    {causales.length > 0 ? (
+                      causales.map((r, i) => (
+                        <li key={i} className="flex gap-3 text-slate-700">
+                          <XCircle
+                            size={17}
+                            className="text-red-600 shrink-0 mt-0.5"
+                          />
+                          <span>{r}</span>
+                        </li>
+                      ))
+                    ) : (
+                      <li className="text-slate-500">
+                        Sin causales registradas.
                       </li>
-                    ))
-                  ) : (
-                    <li className="text-slate-500">
-                      Sin causales registradas.
-                    </li>
-                  )}
-                </ul>
-              </Tarjeta>
+                    )}
+                  </ul>
+                </Tarjeta>
+              )}
               <Tarjeta>
                 <h3 className="font-semibold text-slate-900 mb-3">
                   Recomendaciones
@@ -344,7 +381,7 @@ export default function Resultado() {
                     ? 'La solicitud quedó pendiente de decisión manual. El perfil cumple parcialmente las políticas y requiere análisis adicional antes de aprobar o rechazar.'
                     : 'La solicitud fue radicada y está pendiente de evaluación por el motor de decisión.'}
                 </p>
-                {causales.length > 0 && (
+                {!esAsesor && causales.length > 0 && (
                   <ul className="mt-4 space-y-2 text-sm">
                     {causales.map((r, i) => (
                       <li key={i} className="flex gap-3 text-slate-700">
@@ -356,6 +393,92 @@ export default function Resultado() {
                       </li>
                     ))}
                   </ul>
+                )}
+                {datos.estado === 'en_revision' && !esAsesor && (
+                  <div className="mt-5 border-t border-amber-100 pt-4">
+                    <label
+                      htmlFor="comentario-comite"
+                      className="mb-1.5 block text-xs font-medium text-slate-600"
+                    >
+                      Comentario del comité (opcional)
+                    </label>
+                    <textarea
+                      id="comentario-comite"
+                      rows={2}
+                      value={comentarioComite}
+                      onChange={(e) => setComentarioComite(e.target.value)}
+                      placeholder="Ej. Se aprueba por cliente de la casa con historial previo…"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+                    />
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-medium text-slate-600">
+                          Monto a aprobar (opcional)
+                        </span>
+                        <CampoNumerico
+                          formatoMiles
+                          minimo={0}
+                          value={montoComite}
+                          onValor={(n) => setMontoComite(n)}
+                          placeholder={
+                            evaluacion?.cupo_sugerido != null
+                              ? `Cupo: ${Number(evaluacion.cupo_sugerido).toLocaleString('es-CO')}`
+                              : 'Cupo del motor'
+                          }
+                          className="input-base w-full"
+                        />
+                        <small className="mt-0.5 block text-[11px] text-slate-500">
+                          Si lo dejas vacío se aprueba el cupo sugerido del
+                          motor.
+                        </small>
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-medium text-slate-600">
+                          Plazo en meses (opcional)
+                        </span>
+                        <CampoNumerico
+                          minimo={1}
+                          value={plazoComite}
+                          onValor={(n) => setPlazoComite(n)}
+                          placeholder={
+                            evaluacion?.plazo_cupo != null
+                              ? `${evaluacion.plazo_cupo} meses`
+                              : 'Plazo del cupo'
+                          }
+                          className="input-base w-full"
+                        />
+                        <small className="mt-0.5 block text-[11px] text-slate-500">
+                          Plazo de la oferta generada al aprobar.
+                        </small>
+                      </label>
+                    </div>
+                    {resolverMut.isError && (
+                      <p role="alert" className="mt-2 text-xs text-red-700">
+                        No se pudo registrar la decisión:{' '}
+                        {resolverMut.error instanceof Error
+                          ? resolverMut.error.message
+                          : 'error desconocido'}
+                      </p>
+                    )}
+                    <div className="mt-3 flex gap-3">
+                      <button
+                        type="button"
+                        disabled={resolverMut.isPending}
+                        onClick={() => resolverMut.mutate('aprobado')}
+                        className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        <CheckCircle2 size={16} /> Aprobar por comité
+                      </button>
+                      <button
+                        type="button"
+                        disabled={resolverMut.isPending}
+                        onClick={() => resolverMut.mutate('rechazado')}
+                        className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+                      >
+                        <XCircle size={16} /> Rechazar definitivamente
+                      </button>
+                    </div>
+                  </div>
                 )}
               </Tarjeta>
               <Tarjeta>

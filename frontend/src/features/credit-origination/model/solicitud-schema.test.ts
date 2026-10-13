@@ -11,13 +11,15 @@ import type { DatosSolicitud } from '../ui/CrearSolicitud'
 const datosValidos: DatosSolicitud = {
   lineaCredito: 'Inversiones Pacífico',
   destinoCredito: 'Financiamiento de Vehículos',
-  plazoMeses: 36,
-  ocupacion: 'Empleado Término Indefinido',
+  plazoMeses: 24,
+  ocupacion: 'Empleado',
+  tipoContrato: 'Indefinido',
+  subtipoIndependiente: '',
   empresa: 'SUMOTO SA',
   mesesContinuidad: 24,
   aniosCamara: null,
   ingresosMensuales: 4_500_000,
-  egresosMensuales: 1_800_000,
+  entidadPagadora: '',
 }
 
 describe('erroresSolicitud', () => {
@@ -41,6 +43,7 @@ describe('erroresSolicitud', () => {
     const errores = erroresSolicitud({
       ...datosValidos,
       ocupacion: 'Independiente',
+      subtipoIndependiente: 'Profesional independiente',
       aniosCamara: null,
     })
     expect(errores.aniosCamara).toContain('R16')
@@ -50,9 +53,50 @@ describe('erroresSolicitud', () => {
     const errores = erroresSolicitud({
       ...datosValidos,
       ocupacion: 'Independiente',
+      subtipoIndependiente: 'Comerciante independiente',
       aniosCamara: -2,
     })
     expect(errores.aniosCamara).toContain('R16')
+  })
+
+  it('acepta Fuerzas Militares como ocupación válida', () => {
+    const errores = erroresSolicitud({
+      ...datosValidos,
+      ocupacion: 'Fuerzas Militares',
+      tipoContrato: '',
+      entidadPagadora: 'Ejército Nacional',
+    })
+    expect(errores.ocupacion).toBeUndefined()
+  })
+
+  it('exige tipo de contrato cuando la ocupación es Empleado', () => {
+    const errores = erroresSolicitud({
+      ...datosValidos,
+      tipoContrato: '',
+    })
+    expect(errores.tipoContrato).toBe(
+      'Selecciona el tipo de contrato del empleado.',
+    )
+  })
+
+  it('el tipo de contrato no se exige a Pensionado ni Independiente', () => {
+    expect(
+      erroresSolicitud({
+        ...datosValidos,
+        ocupacion: 'Pensionado',
+        tipoContrato: '',
+        entidadPagadora: 'Colpensiones',
+      }).tipoContrato,
+    ).toBeUndefined()
+    expect(
+      erroresSolicitud({
+        ...datosValidos,
+        ocupacion: 'Independiente',
+        tipoContrato: '',
+        subtipoIndependiente: 'Profesional independiente',
+        aniosCamara: 3,
+      }).tipoContrato,
+    ).toBeUndefined()
   })
 
   it('años de Cámara negativos en otras ocupaciones', () => {
@@ -70,17 +114,58 @@ describe('erroresSolicitud', () => {
     expect(errores.aniosCamara).toBe('Ingresa un número válido.')
   })
 
-  it('rechaza negativos en continuidad y egresos', () => {
-    const errores = erroresSolicitud({
+  it('rechaza continuidad negativa y no pide meses a no empleados', () => {
+    const erroresEmpleado = erroresSolicitud({
       ...datosValidos,
       mesesContinuidad: -3,
-      egresosMensuales: -1,
     })
-    expect(errores.mesesContinuidad).toBe(
+    expect(erroresEmpleado.mesesContinuidad).toBe(
       'La continuidad no puede ser negativa.',
     )
-    expect(errores.egresosMensuales).toBe(
-      'Los egresos no pueden ser negativos.',
+
+    const erroresPensionado = erroresSolicitud({
+      ...datosValidos,
+      ocupacion: 'Pensionado',
+      mesesContinuidad: -3,
+      entidadPagadora: 'Colpensiones',
+    })
+    expect(erroresPensionado.mesesContinuidad).toBe(
+      'La continuidad no puede ser negativa.',
+    )
+    expect(erroresPensionado.entidadPagadora).toBeUndefined()
+  })
+
+  it('exige entidad pagadora a Pensionado y Fuerzas Militares', () => {
+    const erroresPensionado = erroresSolicitud({
+      ...datosValidos,
+      ocupacion: 'Pensionado',
+      tipoContrato: '',
+      entidadPagadora: '',
+    })
+    expect(erroresPensionado.entidadPagadora).toBe(
+      'Selecciona la entidad pagadora o institución.',
+    )
+
+    const erroresFuerzas = erroresSolicitud({
+      ...datosValidos,
+      ocupacion: 'Fuerzas Militares',
+      tipoContrato: '',
+      entidadPagadora: '',
+    })
+    expect(erroresFuerzas.entidadPagadora).toBe(
+      'Selecciona la entidad pagadora o institución.',
+    )
+  })
+
+  it('exige subtipo de independiente', () => {
+    const errores = erroresSolicitud({
+      ...datosValidos,
+      ocupacion: 'Independiente',
+      subtipoIndependiente: '',
+      aniosCamara: 3,
+    })
+    expect(errores.subtipoIndependiente).toBe(
+      'Selecciona el tipo de independiente.',
     )
   })
 })

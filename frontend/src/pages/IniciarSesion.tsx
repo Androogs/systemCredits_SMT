@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { FormEvent } from 'react'
+import { guardarRol, type RolSesion } from '../shared/lib/sesion'
 
 export default function IniciarSesion() {
   const navigate = useNavigate()
   const headingRef = useRef<HTMLHeadingElement>(null)
   const [email, setEmail] = useState('demo@underwriting.io')
   const [password, setPassword] = useState('demo1234')
+  const [rol, setRol] = useState<RolSesion>('asesor')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -21,6 +23,7 @@ export default function IniciarSesion() {
     setLoading(true)
     setTimeout(() => {
       localStorage.setItem('uw_auth', '1')
+      guardarRol(rol)
       navigate('/dashboard')
     }, 600)
   }
@@ -136,6 +139,57 @@ export default function IniciarSesion() {
                     required
                   />
                 </div>
+                <fieldset>
+                  <legend className="login__label" style={{ marginBottom: 8 }}>
+                    Perfil de acceso
+                  </legend>
+                  <div
+                    role="group"
+                    aria-label="Perfil de acceso"
+                    style={{ display: 'flex', gap: 8 }}
+                  >
+                    {(
+                      [
+                        ['asesor', 'Asesor', 'Gestiona solicitudes'],
+                        [
+                          'administrador',
+                          'Administrador',
+                          'Ve score y causales',
+                        ],
+                      ] as const
+                    ).map(([valor, titulo, detalle]) => (
+                      <button
+                        key={valor}
+                        type="button"
+                        aria-pressed={rol === valor}
+                        onClick={() => setRol(valor)}
+                        style={{
+                          flex: 1,
+                          padding: '0.6rem',
+                          borderRadius: 8,
+                          border: `1.5px solid ${rol === valor ? '#099dd7' : '#e2e8f0'}`,
+                          background: rol === valor ? '#edfaff' : '#fff',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: 'block',
+                            fontSize: '.82rem',
+                            fontWeight: 600,
+                            color: '#1d2939',
+                          }}
+                        >
+                          {titulo}
+                        </span>
+                        <span style={{ fontSize: '.68rem', color: '#667085' }}>
+                          {detalle}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
                 {error && (
                   <p
                     role="alert"

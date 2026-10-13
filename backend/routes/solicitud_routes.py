@@ -11,8 +11,10 @@ from backend.models.solicitud_models import (
     CrearSolicitudRequest,
     CrearSolicitudResponse,
     DesembolsoResponse,
+    EnviarEstudioRequest,
     OfertaResponse,
     RegistrarDesembolsoRequest,
+    ResolverSolicitudRequest,
     SeleccionarOfertaRequest,
     SolicitudDetalleResponse,
     SolicitudResumenResponse,
@@ -64,6 +66,28 @@ def evaluar(
 ) -> ResultadoMotorResponse:
     resultado = servicio.evaluar_solicitud_db(id_solicitud, payload)
     return ResultadoMotorResponse.desde_resultado(resultado, str(id_solicitud))
+
+
+@router.post("/{id_solicitud}/enviar-estudio", response_model=SolicitudDetalleResponse)
+def enviar_estudio(
+    id_solicitud: uuid.UUID,
+    payload: EnviarEstudioRequest,
+    db: Session = Depends(get_db),
+) -> SolicitudDetalleResponse:
+    """El asesor escala una solicitud rechazada a estudio manual: queda
+    'en_revision' y la resuelve el comité con /resolver."""
+    return SolicitudService(db).enviar_estudio(id_solicitud, payload)
+
+
+@router.post("/{id_solicitud}/resolver", response_model=SolicitudDetalleResponse)
+def resolver(
+    id_solicitud: uuid.UUID,
+    payload: ResolverSolicitudRequest,
+    db: Session = Depends(get_db),
+) -> SolicitudDetalleResponse:
+    """Cierra una solicitud 'en_revision': el comité aprueba (genera ofertas)
+    o rechaza manualmente. Solo aplica a solicitudes pendientes de comité."""
+    return SolicitudService(db).resolver(id_solicitud, payload)
 
 
 @router.get("/{id_solicitud}/ofertas", response_model=list[OfertaResponse])

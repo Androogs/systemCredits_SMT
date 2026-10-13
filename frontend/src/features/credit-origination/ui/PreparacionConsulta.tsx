@@ -114,7 +114,7 @@ function PreparacionConsulta({
         </aside>
       </header>
 
-      <SeguimientoOriginacion pasoActual={8} />
+      <SeguimientoOriginacion pasoActual={5} />
 
       <div className="consulta__grid">
         {/* ---------- Columna izquierda: identidad a consultar ---------- */}

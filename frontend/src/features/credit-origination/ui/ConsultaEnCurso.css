@@ -308,6 +308,10 @@
   .consulta-curso__encabezado {
     grid-template-columns: 1fr;
   }
+
+  .consulta-curso__contexto {
+    display: none;
+  }
 }
 
 @media (max-width: 680px) {
@@ -341,5 +345,12 @@
 
   .consulta-curso__barra span {
     transition: none;
+  }
+}
+/* Compactacion movil: el seguimiento ya muestra la etapa; se ocultan duplicados */
+@media (max-width: 680px) {
+  .consulta-curso__eyebrow,
+  .consulta-curso__lede {
+    display: none;
   }
 }

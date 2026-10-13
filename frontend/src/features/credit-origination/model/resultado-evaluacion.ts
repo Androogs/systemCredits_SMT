@@ -4,13 +4,26 @@
  * backend no está disponible.
  */
 
-import { valorPresenteAnualidad } from '../../../shared/lib/finanzas'
+import {
+  cuotaAnualidad,
+  valorPresenteAnualidad,
+} from '../../../shared/lib/finanzas'
 import type { ResultadoMotorApi } from '../api/originacionApi'
 
 /** Alineada con `cupo_sugerido_tasa_pct` de parametros.json (motor). */
 export const TASA_MENSUAL_REFERENCIA = 2
 export const RATIO_CUOTA_INGRESO_MAX = 0.4
 export const CUPO_MAXIMO = 20_000_000
+
+/** Parámetros replicados del motor para el cálculo estimado en frontend. */
+export const SMMLV = 1_750_905
+export const GASTOS_PERSONALES_PCT_BAJO = 0.5
+export const GASTOS_PERSONALES_PCT_MEDIO = 0.45
+export const GASTOS_PERSONALES_PCT_ALTO = 0.4
+export const GASTOS_PERSONALES_UMBRAL_MEDIO = 1.6
+export const GASTOS_PERSONALES_UMBRAL_ALTO = 2.0
+export const CAPACIDAD_PAGO_PCT = 0.7
+export const CUPO_PLAZO_MESES = 24
 
 export type DecisionCredito = 'APROBADO' | 'RECHAZADO' | 'REVISION_MANUAL'
 
@@ -107,46 +120,88 @@ export function resultadoDesdeApi(
   }
 }
 
+function gastosPersonalesPct(ingresoSmmlv: number): number {
+  if (ingresoSmmlv < GASTOS_PERSONALES_UMBRAL_MEDIO)
+    return GASTOS_PERSONALES_PCT_BAJO
+  if (ingresoSmmlv < GASTOS_PERSONALES_UMBRAL_ALTO)
+    return GASTOS_PERSONALES_PCT_MEDIO
+  return GASTOS_PERSONALES_PCT_ALTO
+}
+
+export interface CapacidadPagoEstimada {
+  monto: number
+  cuota: number
+  disponible: number
+  capacidad: number
+  gastosPersonales: number
+}
+
 /**
- * Cupo referencial local (misma fórmula que el motor): la cuota se
- * limita al menor entre el disponible declarado y el 40 % del ingreso,
- * y se trae a valor presente con la tasa de referencia.
+ * Replica la política de capacidad de pago del motor (PPT v4):
+ * - Gastos personales automáticos según bandas de SMMLV.
+ * - Disponible = ingreso - gastos personales.
+ * - Capacidad de pago = disponible * 70%.
+ * - Cupo = valor presente de la capacidad a 2% mensual y plazo dado.
+ * - Tope máximo parametrizable: $20.000.000.
+ *
+ * El parámetro `egresosMensuales` se mantiene solo para compatibilidad
+ * con pantallas heredadas; si es 0 o undefined se usa la fórmula del motor.
  */
 export function calcularCupoSugerido(
   ingresosMensuales: number,
-  egresosMensuales: number,
   plazoMeses: number,
-): { monto: number; cuota: number } {
-  const disponible = Math.max(0, ingresosMensuales - egresosMensuales)
-  const cuota = Math.round(
-    Math.min(disponible, ingresosMensuales * RATIO_CUOTA_INGRESO_MAX),
+  egresosMensuales?: number,
+): CapacidadPagoEstimada {
+  // Fallback legacy: si alguien aún pasa egresos reales, conservar el cálculo anterior.
+  if (egresosMensuales != null && egresosMensuales > 0) {
+    const disponible = Math.max(0, ingresosMensuales - egresosMensuales)
+    const cuota = Math.round(
+      Math.min(disponible, ingresosMensuales * RATIO_CUOTA_INGRESO_MAX),
+    )
+    const monto = Math.min(
+      CUPO_MAXIMO,
+      Math.round(
+        valorPresenteAnualidad(cuota, TASA_MENSUAL_REFERENCIA, plazoMeses),
+      ),
+    )
+    return {
+      monto,
+      cuota,
+      disponible,
+      capacidad: cuota,
+      gastosPersonales: egresosMensuales,
+    }
+  }
+
+  const ingresoSmmlv = ingresosMensuales / SMMLV
+  const gastosPersonales = Math.round(
+    ingresosMensuales * gastosPersonalesPct(ingresoSmmlv),
   )
+  const disponible = Math.max(0, ingresosMensuales - gastosPersonales)
+  const capacidad = Math.round(disponible * CAPACIDAD_PAGO_PCT)
   const monto = Math.min(
     CUPO_MAXIMO,
     Math.round(
-      valorPresenteAnualidad(cuota, TASA_MENSUAL_REFERENCIA, plazoMeses),
+      valorPresenteAnualidad(capacidad, TASA_MENSUAL_REFERENCIA, plazoMeses),
     ),
   )
-  return { monto, cuota }
+  const cuota = Math.round(
+    cuotaAnualidad(monto, TASA_MENSUAL_REFERENCIA, plazoMeses),
+  )
+  return { monto, cuota, disponible, capacidad, gastosPersonales }
 }
 
 /** Resultado local cuando el backend no está disponible. */
 export function crearResultadoDemo({
   decision,
   ingresosMensuales,
-  egresosMensuales,
   plazoMeses,
 }: {
   decision: DecisionCredito
   ingresosMensuales: number
-  egresosMensuales: number
   plazoMeses: number
 }): ResultadoEvaluacionCredito {
-  const { monto, cuota } = calcularCupoSugerido(
-    ingresosMensuales,
-    egresosMensuales,
-    plazoMeses,
-  )
+  const { monto, cuota } = calcularCupoSugerido(ingresosMensuales, plazoMeses)
   return {
     decision,
     montoSugerido: monto,

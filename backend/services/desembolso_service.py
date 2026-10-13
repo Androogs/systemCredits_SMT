@@ -164,6 +164,21 @@ class DesembolsoService:
 
     def _crear_vehiculo(self, solicitud: SolicitudCredito, req: RegistrarDesembolsoRequest) -> ProductoVehiculo:
         datos = req.vehiculo
+        # Si la formalización ya registró el vehículo (selección de
+        # oferta), se reutiliza y solo se actualiza con lo que venga aquí.
+        existente = (
+            self.db.query(ProductoVehiculo)
+            .filter(ProductoVehiculo.id_solicitud == solicitud.id_solicitud)
+            .order_by(ProductoVehiculo.id_vehiculo.desc())
+            .first()
+        )
+        if existente is not None:
+            if datos is not None:
+                for campo in ("producto_a_financiar", "marca", "referencia", "modelo", "color", "valor_moto_iva"):
+                    valor = getattr(datos, campo, None)
+                    if valor is not None:
+                        setattr(existente, campo, valor)
+            return existente
         vehiculo = ProductoVehiculo(
             id_solicitud=solicitud.id_solicitud,
             producto_a_financiar=(datos.producto_a_financiar if datos else solicitud.destino_credito or "Motocicleta"),

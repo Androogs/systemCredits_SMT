@@ -1,5 +1,5 @@
 interface CabeceraEtapaOriginacionProps {
-  paso: 10 | 11 | 12
+  paso: number
   titulo: string
   descripcion: string
 }

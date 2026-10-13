@@ -45,10 +45,10 @@ describe('borrador de originación', () => {
   })
 
   it('guarda y recupera paso, contexto e id de solicitud', () => {
-    guardarBorrador(7, contexto, false)
+    guardarBorrador(5, contexto, false)
     const borrador = cargarBorrador()
     expect(borrador).not.toBeNull()
-    expect(borrador!.paso).toBe(7)
+    expect(borrador!.paso).toBe(5)
     expect(borrador!.contexto.validacion?.numeroDocumento).toBe('4372665')
     expect(borrador!.contexto.idSolicitud).toBe(contexto.idSolicitud)
     expect(borrador!.formalizacionIniciada).toBe(false)
@@ -57,8 +57,8 @@ describe('borrador de originación', () => {
 
   it('sobreescribe el avance más reciente', () => {
     guardarBorrador(3, {}, false)
-    guardarBorrador(9, contexto, false)
-    expect(cargarBorrador()!.paso).toBe(9)
+    guardarBorrador(4, contexto, false)
+    expect(cargarBorrador()!.paso).toBe(4)
   })
 
   it('limpiarBorrador elimina el guardado', () => {

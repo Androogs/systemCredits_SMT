@@ -15,8 +15,7 @@ function SeguimientoOriginacion({ pasoActual }: SeguimientoOriginacionProps) {
   const etapaActual = etapasOriginacion[pasoActual - 1]
 
   const fases = [
-    { titulo: 'Identidad y solicitud', etapas: etapasOriginacion.slice(0, 6) },
-    { titulo: 'Consulta y decisión', etapas: etapasOriginacion.slice(6) },
+    { titulo: 'Originación de crédito', etapas: etapasOriginacion },
   ] as const
 
   return (
@@ -26,7 +25,7 @@ function SeguimientoOriginacion({ pasoActual }: SeguimientoOriginacionProps) {
           Originación de crédito
           {etapaActual && <em> · {etapaActual.titulo}</em>}
         </span>
-        <strong>Etapa {String(pasoActual).padStart(2, '0')} de 12</strong>
+        <strong>Etapa {String(pasoActual).padStart(2, '0')} de 5</strong>
         <button
           type="button"
           className="seguimiento__toggle"
@@ -46,7 +45,7 @@ function SeguimientoOriginacion({ pasoActual }: SeguimientoOriginacionProps) {
           role="progressbar"
           aria-label="Progreso de originación"
           aria-valuemin={1}
-          aria-valuemax={12}
+          aria-valuemax={5}
           aria-valuenow={pasoActual}
         >
           <span
@@ -59,19 +58,16 @@ function SeguimientoOriginacion({ pasoActual }: SeguimientoOriginacionProps) {
 
       {expandido && (
         <div className="seguimiento__fases" id="seguimiento-etapas">
-          {fases.map((fase, faseIndice) => (
+          {fases.map((fase) => (
             <section className="seguimiento__fase" key={fase.titulo}>
-              <h2>
-                <span>0{faseIndice + 1}</span>
-                {fase.titulo}
-              </h2>
+              <h2>{fase.titulo}</h2>
               <ol
                 className="seguimiento__etapas"
-                aria-label={`Etapas ${faseIndice * 6 + 1} a ${faseIndice * 6 + 6}`}
-                start={faseIndice * 6 + 1}
+                aria-label="Etapas 1 a 5"
+                start={1}
               >
                 {fase.etapas.map((etapa, indice) => {
-                  const posicion = faseIndice * 6 + indice + 1
+                  const posicion = indice + 1
                   const estado =
                     posicion < pasoActual
                       ? 'completada'

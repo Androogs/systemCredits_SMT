@@ -39,20 +39,26 @@ export function tipoDocumentoApi(codigo: string): string {
   return TIPO_DOCUMENTO_API[codigo.trim().toUpperCase()] ?? codigo
 }
 
-/** Ocupación del select → (ocupacion, tipo_contrato) del backend. */
-export function ocupacionApi(label: string): {
+/**
+ * Ocupación del select (4 valores) + tipo de contrato elegido cuando
+ * es Empleado → (ocupacion, tipo_contrato) del backend
+ * (models/enums.py). Pensionado y Fuerzas Militares no tienen
+ * contrato: el motor los evalúa con matriz propia → 'NA'.
+ */
+export function ocupacionApi(
+  ocupacion: string,
+  tipoContrato: string,
+): {
   ocupacion: string
   tipoContrato: string | null
 } {
-  switch (label) {
-    case 'Empleado Término Indefinido':
-      return { ocupacion: 'Empleado', tipoContrato: 'Indefinido' }
-    case 'Empleado Término Fijo':
-      return { ocupacion: 'Empleado', tipoContrato: 'Fijo' }
-    case 'Prestador de Servicios':
-      return { ocupacion: 'Empleado', tipoContrato: 'Obra o Labor' }
+  switch (ocupacion) {
+    case 'Empleado':
+      return { ocupacion: 'Empleado', tipoContrato: tipoContrato || null }
     case 'Pensionado':
       return { ocupacion: 'Pensionado', tipoContrato: 'NA' }
+    case 'Fuerzas Militares':
+      return { ocupacion: 'Fuerzas Militares', tipoContrato: 'NA' }
     case 'Independiente':
     default:
       return { ocupacion: 'Independiente', tipoContrato: null }
@@ -68,7 +74,10 @@ export function construirCrearSolicitudPayload(
   solicitud: DatosSolicitud,
   sesionCaptura?: string,
 ): CrearSolicitudPayload {
-  const { ocupacion, tipoContrato } = ocupacionApi(solicitud.ocupacion)
+  const { ocupacion, tipoContrato } = ocupacionApi(
+    solicitud.ocupacion,
+    solicitud.tipoContrato,
+  )
   return {
     cliente: {
       tipo_documento: tipoDocumentoApi(identidad.tipoDocumento),
@@ -112,7 +121,6 @@ export function construirEvaluacionPayload(
 ): EvaluarSolicitudPayload {
   const { monto } = calcularCupoSugerido(
     solicitud.ingresosMensuales,
-    solicitud.egresosMensuales,
     solicitud.plazoMeses || 36,
   )
   return {

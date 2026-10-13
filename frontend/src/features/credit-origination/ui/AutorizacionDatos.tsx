@@ -115,7 +115,6 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
               de continuar.
             </p>
           </div>
-          <span className="autorizacion__chip">Paso 2 de 12</span>
         </div>
 
         {registrado && (

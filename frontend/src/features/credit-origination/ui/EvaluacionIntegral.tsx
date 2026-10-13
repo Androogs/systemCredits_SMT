@@ -1,5 +1,6 @@
 import { ArrowLeft, ArrowRight, CircleAlert, CircleCheck } from 'lucide-react'
 import { currency } from '../../../shared/lib/formatters'
+import { useRol } from '../../../shared/lib/sesion'
 import type { DatosSolicitud } from './CrearSolicitud'
 import {
   calcularCupoSugerido,
@@ -27,13 +28,13 @@ function EvaluacionIntegral({
   onRevisionManual,
   onContinue,
 }: EvaluacionIntegralProps) {
+  const esAsesor = useRol() === 'asesor'
   const ingresos = solicitud?.ingresosMensuales ?? 0
-  const egresos = solicitud?.egresosMensuales ?? 0
-  const plazoMeses = solicitud?.plazoMeses ?? 36
-  const capacidadDisponible = Math.max(0, ingresos - egresos)
+  const plazoMeses = solicitud?.plazoMeses ?? 24
+  const capacidadDisponible = Math.max(0, ingresos)
   const cupoSugerido =
     resultadoPrevio?.montoSugerido ??
-    calcularCupoSugerido(ingresos, egresos, plazoMeses).monto
+    calcularCupoSugerido(ingresos, plazoMeses).monto
 
   const factors = resultadoPrevio?.trazabilidad.length
     ? resultadoPrevio.trazabilidad.map((paso) => ({
@@ -44,7 +45,7 @@ function EvaluacionIntegral({
     : ([
         {
           titulo: 'Capacidad de endeudamiento apta',
-          detalle: `${currency(ingresos)} en ingresos y ${currency(egresos)} en egresos declarados; disponible estimado ${currency(capacidadDisponible)}.`,
+          detalle: `${currency(ingresos)} en ingresos; disponible estimado ${currency(capacidadDisponible)}.`,
           resultado: 'cumple',
         },
         {
@@ -60,7 +61,6 @@ function EvaluacionIntegral({
     crearResultadoDemo({
       decision: 'APROBADO',
       ingresosMensuales: ingresos,
-      egresosMensuales: egresos,
       plazoMeses,
     })
 
@@ -76,7 +76,7 @@ function EvaluacionIntegral({
         }
       />
 
-      <SeguimientoOriginacion pasoActual={11} />
+      <SeguimientoOriginacion pasoActual={5} />
 
       <div className="evaluacion-integral__contenido">
         <section
@@ -108,7 +108,7 @@ function EvaluacionIntegral({
               </li>
             ))}
           </ul>
-          {resultadoPrevio?.causales.length ? (
+          {!esAsesor && resultadoPrevio?.causales.length ? (
             <ul className="evaluacion-integral__causales">
               {resultadoPrevio.causales.map((causal) => (
                 <li key={causal.codigo}>
@@ -121,7 +121,7 @@ function EvaluacionIntegral({
             ID de auditoría del motor de reglas:{' '}
             <strong>{resultadoEfectivo.auditoria}</strong> · Versión de
             políticas: <strong>{resultadoEfectivo.versionPolitica}</strong>
-            {resultadoPrevio?.scoreConsultado != null && (
+            {!esAsesor && resultadoPrevio?.scoreConsultado != null && (
               <>
                 {' '}
                 · Score: <strong>{resultadoPrevio.scoreConsultado}</strong>

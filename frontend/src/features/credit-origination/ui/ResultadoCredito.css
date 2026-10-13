@@ -3,6 +3,287 @@
   gap: 1.25rem;
 }
 
+/* Veredicto: heroe centrado con celebracion al aprobar */
+
+.resultado-credito__veredicto {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  overflow: hidden;
+  padding: 2.4rem 1.4rem 1.9rem;
+  border: 1px solid;
+  border-radius: 1.1rem;
+  text-align: center;
+  animation: rc-veredicto-entrar 0.45s ease-out both;
+}
+
+.resultado-credito__confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.resultado-credito__confetti i {
+  position: absolute;
+  top: -1.5rem;
+  left: var(--x);
+  width: var(--s);
+  height: calc(var(--s) * 1.6);
+  border-radius: var(--r);
+  background: var(--c);
+  animation: rc-confetti-caer var(--d) cubic-bezier(0.3, 0.45, 0.6, 1) var(--dl)
+    both;
+}
+
+.resultado-credito__veredicto-icono {
+  position: relative;
+  display: grid;
+  flex-shrink: 0;
+  width: 5.2rem;
+  height: 5.2rem;
+  margin-bottom: 0.55rem;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  animation: rc-veredicto-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both;
+}
+
+.resultado-credito__veredicto-eyebrow {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  animation: rc-veredicto-subir 0.5s ease-out 0.25s both;
+}
+
+.resultado-credito__veredicto-titulo {
+  font-size: clamp(1.6rem, 4.5vw, 2.1rem);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+  animation: rc-veredicto-subir 0.5s ease-out 0.35s both;
+}
+
+.resultado-credito__veredicto-cupo {
+  display: grid;
+  gap: 0.15rem;
+  margin-top: 0.4rem;
+  animation: rc-veredicto-subir 0.5s ease-out 0.45s both;
+}
+
+.resultado-credito__veredicto-cupo small {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.resultado-credito__veredicto-cupo b {
+  font-size: clamp(1.8rem, 6vw, 2.5rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+.resultado-credito__veredicto-sub {
+  margin: 0.15rem 0 0;
+  max-width: 30rem;
+  color: #5b6b7c;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  animation: rc-veredicto-subir 0.5s ease-out 0.45s both;
+}
+
+.resultado-credito__veredicto-pill {
+  flex-shrink: 0;
+  margin-top: 0.6rem;
+  padding: 0.45rem 1.05rem;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  animation: rc-veredicto-subir 0.5s ease-out 0.55s both;
+}
+
+.resultado-credito__veredicto-radicado {
+  color: #74839a;
+  font-size: 0.7rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  animation: rc-veredicto-subir 0.5s ease-out 0.62s both;
+}
+
+/* Aprobado */
+
+.resultado-credito__veredicto--aprobado {
+  border-color: #b7e4ce;
+  background: #ecf8f1;
+}
+
+.resultado-credito__veredicto--aprobado .resultado-credito__veredicto-icono {
+  background: #12a150;
+  box-shadow: 0 0.7rem 1.6rem rgb(18 161 80 / 35%);
+}
+
+.resultado-credito__veredicto--aprobado
+  .resultado-credito__veredicto-icono::after {
+  content: '';
+  position: absolute;
+  inset: -0.45rem;
+  border: 2px solid rgb(18 161 80 / 45%);
+  border-radius: 50%;
+  animation: rc-veredicto-anillo 1.9s ease-out 0.6s infinite;
+}
+
+.resultado-credito__veredicto--aprobado .resultado-credito__veredicto-eyebrow,
+.resultado-credito__veredicto--aprobado
+  .resultado-credito__veredicto-cupo
+  small {
+  color: #0f7a4d;
+}
+
+.resultado-credito__veredicto--aprobado .resultado-credito__veredicto-titulo,
+.resultado-credito__veredicto--aprobado .resultado-credito__veredicto-cupo b {
+  color: #0b4d30;
+}
+
+.resultado-credito__veredicto--aprobado .resultado-credito__veredicto-pill {
+  background: #128a54;
+}
+
+/* Rechazado */
+
+.resultado-credito__veredicto--rechazado {
+  border-color: #f0c6c6;
+  background: #fdf1f1;
+}
+
+.resultado-credito__veredicto--rechazado .resultado-credito__veredicto-icono {
+  background: #c5403a;
+  box-shadow: 0 0.7rem 1.6rem rgb(197 64 58 / 30%);
+}
+
+.resultado-credito__veredicto--rechazado .resultado-credito__veredicto-eyebrow {
+  color: #b3261e;
+}
+
+.resultado-credito__veredicto--rechazado .resultado-credito__veredicto-titulo {
+  color: #6e1f1a;
+}
+
+.resultado-credito__veredicto--rechazado .resultado-credito__veredicto-pill {
+  background: #c02f28;
+}
+
+/* Revision manual */
+
+.resultado-credito__veredicto--revision {
+  border-color: #edd9ae;
+  background: #fdf6e6;
+}
+
+.resultado-credito__veredicto--revision .resultado-credito__veredicto-icono {
+  background: #c8901f;
+  box-shadow: 0 0.7rem 1.6rem rgb(200 144 31 / 30%);
+}
+
+.resultado-credito__veredicto--revision .resultado-credito__veredicto-eyebrow {
+  color: #9a6b1f;
+}
+
+.resultado-credito__veredicto--revision .resultado-credito__veredicto-titulo {
+  color: #6b4d14;
+}
+
+.resultado-credito__veredicto--revision .resultado-credito__veredicto-pill {
+  background: #b07d1e;
+}
+
+@keyframes rc-veredicto-entrar {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes rc-veredicto-pop {
+  0% {
+    transform: scale(0);
+  }
+  60% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes rc-veredicto-subir {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes rc-veredicto-anillo {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.85);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+@keyframes rc-confetti-caer {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -10%, 0) rotate(0deg);
+  }
+  12% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--dx, 0), 30rem, 0) rotate(620deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resultado-credito__veredicto,
+  .resultado-credito__veredicto-icono,
+  .resultado-credito__veredicto-eyebrow,
+  .resultado-credito__veredicto-titulo,
+  .resultado-credito__veredicto-cupo,
+  .resultado-credito__veredicto-sub,
+  .resultado-credito__veredicto-pill,
+  .resultado-credito__veredicto-radicado,
+  .resultado-credito__confetti i {
+    animation: none;
+  }
+
+  .resultado-credito__confetti,
+  .resultado-credito__veredicto--aprobado
+    .resultado-credito__veredicto-icono::after {
+    display: none;
+  }
+}
+
 .resultado-credito__contenido {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(16rem, 0.8fr);
@@ -11,7 +292,7 @@
 }
 
 .resultado-credito__oferta,
-.resultado-credito__estados {
+.resultado-credito__vehiculo {
   display: grid;
   align-content: start;
   gap: 1rem;
@@ -34,7 +315,7 @@
 }
 
 .resultado-credito__oferta h2,
-.resultado-credito__estados h2 {
+.resultado-credito__vehiculo h2 {
   margin: 0;
   color: #1d3557;
   font-size: 0.9rem;
@@ -137,41 +418,98 @@
   font-weight: 750;
 }
 
-.resultado-credito__rango {
-  width: 100%;
-  accent-color: #099dd7;
-  cursor: pointer;
+.resultado-credito__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 0.8rem;
 }
 
-.resultado-credito__rango:disabled {
-  cursor: default;
-}
-
-.resultado-credito__rango-extremos {
-  display: flex;
-  justify-content: space-between;
-  color: #748397;
-  font-size: 0.62rem;
-  font-weight: 600;
-}
-
-.resultado-credito__plazo {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
+.resultado-credito__grid > label {
+  display: grid;
+  gap: 0.3rem;
+  align-content: start;
   color: #475467;
   font-size: 0.68rem;
   font-weight: 700;
 }
 
-.resultado-credito__plazo select {
-  padding: 0.4rem 1.6rem 0.4rem 0.55rem;
+.resultado-credito__grid .input-base {
+  min-height: 2.5rem;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 560px) {
+  .resultado-credito__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.resultado-credito__descuento {
+  display: grid;
+  gap: 0.3rem;
+  align-content: start;
+}
+
+.resultado-credito__descuento > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: #475467;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.resultado-credito__toggle {
+  display: inline-flex;
   border: 1px solid #dce4ea;
   border-radius: 0.45rem;
+  overflow: hidden;
+}
+
+.resultado-credito__toggle-op {
+  min-width: 2.1rem;
+  padding: 0.2rem 0.5rem;
+  border: none;
   background: #fff;
-  color: #1d2939;
+  color: #617083;
   font: inherit;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.resultado-credito__toggle-op--activo {
+  background: #0a6c8f;
+  color: #fff;
+}
+
+.resultado-credito__plazo {
+  display: grid;
+  gap: 0.3rem;
+  align-content: start;
+  color: #475467;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.resultado-credito__plazo input[aria-invalid='true'] {
+  border-color: #e2544a;
+}
+
+.resultado-credito__plazo small {
+  color: #87939c;
+  font-size: 0.62rem;
+  font-weight: 600;
+}
+
+.resultado-credito__plazo-error {
+  margin: 0.4rem 0 0;
+  color: #c0392b;
+  font-size: 0.72rem;
+  font-weight: 600;
 }
 
 .resultado-credito__tasa {
@@ -206,37 +544,77 @@
   line-height: 1.5;
 }
 
-.resultado-credito__estados > h2 {
+.resultado-credito__vehiculo > h2 {
   color: #748397;
   font-size: 0.7rem;
   text-transform: uppercase;
 }
 
-.resultado-credito__estado {
-  display: grid;
-  gap: 0.3rem;
+.resultado-credito__vehiculo-hero {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   padding: 0.8rem;
-  border-radius: 0.5rem;
+  border: 1px solid #e5ebf0;
+  border-radius: 0.6rem;
+  background: #f4fafd;
 }
 
-.resultado-credito__estado strong {
-  font-size: 0.72rem;
+.resultado-credito__vehiculo-icono {
+  display: grid;
+  flex-shrink: 0;
+  width: 2.9rem;
+  height: 2.9rem;
+  place-items: center;
+  border-radius: 0.7rem;
+  background: #099dd7;
+  color: #fff;
 }
 
-.resultado-credito__estado p {
-  margin: 0;
+.resultado-credito__vehiculo-hero strong {
+  display: block;
+  color: #1d3557;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.resultado-credito__vehiculo-hero small {
+  color: #667085;
   font-size: 0.66rem;
-  line-height: 1.45;
 }
 
-.resultado-credito__estado--rechazo {
-  background: #fff1f0;
-  color: #a4231a;
+.resultado-credito__vehiculo-datos {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
 }
 
-.resultado-credito__estado--revision {
-  background: #fff8e8;
-  color: #9b6412;
+.resultado-credito__vehiculo-datos > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px dashed #e5ebf0;
+}
+
+.resultado-credito__vehiculo-datos > div:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.resultado-credito__vehiculo-datos dt {
+  color: #667085;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.resultado-credito__vehiculo-datos dd {
+  margin: 0;
+  color: #1d2939;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: right;
 }
 
 .resultado-credito__inclusion {
@@ -281,6 +659,17 @@
   color: #fff;
 }
 
+.resultado-credito__primario--estudio {
+  border-color: #d97706;
+  background: #d97706;
+  color: #fff;
+}
+
+.resultado-credito__primario--estudio:disabled {
+  border-color: #d97706;
+  background: #d97706;
+}
+
 .resultado-credito__secundario:disabled,
 .resultado-credito__primario:disabled {
   cursor: default;
@@ -300,6 +689,26 @@
 }
 
 @media (max-width: 560px) {
+  .resultado-credito__veredicto {
+    gap: 0.45rem;
+    padding: 1.7rem 1rem 1.4rem;
+  }
+
+  .resultado-credito__veredicto-icono {
+    width: 4.2rem;
+    height: 4.2rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .resultado-credito__veredicto-icono svg {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .resultado-credito__veredicto-titulo {
+    font-size: 1.45rem;
+  }
+
   .resultado-credito__valores {
     grid-template-columns: 1fr;
   }

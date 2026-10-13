@@ -4,11 +4,13 @@ import Tarjeta from '../shared/ui/Tarjeta'
 import Skeleton from '../shared/ui/Skeleton'
 import InsigniaEstado from '../entities/credit/ui/InsigniaEstado'
 import {
-  estadoVisual,
+  estadoParaVista,
   etiquetaSolicitud,
   numero,
   useSolicitudes,
 } from '../entities/credit/model/solicitudesPanel'
+import { useRol } from '../shared/lib/sesion'
+import { useCuentaAscendente } from '../shared/lib/useCuentaAscendente'
 import { currency, dateShort, number } from '../shared/lib/formatters'
 import {
   FilePlus2,
@@ -30,16 +32,20 @@ export default function PanelAsesor() {
     limite: 200,
   })
 
+  const esAsesor = useRol() === 'asesor'
+
   const aprobadas = solicitudes.filter(
-    (s) => estadoVisual(s) === 'APROBADO',
+    (s) => estadoParaVista(s, esAsesor) === 'APROBADO',
   ).length
   const enCola = solicitudes.filter((s) => {
-    const v = estadoVisual(s)
+    const v = estadoParaVista(s, esAsesor)
     return v === 'REQUIERE_REVISION' || v === 'PENDIENTE'
   })
   const cola = [
-    ...enCola.filter((s) => estadoVisual(s) === 'PENDIENTE'),
-    ...enCola.filter((s) => estadoVisual(s) === 'REQUIERE_REVISION'),
+    ...enCola.filter((s) => estadoParaVista(s, esAsesor) === 'PENDIENTE'),
+    ...enCola.filter(
+      (s) => estadoParaVista(s, esAsesor) === 'REQUIERE_REVISION',
+    ),
     ...solicitudes.filter((s) => !enCola.includes(s)),
   ].slice(0, 8)
 
@@ -59,28 +65,31 @@ export default function PanelAsesor() {
           <Kpi
             icon={Inbox}
             label="Solicitudes"
-            value={cargando ? '…' : number(solicitudes.length)}
+            valor={solicitudes.length}
             tone="brand"
             cargando={cargando}
           />
           <Kpi
             icon={CheckCircle2}
             label="Aprobadas"
-            value={number(aprobadas)}
+            valor={aprobadas}
             tone="emerald"
             cargando={cargando}
           />
           <Kpi
             icon={Clock}
-            label="En revisión / pendientes"
-            value={number(enCola.length)}
+            label={esAsesor ? 'Pendientes' : 'En revisión / pendientes'}
+            valor={enCola.length}
             tone="amber"
             cargando={cargando}
           />
           <Kpi
             icon={TrendingUp}
             label="Tasa de aprobación"
-            value={`${solicitudes.length ? ((aprobadas / solicitudes.length) * 100).toFixed(0) : 0}%`}
+            valor={
+              solicitudes.length ? (aprobadas / solicitudes.length) * 100 : 0
+            }
+            formato={(n) => `${n.toFixed(0)}%`}
             tone="emerald"
             cargando={cargando}
           />
@@ -153,7 +162,7 @@ export default function PanelAsesor() {
               </thead>
               <tbody aria-busy={cargando}>
                 {cola.map((s) => {
-                  const visual = estadoVisual(s)
+                  const visual = estadoParaVista(s, esAsesor)
                   const cupo = numero(s.evaluacion?.cupo_sugerido)
                   return (
                     <tr
@@ -185,13 +194,16 @@ export default function PanelAsesor() {
                       <td className="px-5 py-3">
                         <span className="inline-flex items-center gap-2">
                           <InsigniaEstado status={visual} />
-                          <span className="text-xs text-slate-600 capitalize">
-                            {s.decision
-                              ? (
-                                  s.evaluacion?.decision_interna ?? s.decision
-                                ).toLowerCase()
-                              : 'pendiente'}
-                          </span>
+                          {/* Decisión interna del motor: solo administrador */}
+                          {!esAsesor && (
+                            <span className="text-xs text-slate-600 capitalize">
+                              {s.decision
+                                ? (
+                                    s.evaluacion?.decision_interna ?? s.decision
+                                  ).toLowerCase()
+                                : 'pendiente'}
+                            </span>
+                          )}
                         </span>
                       </td>
                     </tr>
@@ -243,16 +255,19 @@ export default function PanelAsesor() {
 function Kpi({
   icon: Icon,
   label,
-  value,
+  valor,
+  formato = (n) => number(Math.round(n)),
   tone = 'brand',
   cargando = false,
 }: {
   icon: typeof Inbox
   label: string
-  value: string
+  valor: number
+  formato?: (n: number) => string
   tone?: 'brand' | 'emerald' | 'amber'
   cargando?: boolean
 }) {
+  const animado = useCuentaAscendente(valor)
   const tones = {
     brand: 'bg-brand-50 text-brand-600',
     emerald: 'bg-emerald-50 text-emerald-600',
@@ -272,7 +287,9 @@ function Kpi({
         {cargando ? (
           <Skeleton className="mt-2 h-6 w-24" />
         ) : (
-          <p className="text-xl font-bold text-slate-900 truncate">{value}</p>
+          <p className="text-xl font-bold text-slate-900 truncate">
+            {formato(animado)}
+          </p>
         )}
       </div>
     </Tarjeta>

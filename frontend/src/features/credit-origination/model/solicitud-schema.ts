@@ -19,7 +19,11 @@ export const solicitudSchema = z
   .object({
     lineaCredito: z.string().min(1, 'Selecciona la línea de crédito.'),
     destinoCredito: z.string().min(1, 'Selecciona el destino del crédito.'),
-    plazoMeses: z.number().min(1, 'Selecciona el plazo deseado.'),
+    plazoMeses: z
+      .number()
+      .int('El plazo debe ser un número entero de meses.')
+      .min(12, 'El plazo debe estar entre 12 y 48 meses.')
+      .max(48, 'El plazo debe estar entre 12 y 48 meses.'),
   })
   .merge(laboralSchemaBase)
   .merge(financieroSchema)

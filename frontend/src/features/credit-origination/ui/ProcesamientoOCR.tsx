@@ -139,6 +139,16 @@ function ProcesamientoOCR({
     })
   }
 
+  // Paso pasivo: cuando la animación termina, avanza solo tras una
+  // pausa breve para que el "completado" sea legible. El botón sigue
+  // disponible para quien quiera adelantar/reprocesar.
+  useEffect(() => {
+    if (!completado) return
+    const avance = window.setTimeout(handleContinuar, 1400)
+    return () => window.clearTimeout(avance)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completado])
+
   const tareaActual = tareas.find((t) => estadoTareas[t.id] === 'en-proceso')
   const tituloEstado = completado
     ? 'Procesamiento completado'

@@ -2,6 +2,7 @@
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -67,6 +68,24 @@ class OfertaResponse(BaseModel):
     monto_aprobado: Decimal | None = None
 
 
+class VehiculoFinanciadoRequest(BaseModel):
+    """Vehículo que financia el crédito: se captura al aceptar la oferta
+    (formalización) y queda persistido para el desembolso."""
+
+    producto_a_financiar: str = "Motocicleta"
+    marca: str | None = Field(default=None, max_length=100)
+    referencia: str | None = Field(default=None, max_length=120)
+    modelo: str | None = Field(default=None, max_length=30)
+    color: str | None = Field(default=None, max_length=60)
+    valor_moto_iva: Decimal | None = Field(default=None, ge=0)
+    descuento: Decimal | None = Field(default=None, ge=0)
+    descuento_pct: Decimal | None = Field(default=None, ge=0, le=100)
+    accesorios: Decimal | None = Field(default=None, ge=0)
+    matricula: Decimal | None = Field(default=None, ge=0)
+    soat: Decimal | None = Field(default=None, ge=0)
+    aval_pct: Decimal | None = Field(default=None, ge=0, le=100)
+
+
 class SeleccionarOfertaRequest(BaseModel):
     id_oferta: int
     """Monto que el cliente decide tomar; <= monto_aprobado de la oferta.
@@ -75,6 +94,36 @@ class SeleccionarOfertaRequest(BaseModel):
     """Plazo pactado en meses; <= plazo_ofrecido de la oferta.
     Si se omite se conserva el plazo ofrecido."""
     plazo: int | None = Field(default=None, gt=0)
+    """Datos del vehículo a financiar, capturados en la formalización."""
+    vehiculo: VehiculoFinanciadoRequest | None = None
+
+
+class EnviarEstudioRequest(BaseModel):
+    """El asesor escala una solicitud rechazada a estudio manual.
+
+    La solicitud pasa a `en_revision` y el comité la resuelve con
+    /resolver. El comentario queda en `descripcion_estado`.
+    """
+
+    comentario: str | None = Field(default=None, max_length=500)
+
+
+class ResolverSolicitudRequest(BaseModel):
+    """Decisión del comité sobre una solicitud en revisión (causales E/RC).
+
+    El motor deja la solicitud en `en_revision`; el comité la cierra
+    aprobando o rechazando manualmente. El comentario queda en
+    `descripcion_estado` para trazabilidad.
+    """
+
+    decision: Literal["aprobado", "rechazado"]
+    comentario: str | None = Field(default=None, max_length=500)
+    """Monto que el comité decide aprobar; si se omite se usa el cupo
+    calculado por el motor en la evaluación vigente."""
+    monto_aprobado: Decimal | None = Field(default=None, gt=0)
+    """Plazo en meses de la oferta generada por el comité; si se omite
+    se usa el plazo del cupo o el deseado en la solicitud."""
+    plazo_meses: int | None = Field(default=None, ge=1)
 
 
 class EvaluacionResumenSolicitud(BaseModel):

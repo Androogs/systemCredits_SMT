@@ -11,22 +11,22 @@ const CONFIG: Record<
 > = {
   APROBADO: {
     Icon: CheckCircle2,
-    className: 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20',
+    className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
     label: 'Aprobado',
   },
   RECHAZADO: {
     Icon: XCircle,
-    className: 'bg-red-600 text-white shadow-sm shadow-red-600/20',
+    className: 'bg-red-50 text-red-700 ring-red-600/20',
     label: 'Rechazado',
   },
   REQUIERE_REVISION: {
     Icon: AlertTriangle,
-    className: 'bg-amber-500 text-white shadow-sm shadow-amber-500/20',
+    className: 'bg-amber-50 text-amber-700 ring-amber-600/25',
     label: 'Requiere revisión',
   },
   PENDIENTE: {
     Icon: Clock,
-    className: 'bg-slate-400 text-white shadow-sm shadow-slate-400/20',
+    className: 'bg-slate-100 text-slate-600 ring-slate-500/20',
     label: 'Pendiente de evaluación',
   },
 }
@@ -42,9 +42,10 @@ export default function InsigniaEstado({
   return (
     <span
       title={cfg.label}
-      className={`inline-flex items-center justify-center w-8 h-8 rounded-full ${cfg.className}`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${cfg.className}`}
     >
-      <Icon size={18} strokeWidth={2.5} />
+      <Icon size={13} strokeWidth={2.5} aria-hidden="true" />
+      {cfg.label}
     </span>
   )
 }

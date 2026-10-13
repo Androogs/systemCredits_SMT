@@ -684,3 +684,60 @@ def test_desembolso_confirma_pendiente_existente(client):
     assert d["estado"] == "confirmado"
     assert d["fecha_desembolso"] is not None
     assert d["capital"] == "10000000.00"
+
+
+# ---------------------------------------------------------------------------
+# Resolución de comité (solicitudes 'en_revision' por causales E/RC)
+# ---------------------------------------------------------------------------
+def _solicitud_en_revision(client) -> str:
+    """E4 (perfil ingreso bajo) es causal de estudio: la solicitud queda
+    'en_revision' aunque la decisión pública sea 'rechazado'."""
+    id_solicitud = _crear_solicitud(client)
+    ev = client.post(
+        f"/api/solicitudes/{id_solicitud}/evaluar",
+        json={**CREDITO, "escenario_mock": "perfil_bajo"},
+    ).json()
+    assert ev["decision"] == "Rechazado" and ev["decision_interna"] == "Estudio"
+    detalle = client.get(f"/api/solicitudes/{id_solicitud}").json()
+    assert detalle["estado"] == "en_revision"
+    return id_solicitud
+
+
+def test_resolver_comite_rechaza(client):
+    id_solicitud = _solicitud_en_revision(client)
+    r = client.post(
+        f"/api/solicitudes/{id_solicitud}/resolver",
+        json={"decision": "rechazado", "comentario": "Historial no viable"},
+    )
+    assert r.status_code == 200, r.text
+    detalle = r.json()
+    assert detalle["estado"] == "rechazada" and detalle["decision"] == "rechazado"
+
+
+def test_resolver_comite_aprueba_y_genera_ofertas(client):
+    db = db_session.SessionLocal()
+    _sembrar_cadena_desembolso(db)
+    db.close()
+
+    id_solicitud = _solicitud_en_revision(client)
+    r = client.post(
+        f"/api/solicitudes/{id_solicitud}/resolver",
+        json={"decision": "aprobado", "comentario": "Cliente de la casa"},
+    )
+    assert r.status_code == 200, r.text
+    detalle = r.json()
+    assert detalle["estado"] == "aprobada" and detalle["decision"] == "aprobado"
+    assert len(detalle["ofertas"]) > 0
+
+
+def test_resolver_comite_solo_en_revision(client):
+    id_solicitud = _crear_solicitud(client)
+    client.post(f"/api/solicitudes/{id_solicitud}/evaluar", json=CREDITO)
+    r = client.post(
+        f"/api/solicitudes/{id_solicitud}/resolver", json={"decision": "rechazado"}
+    )
+    assert r.status_code == 422
+    assert client.post(
+        f"/api/solicitudes/00000000-0000-0000-0000-000000000000/resolver",
+        json={"decision": "aprobado"},
+    ).status_code == 404

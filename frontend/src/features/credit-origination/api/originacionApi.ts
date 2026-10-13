@@ -46,7 +46,17 @@ export interface ResultadoMotorApi {
   capacidad_pago: string
   cupo_sugerido: string
   cuota_sugerida: string
+  /** Cuota de la moto con el saldo/tasa/plazo de la solicitud. */
+  cuota_moto: string
+  /** Cuotas de créditos rotativos reportados en buró (tarjetas, rotativos). */
+  gasto_financiero_rotativo: string
+  /** Cuotas de obligaciones no rotativas reportadas en buró. */
+  gastos_financieros_no_rotativos: string
+  /** Gastos personales estimados por banda de SMMLV. */
+  gastos_personales: string
   indicadores_buro: Record<string, unknown>
+  /** Parámetros del motor usados en esta evaluación (solo en auditoría). */
+  parametros_usados?: Record<string, unknown>
   trazabilidad: PasoTrazaApi[]
   advertencias: string[]
   tiempo_ms: number
@@ -198,11 +208,28 @@ export function obtenerOfertas(idSolicitud: string) {
   return request<OfertaApi[]>(`/api/solicitudes/${idSolicitud}/ofertas`)
 }
 
+/** Vehículo que financia el crédito, capturado al aceptar la oferta. */
+export interface VehiculoFinanciado {
+  producto_a_financiar?: string
+  marca?: string | null
+  referencia?: string | null
+  modelo?: string | null
+  color?: string | null
+  valor_moto_iva?: number | null
+  descuento?: number | null
+  descuento_pct?: number | null
+  accesorios?: number | null
+  matricula?: number | null
+  soat?: number | null
+  aval_pct?: number | null
+}
+
 export function seleccionarOferta(
   idSolicitud: string,
   idOferta: number,
   monto?: number,
   plazo?: number,
+  vehiculo?: VehiculoFinanciado,
 ) {
   return request<OfertaApi>(
     `/api/solicitudes/${idSolicitud}/ofertas/seleccionar`,
@@ -212,6 +239,44 @@ export function seleccionarOferta(
         id_oferta: idOferta,
         ...(monto != null ? { monto } : {}),
         ...(plazo != null ? { plazo } : {}),
+        ...(vehiculo != null ? { vehiculo } : {}),
+      }),
+    },
+  )
+}
+
+/** El asesor escala una solicitud rechazada a estudio manual (comité). */
+export function enviarAEstudio(idSolicitud: string, comentario?: string) {
+  return request<SolicitudDetalleApi>(
+    `/api/solicitudes/${idSolicitud}/enviar-estudio`,
+    {
+      method: 'POST',
+      body: JSON.stringify(comentario ? { comentario } : {}),
+    },
+  )
+}
+
+/** Decisión del comité sobre una solicitud 'en_revision'. */
+export function resolverSolicitud(
+  idSolicitud: string,
+  decision: 'aprobado' | 'rechazado',
+  comentario?: string,
+  montoAprobado?: number,
+  plazoMeses?: number,
+) {
+  return request<SolicitudDetalleApi>(
+    `/api/solicitudes/${idSolicitud}/resolver`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        decision,
+        ...(comentario ? { comentario } : {}),
+        ...(montoAprobado != null && montoAprobado > 0
+          ? { monto_aprobado: montoAprobado }
+          : {}),
+        ...(plazoMeses != null && plazoMeses > 0
+          ? { plazo_meses: plazoMeses }
+          : {}),
       }),
     },
   )

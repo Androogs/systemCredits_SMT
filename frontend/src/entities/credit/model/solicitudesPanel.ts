@@ -24,6 +24,11 @@ const ESTADOS_NEGATIVOS = new Set(['rechazada', 'cancelada'])
  * que es el perfil gris decidido por el motor).
  */
 export function estadoVisual(s: SolicitudResumenApi): EstadoVisual {
+  // en_revision = pendiente de comité: gana sobre la decisión pública
+  // binaria del motor ("rechazado" con causales E/RC sigue abierta).
+  if (s.estado === 'en_revision') {
+    return 'REQUIERE_REVISION'
+  }
   if (s.decision === 'aprobado' || ESTADOS_POSITIVOS.has(s.estado)) {
     return 'APROBADO'
   }
@@ -37,6 +42,19 @@ export function estadoVisual(s: SolicitudResumenApi): EstadoVisual {
     return 'PENDIENTE'
   }
   return 'REQUIERE_REVISION'
+}
+
+/**
+ * Vista del estado según el rol. Al asesor no se le expone la revisión
+ * del motor ni el perfil gris: solo ve el resultado binario final
+ * (aprobado / rechazado) o "pendiente" mientras no haya decisión.
+ */
+export function estadoParaVista(
+  s: SolicitudResumenApi,
+  esAsesor: boolean,
+): EstadoVisual {
+  const visual = estadoVisual(s)
+  return esAsesor && visual === 'REQUIERE_REVISION' ? 'PENDIENTE' : visual
 }
 
 export const OCUPACION_LABELS: Record<string, string> = {

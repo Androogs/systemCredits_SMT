@@ -110,6 +110,7 @@
 
 .captura__form {
   display: grid;
+  min-width: 0;
   gap: 1.5rem;
   padding: clamp(1.25rem, 3vw, 2rem);
   border: 1px solid #e7ebf1;
@@ -139,18 +140,6 @@
   margin: 0.4rem 0 0;
   color: #566575;
   font-size: 0.78rem;
-}
-
-.captura__chip {
-  flex: 0 0 auto;
-  padding: 0.45rem 0.7rem;
-  border: 1px solid #e1e7ef;
-  border-radius: 99px;
-  background: #fff;
-  color: #617083;
-  font-size: 0.7rem;
-  font-weight: 600;
-  white-space: nowrap;
 }
 
 /* ---------- Selector de modo ---------- */
@@ -435,6 +424,15 @@
   border-radius: 1rem;
   background: #fff;
   box-shadow: 0 0.5rem 1.5rem rgb(5 43 59 / 6%);
+  max-width: 100%;
+}
+
+/* El canvas del QR tiene ancho intrínseco (px del bitmap); sin límite
+   desborda el viewport en pantallas angostas. */
+.captura__qr-frame canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
 }
 
 .captura__qr-sesion {
@@ -511,6 +509,21 @@
   color: #475467;
   font-size: 0.82rem;
   line-height: 1.55;
+}
+
+/* URL de captura muy larga: sin quiebre desborda el contenedor. */
+.captura__enlace {
+  margin: 0;
+  color: #566575;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.captura__enlace code {
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+  word-break: break-all;
 }
 
 .captura__esperando {
@@ -973,9 +986,19 @@
   .captura__handoff-copy {
     width: 100%;
   }
+
+  .captura__panel {
+    display: none;
+  }
 }
 
 @media (max-width: 680px) {
+  /* Compactación móvil: el seguimiento ya muestra la etapa */
+  .captura__eyebrow,
+  .captura__lede {
+    display: none;
+  }
+
   .captura__form-head {
     flex-direction: column;
   }

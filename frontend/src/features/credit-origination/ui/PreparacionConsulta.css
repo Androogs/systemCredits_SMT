@@ -135,7 +135,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
   padding-bottom: 0.9rem;
   border-bottom: 1px solid #eef1f6;
 }
@@ -445,6 +446,10 @@
   .consulta__header {
     grid-template-columns: 1fr;
   }
+
+  .consulta__panel {
+    display: none;
+  }
 }
 
 @media (max-width: 680px) {
@@ -485,4 +490,11 @@
   border-radius: 0.45rem;
   font-size: 0.78rem;
   background: #fff;
+}
+/* Compactacion movil: el seguimiento ya muestra la etapa; se ocultan duplicados */
+@media (max-width: 680px) {
+  .consulta__eyebrow,
+  .consulta__lede {
+    display: none;
+  }
 }

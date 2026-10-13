@@ -1,23 +1,9 @@
 import { useEffect, useState } from 'react'
 import ValidacionInicial from './ValidacionInicial'
 import AutorizacionDatos from './AutorizacionDatos'
-import CapturaCedula from './CapturaCedula'
-import ProcesamientoOCR from './ProcesamientoOCR'
-import RevisionDatos from './RevisionDatos'
-import ResultadoValidacion from './ResultadoValidacion'
+import EvidenciaYDatos from './EvidenciaYDatos'
 import CrearSolicitud, { type ResultadoCrearSolicitud } from './CrearSolicitud'
-import PreparacionConsulta from './PreparacionConsulta'
-import ConsultaEnCurso from './ConsultaEnCurso'
-import InformeCrediticio from './InformeCrediticio'
-import EvaluacionIntegral from './EvaluacionIntegral'
-import ResultadoCredito from './ResultadoCredito'
-import { resultadoDesdeApi } from '../model/resultado-evaluacion'
-import {
-  construirEvaluacionPayload,
-  primerApellido,
-  type IdentidadSolicitante,
-} from '../model/mapeos-api'
-import { evaluarSolicitud } from '../api/originacionApi'
+import EvaluacionYResultado from './EvaluacionYResultado'
 import {
   type BorradorOriginacion,
   type ContextoOriginacion,
@@ -26,6 +12,7 @@ import {
   limpiarBorrador,
 } from '../model/borrador'
 import type { PasoOriginacion } from '../model/etapas-originacion'
+import type { IdentidadSolicitante } from '../model/mapeos-api'
 import './FlujoOriginacion.css'
 
 /**
@@ -64,21 +51,6 @@ function normalizarFecha(valor: string): string {
     return `${anio}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`
   }
   return texto
-}
-
-const pasosFuturos: Record<number, { titulo: string; detalle: string }> = {
-  10: {
-    titulo: 'Informe Crediticio',
-    detalle: 'Análisis de score y comportamiento histórico.',
-  },
-  11: {
-    titulo: 'Evaluación Integral',
-    detalle: 'Motor de políticas y decisión automatizada.',
-  },
-  12: {
-    titulo: 'Resultado Final',
-    detalle: 'Firma y desembolso del crédito.',
-  },
 }
 
 function FlujoOriginacion() {
@@ -120,7 +92,7 @@ function FlujoOriginacion() {
     setContexto(borradorPendiente.contexto)
     setFormalizacionIniciada(borradorPendiente.formalizacionIniciada)
     setPasoActual(
-      Math.min(12, Math.max(1, borradorPendiente.paso)) as PasoOriginacion,
+      Math.min(5, Math.max(1, borradorPendiente.paso)) as PasoOriginacion,
     )
     setBorradorPendiente(null)
   }
@@ -140,20 +112,18 @@ function FlujoOriginacion() {
   const modificarSolicitud = () => {
     setContexto((actual) => {
       const contextoPrevio = { ...actual }
-      delete contextoPrevio.consulta
-      delete contextoPrevio.resultadoConsulta
       delete contextoPrevio.resultadoEvaluacion
+      delete contextoPrevio.ofertaSeleccionada
       return contextoPrevio
     })
     setFormalizacionIniciada(false)
-    setPasoActual(7)
+    setPasoActual(4)
   }
 
   const renderBorradorPendiente = () => {
     const ctx = borradorPendiente!.contexto
     const nombre =
       `${ctx.revision?.nombres ?? ''} ${ctx.revision?.apellidos ?? ''}`.trim() ||
-      ctx.consulta?.nombreCompleto ||
       `Documento ${ctx.validacion?.numeroDocumento ?? ''}`.trim()
     const guardado = new Date(borradorPendiente!.guardadoEn)
     const hora = Number.isNaN(guardado.getTime())
@@ -172,10 +142,11 @@ function FlujoOriginacion() {
         <h1>Retomar originación</h1>
         <p>
           Hay una solicitud sin terminar de <strong>{nombre}</strong> guardada
-          en el paso {borradorPendiente!.paso} de 12
-          {hora ? ` (${hora})` : ''}.
+          en el paso {borradorPendiente!.paso} de 5{hora ? ` (${hora})` : ''}.
           {ctx.idSolicitud
-            ? ' La solicitud ya fue radicada en el sistema; puedes continuar desde la evaluación.'
+            ? ctx.resultadoEvaluacion
+              ? ' La solicitud ya fue evaluada; retomarás el resultado y la oferta.'
+              : ' La solicitud ya fue radicada en el sistema; puedes continuar desde la evaluación.'
             : ''}
         </p>
         <div className="flujo-originacion__acciones">
@@ -216,10 +187,11 @@ function FlujoOriginacion() {
 
     if (pasoActual === 3) {
       return (
-        <CapturaCedula
+        <EvidenciaYDatos
+          numeroDocumento={contexto.validacion?.numeroDocumento}
           onBack={() => setPasoActual(2)}
-          onContinue={(biometria) => {
-            setContexto((actual) => ({ ...actual, biometria }))
+          onContinue={({ biometria, ocr, revision }) => {
+            setContexto((actual) => ({ ...actual, biometria, ocr, revision }))
             setPasoActual(4)
           }}
         />
@@ -228,54 +200,8 @@ function FlujoOriginacion() {
 
     if (pasoActual === 4) {
       return (
-        <ProcesamientoOCR
-          onBack={() => setPasoActual(3)}
-          numeroDocumento={contexto.validacion?.numeroDocumento}
-          onContinue={(ocr) => {
-            setContexto((actual) => ({ ...actual, ocr }))
-            setPasoActual(5)
-          }}
-        />
-      )
-    }
-
-    if (pasoActual === 5) {
-      return (
-        <RevisionDatos
-          onBack={() => setPasoActual(4)}
-          inicial={
-            contexto.revision ?? {
-              numeroIdentificacion:
-                contexto.ocr?.numeroDocumento ??
-                contexto.validacion?.numeroDocumento,
-              nombres: contexto.ocr?.nombres,
-              apellidos: contexto.ocr?.apellidos,
-            }
-          }
-          onContinue={(revision) => {
-            setContexto((actual) => ({ ...actual, revision }))
-            setPasoActual(6)
-          }}
-        />
-      )
-    }
-
-    if (pasoActual === 6) {
-      return (
-        <ResultadoValidacion
-          onBack={() => setPasoActual(5)}
-          onContinue={(resultado) => {
-            setContexto((actual) => ({ ...actual, resultado }))
-            setPasoActual(7)
-          }}
-        />
-      )
-    }
-
-    if (pasoActual === 7) {
-      return (
         <CrearSolicitud
-          onBack={() => setPasoActual(6)}
+          onBack={() => setPasoActual(3)}
           inicial={contexto.solicitud}
           identidad={identidadDesdeContexto(contexto) ?? undefined}
           sesionCapturaToken={contexto.biometria?.sesionToken}
@@ -284,149 +210,44 @@ function FlujoOriginacion() {
               ...actual,
               solicitud: creada.datos,
               idSolicitud: creada.idSolicitud,
-              consulta: undefined,
-              resultadoConsulta: undefined,
               resultadoEvaluacion: undefined,
             }))
-            setPasoActual(8)
+            setPasoActual(5)
           }}
         />
       )
     }
 
-    if (pasoActual === 8) {
+    if (pasoActual === 5) {
       return (
-        <PreparacionConsulta
-          onBack={() => setPasoActual(7)}
-          inicial={
-            contexto.consulta ?? {
-              nombreCompleto:
-                `${contexto.revision?.nombres ?? ''} ${contexto.revision?.apellidos ?? ''}`.trim() ||
-                undefined,
-              numeroDocumento: contexto.revision?.numeroIdentificacion,
-              autorizacionFecha: contexto.autorizacion?.fechaRegistro,
-              autorizacionIp: contexto.autorizacion?.ipAsesor,
-            }
-          }
-          onContinue={(consulta) => {
-            setContexto((actual) => ({ ...actual, consulta }))
-            setPasoActual(9)
-          }}
-        />
-      )
-    }
-
-    if (pasoActual === 9) {
-      return (
-        <ConsultaEnCurso
-          solicitante={contexto.consulta?.nombreCompleto}
-          ejecutarConsulta={
-            contexto.idSolicitud && contexto.solicitud
-              ? () =>
-                  evaluarSolicitud(
-                    contexto.idSolicitud!,
-                    construirEvaluacionPayload(
-                      contexto.solicitud!,
-                      {
-                        origen: contexto.consulta?.origen ?? 'demo',
-                        escenarioMock:
-                          contexto.consulta?.escenarioMock ?? 'aprobado',
-                      },
-                      {
-                        primerApellido: contexto.revision?.apellidos
-                          ? primerApellido(contexto.revision.apellidos)
-                          : undefined,
-                        tieneMultasRunt:
-                          contexto.validacion?.multasPendientes ?? false,
-                      },
-                    ),
-                  ).then((respuesta) =>
-                    resultadoDesdeApi(
-                      respuesta,
-                      contexto.solicitud!.plazoMeses,
-                    ),
-                  )
-              : undefined
-          }
-          onBack={() => setPasoActual(8)}
-          onContinue={(resultadoConsulta, evaluacion) => {
-            setContexto((actual) => ({
-              ...actual,
-              resultadoConsulta,
-              resultadoEvaluacion: evaluacion ?? actual.resultadoEvaluacion,
-            }))
-            setPasoActual(10)
-          }}
-        />
-      )
-    }
-
-    if (pasoActual === 10) {
-      return (
-        <InformeCrediticio
-          resultado={contexto.resultadoEvaluacion}
-          onModificarDatos={modificarSolicitud}
-          onContinue={() => setPasoActual(11)}
-        />
-      )
-    }
-
-    if (pasoActual === 11) {
-      return (
-        <EvaluacionIntegral
-          solicitud={contexto.solicitud}
-          resultadoPrevio={contexto.resultadoEvaluacion}
-          onBack={() => setPasoActual(10)}
-          onRevisionManual={(resultadoEvaluacion) => {
-            setContexto((actual) => ({ ...actual, resultadoEvaluacion }))
-            setFormalizacionIniciada(false)
-            setPasoActual(12)
-          }}
-          onContinue={(resultadoEvaluacion) => {
-            setContexto((actual) => ({ ...actual, resultadoEvaluacion }))
-            setFormalizacionIniciada(false)
-            setPasoActual(12)
-          }}
-        />
-      )
-    }
-
-    if (pasoActual === 12 && contexto.resultadoEvaluacion) {
-      return (
-        <ResultadoCredito
-          resultado={contexto.resultadoEvaluacion}
+        <EvaluacionYResultado
           idSolicitud={contexto.idSolicitud}
-          formalizacionIniciada={formalizacionIniciada}
-          onModificar={() => {
-            setFormalizacionIniciada(false)
-            setPasoActual(11)
-          }}
+          solicitud={contexto.solicitud}
+          identidad={identidadDesdeContexto(contexto) ?? undefined}
+          validacion={contexto.validacion}
+          resultadoInicial={contexto.resultadoEvaluacion ?? null}
+          onBack={() => setPasoActual(4)}
+          onModificar={modificarSolicitud}
+          onResultado={(resultadoEvaluacion) =>
+            setContexto((actual) => ({ ...actual, resultadoEvaluacion }))
+          }
           onFormalizar={(ofertaSeleccionada) => {
             setContexto((actual) => ({ ...actual, ofertaSeleccionada }))
+            // Proceso cerrado: el autoguardado borra el borrador y la
+            // consulta ya no se puede reabrir para modificarla.
             setFormalizacionIniciada(true)
           }}
+          onEnviadaEstudio={() => setFormalizacionIniciada(true)}
         />
       )
     }
-
-    const pasoFuturo = pasosFuturos[pasoActual]
 
     return (
       <section className="flujo-originacion__pendiente">
         <span aria-hidden="true">{String(pasoActual).padStart(2, '0')}</span>
-        <p>Originación · Paso {pasoActual} de 12</p>
-        <h1>{pasoFuturo?.titulo ?? 'En construcción'}</h1>
-        <p>
-          {pasoFuturo?.detalle ??
-            'Esta pantalla está lista para integrar su contenido.'}
-        </p>
-        <details>
-          <summary>
-            Ver contexto de la solicitud ({Object.keys(contexto).length}{' '}
-            bloques)
-          </summary>
-          <pre>{JSON.stringify(contexto, null, 2)}</pre>
-        </details>
+        <p>Originación · Paso {pasoActual} de 5</p>
+        <h1>En construcción</h1>
+        <p>Esta pantalla está lista para integrar su contenido.</p>
         <div className="flujo-originacion__acciones">
           <button
             type="button"

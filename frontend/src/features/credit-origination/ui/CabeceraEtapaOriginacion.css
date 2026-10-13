@@ -85,4 +85,17 @@
   .cabecera-etapa {
     grid-template-columns: 1fr;
   }
+
+  .cabecera-etapa__contexto {
+    display: none;
+  }
+}
+
+@media (max-width: 680px) {
+  /* Compactación móvil: el seguimiento ya muestra la etapa y el
+     breadcrumb; se deja solo el título. */
+  .cabecera-etapa__texto > p,
+  .cabecera-etapa__texto > span {
+    display: none;
+  }
 }

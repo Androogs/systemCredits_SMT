@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
+import CampoNumerico from '../../../shared/ui/CampoNumerico'
 import { calcularCupoSugerido } from '../model/resultado-evaluacion'
 import {
   construirCrearSolicitudPayload,
@@ -8,6 +9,13 @@ import {
 } from '../model/mapeos-api'
 import { ApiError, crearSolicitud } from '../api/originacionApi'
 import { erroresSolicitud } from '../model/solicitud-schema'
+import {
+  OCUPACIONES,
+  TIPOS_CONTRATO,
+  SUBTIPOS_INDEPENDIENTE,
+  ENTIDADES_PENSION,
+  INSTITUCIONES_FUERZAS,
+} from '../schemas/laboral'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import './CrearSolicitud.css'
 
@@ -16,11 +24,17 @@ export interface DatosSolicitud {
   destinoCredito: string
   plazoMeses: number
   ocupacion: string
+  /** Solo cuando ocupacion === 'Empleado' (Indefinido/Fijo/Obra o Labor). */
+  tipoContrato: string
+  /** Solo cuando ocupacion === 'Independiente'. */
+  subtipoIndependiente: string
   empresa: string
+  /** Solo cuando ocupacion === 'Empleado'. */
   mesesContinuidad: number
   aniosCamara: number | null
   ingresosMensuales: number
-  egresosMensuales: number
+  /** Fondo de pensiones / fuerza / institución según ocupación. */
+  entidadPagadora: string
 }
 
 export interface ResultadoCrearSolicitud {
@@ -55,15 +69,39 @@ const destinosCredito = [
   'Consolidación de Deudas',
 ]
 
-const plazosMeses = [12, 24, 36, 48]
+// Fuente única: OCUPACIONES del schema laboral (validación y select
+// no pueden quedar desincronizados).
+const ocupaciones = OCUPACIONES
+const subtiposIndependiente = SUBTIPOS_INDEPENDIENTE
+const entidadesPension = ENTIDADES_PENSION
+const institucionesFuerzas = INSTITUCIONES_FUERZAS
 
-const ocupaciones = [
-  'Empleado Término Indefinido',
-  'Empleado Término Fijo',
-  'Independiente',
-  'Pensionado',
-  'Prestador de Servicios',
-]
+// Borradores guardados con el selector anterior (6 opciones) se
+// normalizan al esquema nuevo de 4 ocupaciones + tipo de contrato.
+const OCUPACION_LEGACY: Record<
+  string,
+  Pick<DatosSolicitud, 'ocupacion' | 'tipoContrato'>
+> = {
+  'Empleado Término Indefinido': {
+    ocupacion: 'Empleado',
+    tipoContrato: 'Indefinido',
+  },
+  'Empleado Término Fijo': { ocupacion: 'Empleado', tipoContrato: 'Fijo' },
+  'Prestador de Servicios': {
+    ocupacion: 'Empleado',
+    tipoContrato: 'Obra o Labor',
+  },
+}
+
+function normalizarOcupacion(
+  parcial: Partial<DatosSolicitud> | undefined,
+): Partial<DatosSolicitud> {
+  if (!parcial?.ocupacion) return parcial ?? {}
+  const legado = OCUPACION_LEGACY[parcial.ocupacion]
+  return legado ? { ...parcial, ...legado } : parcial
+}
+
+const PLAZO_FIJO_MESES = 24
 
 // Precarga de demostración solo en dev (import.meta.env.DEV); en el
 // build de producción los campos económicos arrancan vacíos.
@@ -71,25 +109,49 @@ const valoresIniciales: DatosSolicitud = import.meta.env.DEV
   ? {
       lineaCredito: 'Inversiones Pacífico',
       destinoCredito: 'Financiamiento de Vehículos',
-      plazoMeses: 36,
-      ocupacion: 'Empleado Término Indefinido',
-      empresa: 'Distribuciones del Pacífico S.A.S.',
+      plazoMeses: PLAZO_FIJO_MESES,
+      ocupacion: 'Empleado',
+      tipoContrato: 'Indefinido',
+      subtipoIndependiente: '',
+      empresa: 'Inversiones Pacífico',
       mesesContinuidad: 24,
       aniosCamara: null,
       ingresosMensuales: 4_500_000,
-      egresosMensuales: 1_800_000,
+      entidadPagadora: '',
     }
   : {
       lineaCredito: 'Inversiones Pacífico',
       destinoCredito: 'Financiamiento de Vehículos',
-      plazoMeses: 36,
+      plazoMeses: PLAZO_FIJO_MESES,
       ocupacion: '',
+      tipoContrato: '',
+      subtipoIndependiente: '',
       empresa: '',
       mesesContinuidad: 0,
       aniosCamara: null,
       ingresosMensuales: 0,
-      egresosMensuales: 0,
+      entidadPagadora: '',
     }
+
+const EMPLEADOR_LABELS: Record<string, { label: string; placeholder: string }> =
+  {
+    Empleado: {
+      label: 'Empresa / Empleador',
+      placeholder: 'Ej. Inversiones Pacífico',
+    },
+    Independiente: {
+      label: 'Negocio o actividad',
+      placeholder: 'Ej. Tienda de barrio, consultoría…',
+    },
+    Pensionado: {
+      label: 'Entidad pagadora / fondo de pensiones',
+      placeholder: 'Ej. Colpensiones, Protección…',
+    },
+    'Fuerzas Militares': {
+      label: 'Fuerza o institución',
+      placeholder: 'Ej. Ejército Nacional, Policía Nacional…',
+    },
+  }
 
 const formatoCOP = new Intl.NumberFormat('es-CO', {
   style: 'currency',
@@ -108,10 +170,6 @@ const formatoCOPCompacto = (valor: number) => {
   return `$${valor}`
 }
 
-function soloDigitos(valor: string) {
-  return valor.replace(/[^\d]/g, '')
-}
-
 function CrearSolicitud({
   onContinue,
   onBack,
@@ -121,7 +179,7 @@ function CrearSolicitud({
 }: CrearSolicitudProps) {
   const [datos, setDatos] = useState<DatosSolicitud>({
     ...valoresIniciales,
-    ...inicial,
+    ...normalizarOcupacion(inicial),
   })
   const [tocados, setTocados] = useState<Record<string, boolean>>({})
   const [intentado, setIntentado] = useState(false)
@@ -145,36 +203,15 @@ function CrearSolicitud({
     setRegistrado(false)
   }
 
-  // ---------- Métricas derivadas ----------
-  const disponibleMensual = Math.max(
-    0,
-    datos.ingresosMensuales - datos.egresosMensuales,
-  )
-
-  const capacidadEndeudamiento = useMemo(() => {
-    if (datos.ingresosMensuales <= 0) return 0
-    return Math.max(
-      0,
-      Math.round((disponibleMensual / datos.ingresosMensuales) * 100),
-    )
-  }, [datos.ingresosMensuales, disponibleMensual])
-
-  const cupoReferencial = useMemo(
+  // ---------- Métricas derivadas (fórmula del motor) ----------
+  const capacidad = useMemo(
     () =>
       calcularCupoSugerido(
         datos.ingresosMensuales,
-        datos.egresosMensuales,
-        datos.plazoMeses || 1,
-      ).monto,
-    [datos.ingresosMensuales, datos.egresosMensuales, datos.plazoMeses],
+        datos.plazoMeses || PLAZO_FIJO_MESES,
+      ),
+    [datos.ingresosMensuales, datos.plazoMeses],
   )
-
-  const estadoCapacidad =
-    capacidadEndeudamiento >= 40
-      ? 'alta'
-      : capacidadEndeudamiento >= 20
-        ? 'media'
-        : 'baja'
 
   const continuarDemo = () => {
     setRegistrado(true)
@@ -221,9 +258,9 @@ function CrearSolicitud({
     <div className="solicitud">
       <header className="solicitud__header">
         <div className="solicitud__header-copy">
-          <p className="solicitud__eyebrow">Originación Individual · Paso 7</p>
-          <h1>Crear Solicitud de Crédito</h1>
-          <p className="solicitud__subtitle">Producto y perfil económico</p>
+          <p className="solicitud__eyebrow">Originación Individual · Paso 4</p>
+          <h1>Perfil económico del solicitante</h1>
+          <p className="solicitud__subtitle">Producto, ocupación y capacidad</p>
           <p className="solicitud__lede">
             Registra el producto y la información económica del solicitante. Con
             estos datos el motor evaluará la solicitud y sugerirá el cupo máximo
@@ -252,7 +289,7 @@ function CrearSolicitud({
         </aside>
       </header>
 
-      <SeguimientoOriginacion pasoActual={7} />
+      <SeguimientoOriginacion pasoActual={4} />
 
       <form className="solicitud__form" onSubmit={handleSubmit} noValidate>
         {registrado && (
@@ -297,8 +334,8 @@ function CrearSolicitud({
             <div>
               <h2 id="solicitud-sec-1">Configuración de Producto Financiero</h2>
               <p>
-                Línea, destino y plazo deseado. El monto lo sugiere el motor
-                tras la evaluación.
+                Línea y destino. El plazo es fijo a {PLAZO_FIJO_MESES} meses y
+                el monto lo sugiere el motor tras la evaluación.
               </p>
             </div>
           </header>
@@ -376,42 +413,19 @@ function CrearSolicitud({
               )}
             </div>
 
-            <div
-              className={`solicitud__field${
-                mostrarError('plazoMeses') ? ' has-error' : ''
-              }`}
-            >
-              <label htmlFor="sol-plazo">
-                Plazo Deseado{' '}
-                <span className="solicitud__required" aria-hidden="true">
-                  *
-                </span>
-              </label>
+            <div className="solicitud__field solicitud__field--readonly">
+              <label>Plazo fijo</label>
               <div className="solicitud__input-wrap">
-                <select
-                  id="sol-plazo"
-                  value={datos.plazoMeses}
-                  aria-invalid={mostrarError('plazoMeses')}
-                  onChange={(e) =>
-                    actualizar('plazoMeses', Number(e.target.value))
-                  }
-                  onBlur={() => marcarTocado('plazoMeses')}
-                >
-                  {plazosMeses.map((meses) => (
-                    <option key={meses} value={meses}>
-                      {meses} Meses
-                    </option>
-                  ))}
-                </select>
-                <span className="solicitud__select-arrow" aria-hidden="true">
-                  ▾
-                </span>
+                <input
+                  type="text"
+                  readOnly
+                  value={`${PLAZO_FIJO_MESES} meses`}
+                  aria-readonly="true"
+                />
               </div>
-              {mostrarError('plazoMeses') && (
-                <p className="solicitud__error" role="alert">
-                  {errores.plazoMeses}
-                </p>
-              )}
+              <p className="solicitud__hint">
+                Plazo estándar definido por política del motor.
+              </p>
             </div>
           </div>
         </section>
@@ -452,7 +466,31 @@ function CrearSolicitud({
                   id="sol-ocupacion"
                   value={datos.ocupacion}
                   aria-invalid={mostrarError('ocupacion')}
-                  onChange={(e) => actualizar('ocupacion', e.target.value)}
+                  onChange={(e) => {
+                    const ocupacion = e.target.value
+                    setDatos((prev) => ({
+                      ...prev,
+                      ocupacion,
+                      // Los campos condicionales se limpian al cambiar
+                      // de ocupación para no arrastrar datos ajenos.
+                      tipoContrato:
+                        ocupacion === 'Empleado' ? prev.tipoContrato : '',
+                      mesesContinuidad:
+                        ocupacion === 'Empleado' ? prev.mesesContinuidad : 0,
+                      subtipoIndependiente:
+                        ocupacion === 'Independiente'
+                          ? prev.subtipoIndependiente
+                          : '',
+                      aniosCamara:
+                        ocupacion === 'Independiente' ? prev.aniosCamara : null,
+                      entidadPagadora:
+                        ocupacion === 'Pensionado' ||
+                        ocupacion === 'Fuerzas Militares'
+                          ? prev.entidadPagadora
+                          : '',
+                    }))
+                    setRegistrado(false)
+                  }}
                   onBlur={() => marcarTocado('ocupacion')}
                 >
                   <option value="" disabled>
@@ -475,65 +513,209 @@ function CrearSolicitud({
               )}
             </div>
 
-            <div
-              className={`solicitud__field${
-                mostrarError('empresa') ? ' has-error' : ''
-              }`}
-            >
-              <label htmlFor="sol-empresa">
-                Empresa / Empleador{' '}
-                <span className="solicitud__required" aria-hidden="true">
-                  *
-                </span>
-              </label>
-              <input
-                id="sol-empresa"
-                type="text"
-                autoComplete="organization"
-                placeholder="Nombre de la empresa"
-                value={datos.empresa}
-                aria-invalid={mostrarError('empresa')}
-                onChange={(e) => actualizar('empresa', e.target.value)}
-                onBlur={() => marcarTocado('empresa')}
-              />
-              {mostrarError('empresa') && (
-                <p className="solicitud__error" role="alert">
-                  {errores.empresa}
-                </p>
-              )}
-            </div>
+            {datos.ocupacion === 'Empleado' && (
+              <div
+                className={`solicitud__field${
+                  mostrarError('tipoContrato') ? ' has-error' : ''
+                }`}
+              >
+                <label htmlFor="sol-contrato">
+                  Tipo de contrato{' '}
+                  <span className="solicitud__required" aria-hidden="true">
+                    *
+                  </span>
+                </label>
+                <div className="solicitud__input-wrap">
+                  <select
+                    id="sol-contrato"
+                    value={datos.tipoContrato}
+                    aria-invalid={mostrarError('tipoContrato')}
+                    onChange={(e) => actualizar('tipoContrato', e.target.value)}
+                    onBlur={() => marcarTocado('tipoContrato')}
+                  >
+                    <option value="" disabled>
+                      Selecciona el contrato…
+                    </option>
+                    {TIPOS_CONTRATO.map((opcion) => (
+                      <option key={opcion} value={opcion}>
+                        {opcion}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="solicitud__select-arrow" aria-hidden="true">
+                    ▾
+                  </span>
+                </div>
+                {mostrarError('tipoContrato') && (
+                  <p className="solicitud__error" role="alert">
+                    {errores.tipoContrato}
+                  </p>
+                )}
+              </div>
+            )}
 
-            <div
-              className={`solicitud__field${
-                mostrarError('mesesContinuidad') ? ' has-error' : ''
-              }`}
-            >
-              <label htmlFor="sol-continuidad">
-                Meses de continuidad laboral{' '}
-                <span className="solicitud__required" aria-hidden="true">
-                  *
-                </span>
-              </label>
-              <input
-                id="sol-continuidad"
-                type="text"
-                inputMode="numeric"
-                value={datos.mesesContinuidad.toLocaleString('es-CO')}
-                aria-invalid={mostrarError('mesesContinuidad')}
-                onChange={(e) =>
-                  actualizar(
-                    'mesesContinuidad',
-                    Number(soloDigitos(e.target.value)),
-                  )
-                }
-                onBlur={() => marcarTocado('mesesContinuidad')}
-              />
-              {mostrarError('mesesContinuidad') && (
-                <p className="solicitud__error" role="alert">
-                  {errores.mesesContinuidad}
-                </p>
+            {datos.ocupacion === 'Independiente' && (
+              <div
+                className={`solicitud__field${
+                  mostrarError('subtipoIndependiente') ? ' has-error' : ''
+                }`}
+              >
+                <label htmlFor="sol-subtipo">
+                  Tipo de independiente{' '}
+                  <span className="solicitud__required" aria-hidden="true">
+                    *
+                  </span>
+                </label>
+                <div className="solicitud__input-wrap">
+                  <select
+                    id="sol-subtipo"
+                    value={datos.subtipoIndependiente}
+                    aria-invalid={mostrarError('subtipoIndependiente')}
+                    onChange={(e) =>
+                      actualizar('subtipoIndependiente', e.target.value)
+                    }
+                    onBlur={() => marcarTocado('subtipoIndependiente')}
+                  >
+                    <option value="" disabled>
+                      Selecciona el tipo…
+                    </option>
+                    {subtiposIndependiente.map((opcion) => (
+                      <option key={opcion} value={opcion}>
+                        {opcion}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="solicitud__select-arrow" aria-hidden="true">
+                    ▾
+                  </span>
+                </div>
+                {mostrarError('subtipoIndependiente') && (
+                  <p className="solicitud__error" role="alert">
+                    {errores.subtipoIndependiente}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {datos.ocupacion !== 'Pensionado' &&
+              datos.ocupacion !== 'Fuerzas Militares' && (
+                <div
+                  className={`solicitud__field${
+                    mostrarError('empresa') ? ' has-error' : ''
+                  }`}
+                >
+                  <label htmlFor="sol-empresa">
+                    {
+                      (
+                        EMPLEADOR_LABELS[datos.ocupacion] ??
+                        EMPLEADOR_LABELS.Empleado
+                      ).label
+                    }{' '}
+                    <span className="solicitud__required" aria-hidden="true">
+                      *
+                    </span>
+                  </label>
+                  <input
+                    id="sol-empresa"
+                    type="text"
+                    autoComplete="organization"
+                    placeholder={
+                      (
+                        EMPLEADOR_LABELS[datos.ocupacion] ??
+                        EMPLEADOR_LABELS.Empleado
+                      ).placeholder
+                    }
+                    value={datos.empresa}
+                    aria-invalid={mostrarError('empresa')}
+                    onChange={(e) => actualizar('empresa', e.target.value)}
+                    onBlur={() => marcarTocado('empresa')}
+                  />
+                  {mostrarError('empresa') && (
+                    <p className="solicitud__error" role="alert">
+                      {errores.empresa}
+                    </p>
+                  )}
+                </div>
               )}
-            </div>
+
+            {datos.ocupacion === 'Empleado' && (
+              <div
+                className={`solicitud__field${
+                  mostrarError('mesesContinuidad') ? ' has-error' : ''
+                }`}
+              >
+                <label htmlFor="sol-continuidad">
+                  Meses de continuidad laboral{' '}
+                  <span className="solicitud__required" aria-hidden="true">
+                    *
+                  </span>
+                </label>
+                <CampoNumerico
+                  id="sol-continuidad"
+                  formatoMiles
+                  minimo={0}
+                  maximo={600}
+                  value={datos.mesesContinuidad}
+                  aria-invalid={mostrarError('mesesContinuidad')}
+                  onValor={(n) => actualizar('mesesContinuidad', n ?? 0)}
+                  onBlur={() => marcarTocado('mesesContinuidad')}
+                />
+                {mostrarError('mesesContinuidad') && (
+                  <p className="solicitud__error" role="alert">
+                    {errores.mesesContinuidad}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {(datos.ocupacion === 'Pensionado' ||
+              datos.ocupacion === 'Fuerzas Militares') && (
+              <div
+                className={`solicitud__field${
+                  mostrarError('entidadPagadora') ? ' has-error' : ''
+                }`}
+              >
+                <label htmlFor="sol-entidad">
+                  {datos.ocupacion === 'Pensionado'
+                    ? 'Fondo de pensiones / entidad pagadora'
+                    : 'Fuerza o institución'}{' '}
+                  <span className="solicitud__required" aria-hidden="true">
+                    *
+                  </span>
+                </label>
+                <div className="solicitud__input-wrap">
+                  <select
+                    id="sol-entidad"
+                    value={datos.entidadPagadora}
+                    aria-invalid={mostrarError('entidadPagadora')}
+                    onChange={(e) =>
+                      actualizar('entidadPagadora', e.target.value)
+                    }
+                    onBlur={() => marcarTocado('entidadPagadora')}
+                  >
+                    <option value="" disabled>
+                      Selecciona…
+                    </option>
+                    {(datos.ocupacion === 'Pensionado'
+                      ? entidadesPension
+                      : institucionesFuerzas
+                    ).map((opcion) => (
+                      <option key={opcion} value={opcion}>
+                        {opcion}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="solicitud__select-arrow" aria-hidden="true">
+                    ▾
+                  </span>
+                </div>
+                {mostrarError('entidadPagadora') && (
+                  <p className="solicitud__error" role="alert">
+                    {errores.entidadPagadora}
+                  </p>
+                )}
+              </div>
+            )}
 
             {datos.ocupacion === 'Independiente' && (
               <div
@@ -547,20 +729,15 @@ function CrearSolicitud({
                     *
                   </span>
                 </label>
-                <input
+                <CampoNumerico
                   id="sol-camara"
-                  type="text"
-                  inputMode="decimal"
+                  decimales
                   placeholder="Ej. 3.5"
-                  value={datos.aniosCamara ?? ''}
+                  minimo={0}
+                  maximo={100}
+                  value={datos.aniosCamara}
                   aria-invalid={mostrarError('aniosCamara')}
-                  onChange={(e) => {
-                    const texto = e.target.value.replace(',', '.')
-                    actualizar(
-                      'aniosCamara',
-                      texto === '' ? null : Number(texto),
-                    )
-                  }}
+                  onValor={(n) => actualizar('aniosCamara', n)}
                   onBlur={() => marcarTocado('aniosCamara')}
                 />
                 {mostrarError('aniosCamara') && (
@@ -586,18 +763,14 @@ function CrearSolicitud({
                 <span className="solicitud__prefix" aria-hidden="true">
                   $
                 </span>
-                <input
+                <CampoNumerico
                   id="sol-ingresos"
-                  type="text"
-                  inputMode="numeric"
-                  value={datos.ingresosMensuales.toLocaleString('es-CO')}
+                  formatoMiles
+                  minimo={0}
+                  maximo={500_000_000}
+                  value={datos.ingresosMensuales}
                   aria-invalid={mostrarError('ingresosMensuales')}
-                  onChange={(e) =>
-                    actualizar(
-                      'ingresosMensuales',
-                      Number(soloDigitos(e.target.value)),
-                    )
-                  }
+                  onValor={(n) => actualizar('ingresosMensuales', n ?? 0)}
                   onBlur={() => marcarTocado('ingresosMensuales')}
                 />
                 <span className="solicitud__suffix" aria-hidden="true">
@@ -610,46 +783,6 @@ function CrearSolicitud({
                 </p>
               )}
             </div>
-
-            <div
-              className={`solicitud__field${
-                mostrarError('egresosMensuales') ? ' has-error' : ''
-              }`}
-            >
-              <label htmlFor="sol-egresos">
-                Egresos / Gastos Mensuales{' '}
-                <span className="solicitud__required" aria-hidden="true">
-                  *
-                </span>
-              </label>
-              <div className="solicitud__input-wrap solicitud__input-wrap--money">
-                <span className="solicitud__prefix" aria-hidden="true">
-                  $
-                </span>
-                <input
-                  id="sol-egresos"
-                  type="text"
-                  inputMode="numeric"
-                  value={datos.egresosMensuales.toLocaleString('es-CO')}
-                  aria-invalid={mostrarError('egresosMensuales')}
-                  onChange={(e) =>
-                    actualizar(
-                      'egresosMensuales',
-                      Number(soloDigitos(e.target.value)),
-                    )
-                  }
-                  onBlur={() => marcarTocado('egresosMensuales')}
-                />
-                <span className="solicitud__suffix" aria-hidden="true">
-                  COP
-                </span>
-              </div>
-              {mostrarError('egresosMensuales') && (
-                <p className="solicitud__error" role="alert">
-                  {errores.egresosMensuales}
-                </p>
-              )}
-            </div>
           </div>
 
           {/* Panel de análisis económico */}
@@ -658,85 +791,54 @@ function CrearSolicitud({
             aria-label="Análisis económico"
           >
             <div className="solicitud__analisis-head">
-              <h3>Análisis de Capacidad</h3>
+              <h3>Capacidad de pago estimada</h3>
               <span className="solicitud__analisis-hint">
-                Estimación automática · no vinculante
+                Fórmula del motor · no vinculante
               </span>
             </div>
 
             <div className="solicitud__analisis-grid">
-              <div className="solicitud__analisis-card">
+              <div className="solicitud__analisis-card solicitud__analisis-card--destacado">
                 <span className="solicitud__analisis-label">
-                  Disponible mensual
+                  Cupo estimado a {PLAZO_FIJO_MESES} meses
                 </span>
                 <strong className="solicitud__analisis-valor">
-                  {formatoCOP.format(disponibleMensual)}
+                  {formatoCOPCompacto(capacidad.monto)}
                 </strong>
-                <small>Ingresos menos egresos declarados</small>
+                <small>Tope $20M · define el motor tras la consulta</small>
               </div>
 
-              <div
-                className={`solicitud__analisis-card solicitud__analisis-card--${estadoCapacidad}`}
-              >
+              <div className="solicitud__analisis-card solicitud__analisis-card--primary">
                 <span className="solicitud__analisis-label">
-                  Capacidad de endeudamiento
+                  Capacidad de pago
                 </span>
                 <strong className="solicitud__analisis-valor">
-                  {capacidadEndeudamiento}%
+                  {formatoCOP.format(capacidad.capacidad)}
                 </strong>
-                <small>
-                  {estadoCapacidad === 'alta' && 'Dentro del rango recomendado'}
-                  {estadoCapacidad === 'media' &&
-                    'Cercano al límite prudencial'}
-                  {estadoCapacidad === 'baja' && 'Capacidad limitada'}
-                </small>
+                <small>70% del disponible estimado</small>
               </div>
 
               <div className="solicitud__analisis-card">
                 <span className="solicitud__analisis-label">
-                  Cupo estimado referencial
+                  Disponible estimado
                 </span>
                 <strong className="solicitud__analisis-valor">
-                  {formatoCOPCompacto(cupoReferencial)}
+                  {formatoCOP.format(capacidad.disponible)}
                 </strong>
-                <small>
-                  El monto final lo sugiere el motor tras la evaluación
-                </small>
+                <small>Ingreso menos gastos personales</small>
+              </div>
+
+              <div className="solicitud__analisis-card">
+                <span className="solicitud__analisis-label">
+                  Gastos personales
+                </span>
+                <strong className="solicitud__analisis-valor">
+                  {formatoCOP.format(capacidad.gastosPersonales)}
+                </strong>
+                <small>Según bandas de SMMLV</small>
               </div>
             </div>
           </aside>
-        </section>
-
-        {/* ------------ Resultado Final ------------ */}
-        <section
-          className="solicitud__final"
-          aria-label="Resultado final del proceso"
-        >
-          <span className="solicitud__final-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" focusable="false">
-              <path
-                d="M4 19V5a1 1 0 0 1 1-1h11l4 4v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M8 12h8M8 16h5"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-              />
-            </svg>
-          </span>
-          <div className="solicitud__final-copy">
-            <span className="solicitud__final-eyebrow">Resultado Final</span>
-            <strong>Firma y desembolso</strong>
-            <p>
-              Al registrar la solicitud, el proceso continúa con la etapa de
-              firma del pagaré y el desembolso del crédito.
-            </p>
-          </div>
         </section>
 
         <div className="solicitud__actions">
@@ -749,14 +851,14 @@ function CrearSolicitud({
                 onClick={onBack}
                 disabled={enviando || registrado}
               >
-                Volver al paso 6
+                Volver al paso 3
               </Boton>
             )}
             <p className="solicitud__actions-note">
               <span className="solicitud__dot" aria-hidden="true" />
               {registrado
-                ? 'Solicitud lista para firma.'
-                : 'Verifica los datos antes de registrar.'}
+                ? 'Solicitud lista para evaluación.'
+                : 'Verifica los datos antes de consultar al motor.'}
             </p>
           </div>
           <Boton
@@ -773,7 +875,7 @@ function CrearSolicitud({
               ? 'Registrando…'
               : registrado
                 ? 'Solicitud registrada'
-                : 'Registrar Solicitud'}
+                : 'Continuar a evaluación'}
           </Boton>
         </div>
       </form>

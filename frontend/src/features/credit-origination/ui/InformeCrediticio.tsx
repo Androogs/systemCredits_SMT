@@ -1,5 +1,6 @@
 import { ArrowLeft, ArrowRight, Info } from 'lucide-react'
 import { currency } from '../../../shared/lib/formatters'
+import { useRol } from '../../../shared/lib/sesion'
 import type { ResultadoEvaluacionCredito } from '../model/resultado-evaluacion'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import CabeceraEtapaOriginacion from './CabeceraEtapaOriginacion'
@@ -199,9 +200,11 @@ function InformeCrediticio({
   resultado,
 }: InformeCrediticioProps) {
   const esReal = Boolean(resultado && !resultado.esDemo)
-  const indicadores = esReal
-    ? indicadoresDesdeMotor(resultado!)
-    : indicadoresDemo
+  // Score y perfil del motor son dato sensible: solo el administrador.
+  const esAsesor = useRol() === 'asesor'
+  const indicadores = (
+    esReal ? indicadoresDesdeMotor(resultado!) : indicadoresDemo
+  ).filter((i) => !(esAsesor && i.etiqueta === 'Perfil del motor'))
 
   const puntaje = resultado?.scoreConsultado ?? 742
   const etiquetaPuntaje = resultado?.perfilScore
@@ -223,26 +226,43 @@ function InformeCrediticio({
         descripcion="Resumen de obligaciones, comportamiento de pago y score del solicitante."
       />
 
-      <SeguimientoOriginacion pasoActual={10} />
+      <SeguimientoOriginacion pasoActual={5} />
 
       <div className="informe-crediticio__resumen">
-        <section
-          className="informe-crediticio__puntaje"
-          aria-labelledby="informe-puntaje"
-        >
-          <span id="informe-puntaje">Puntaje crediticio</span>
-          <div
-            className={`informe-crediticio__puntaje-valor${puntajeAdverso ? ' is-alerta' : ''}`}
+        {esAsesor ? (
+          <section
+            className="informe-crediticio__puntaje"
+            aria-labelledby="informe-puntaje"
           >
-            <strong>{puntaje}</strong>
-            <span>{etiquetaPuntaje}</span>
-          </div>
-          <small>
-            {esReal
-              ? `Modelo consultado: ${resultado?.scoreTipo ?? 'HDC+'} · Datos del motor integrado.`
-              : 'Rango del modelo: 150 a 950 puntos. Datos demostrativos.'}
-          </small>
-        </section>
+            <span id="informe-puntaje">Consulta de centrales</span>
+            <div className="informe-crediticio__puntaje-valor">
+              <strong>Realizada</strong>
+              <span>{esReal ? 'Datos del motor' : 'Demostrativo'}</span>
+            </div>
+            <small>
+              El puntaje crediticio y el perfil de riesgo son visibles solo para
+              el administrador.
+            </small>
+          </section>
+        ) : (
+          <section
+            className="informe-crediticio__puntaje"
+            aria-labelledby="informe-puntaje"
+          >
+            <span id="informe-puntaje">Puntaje crediticio</span>
+            <div
+              className={`informe-crediticio__puntaje-valor${puntajeAdverso ? ' is-alerta' : ''}`}
+            >
+              <strong>{puntaje}</strong>
+              <span>{etiquetaPuntaje}</span>
+            </div>
+            <small>
+              {esReal
+                ? `Modelo consultado: ${resultado?.scoreTipo ?? 'HDC+'} · Datos del motor integrado.`
+                : 'Rango del modelo: 150 a 950 puntos. Datos demostrativos.'}
+            </small>
+          </section>
+        )}
 
         <aside className="informe-crediticio__politica" role="note">
           <h2>

@@ -50,10 +50,10 @@ describe('estadoVisual', () => {
     )
   })
 
-  it('la decisión del motor prima sobre el estado del ciclo', () => {
+  it('en_revision prima: la solicitud sigue pendiente de comité', () => {
     expect(
-      estadoVisual({ ...base, estado: 'en_revision', decision: 'aprobado' }),
-    ).toBe('APROBADO')
+      estadoVisual({ ...base, estado: 'en_revision', decision: 'rechazado' }),
+    ).toBe('REQUIERE_REVISION')
   })
 })
 
