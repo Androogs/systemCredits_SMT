@@ -89,11 +89,379 @@
 
 @media (max-width: 680px) {
   .flujo-originacion {
-    padding: 1rem;
+    padding: 0.7rem;
+  }
+
+  .flujo-originacion
+    :is(
+      .validacion,
+      .autorizacion,
+      .captura,
+      .ocr,
+      .revision,
+      .resultado,
+      .solicitud,
+      .consulta,
+      .consulta-curso,
+      .informe-crediticio,
+      .evaluacion-integral,
+      .resultado-credito
+    ) {
+    min-width: 0;
+    gap: 0.8rem;
+  }
+
+  .flujo-originacion
+    :is(
+      .validacion__header,
+      .autorizacion__header,
+      .captura__header,
+      .ocr__header,
+      .revision__header,
+      .resultado__header,
+      .solicitud__header,
+      .consulta__header,
+      .consulta-curso__encabezado,
+      .cabecera-etapa
+    ) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.35rem;
+  }
+
+  .flujo-originacion
+    :is(
+      .validacion__eyebrow,
+      .validacion__subtitle,
+      .validacion__lede,
+      .autorizacion__eyebrow,
+      .autorizacion__subtitle,
+      .autorizacion__lede,
+      .captura__eyebrow,
+      .captura__subtitle,
+      .captura__lede,
+      .ocr__eyebrow,
+      .ocr__subtitle,
+      .ocr__lede,
+      .revision__eyebrow,
+      .revision__subtitle,
+      .revision__lede,
+      .resultado__eyebrow,
+      .resultado__subtitle,
+      .resultado__lede,
+      .solicitud__eyebrow,
+      .solicitud__subtitle,
+      .solicitud__lede,
+      .consulta__eyebrow,
+      .consulta__subtitle,
+      .consulta__lede,
+      .consulta-curso__eyebrow,
+      .consulta-curso__descripcion,
+      .cabecera-etapa__texto > p,
+      .cabecera-etapa__texto > span
+    ) {
+    display: none;
+  }
+
+  .flujo-originacion
+    :is(
+      .validacion__panel,
+      .autorizacion__panel,
+      .captura__panel,
+      .ocr__panel,
+      .revision__panel,
+      .resultado__panel,
+      .solicitud__panel,
+      .consulta__panel,
+      .consulta-curso__contexto,
+      .cabecera-etapa__contexto
+    ) {
+    display: none;
+  }
+
+  .flujo-originacion
+    :is(
+      .validacion__header-copy h1,
+      .autorizacion__header-copy h1,
+      .captura__header-copy h1,
+      .ocr__header-copy h1,
+      .revision__header-copy h1,
+      .resultado__header-copy h1,
+      .solicitud__header-copy h1,
+      .consulta__header-copy h1,
+      .consulta-curso__encabezado h1,
+      .cabecera-etapa__texto h1
+    ) {
+    margin: 0;
+    color: #172b45;
+    font-size: clamp(1.15rem, 5vw, 1.4rem);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1.25;
+  }
+
+  .flujo-originacion .seguimiento {
+    position: sticky;
+    z-index: 5;
+    top: 0.35rem;
+    gap: 0.55rem;
+    padding: 0.65rem 0.8rem;
+    border-color: #e3eaf0;
+    border-radius: 0.8rem;
+    box-shadow: 0 4px 14px rgb(16 42 67 / 7%);
+  }
+
+  .flujo-originacion .seguimiento__resumen {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.45rem;
+  }
+
+  .flujo-originacion .seguimiento__resumen > span {
+    display: none;
+  }
+
+  .flujo-originacion .seguimiento__resumen strong {
+    font-size: 0.76rem;
+  }
+
+  .flujo-originacion .seguimiento__toggle {
+    min-height: 2rem;
+  }
+
+  .flujo-originacion .seguimiento__fases {
+    max-height: 55svh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .flujo-originacion
+    :is(
+      .validacion__form,
+      .autorizacion__form,
+      .captura__form,
+      .revision__form,
+      .solicitud__form,
+      .ocr__card,
+      .resultado__card,
+      .consulta__card,
+      .consulta-curso__panel,
+      .informe-crediticio__puntaje,
+      .informe-crediticio__politica,
+      .informe-crediticio__obligaciones,
+      .evaluacion-integral__factores,
+      .evaluacion-integral__recomendacion,
+      .resultado-credito__oferta,
+      .resultado-credito__estados
+    ) {
+    min-width: 0;
+    gap: 0.85rem;
+    padding: 0.95rem;
+    border-radius: 0.85rem;
+    box-shadow: 0 2px 10px rgb(25 46 76 / 3%);
+  }
+
+  .flujo-originacion
+    :is(
+      .validacion__form-head,
+      .autorizacion__form-head,
+      .captura__form-head,
+      .revision__form-head,
+      .ocr__card-head
+    ) {
+    gap: 0.5rem;
+    padding-bottom: 0.75rem;
+  }
+
+  .flujo-originacion
+    :is(
+      .validacion__form-head p,
+      .autorizacion__form-head p,
+      .captura__form-head p,
+      .revision__form-head p,
+      .ocr__card-head > div > p,
+      .solicitud__section-head p,
+      .validacion__chip,
+      .autorizacion__chip,
+      .captura__chip,
+      .revision__chip
+    ) {
+    display: none;
+  }
+
+  .flujo-originacion
+    :is(
+      .validacion__form-head h2,
+      .autorizacion__form-head h2,
+      .captura__form-head h2,
+      .revision__form-head h2,
+      .ocr__card-head h2,
+      .resultado__card-head h2,
+      .consulta__card-head h2,
+      .consulta-curso__panel-encabezado h2,
+      .informe-crediticio__obligaciones h2,
+      .evaluacion-integral__factores h2,
+      .resultado-credito__oferta h2,
+      .resultado-credito__estados h2
+    ) {
+    font-size: 0.92rem;
+    line-height: 1.35;
+  }
+
+  .flujo-originacion
+    :is(
+      .validacion__grid,
+      .solicitud__grid,
+      .revision__grid,
+      .ocr__grid,
+      .resultado__grid,
+      .consulta__grid,
+      .informe-crediticio__resumen,
+      .informe-crediticio__indicadores,
+      .evaluacion-integral__contenido,
+      .resultado-credito__contenido
+    ) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
+  }
+
+  .flujo-originacion
+    :is(
+      .validacion__options,
+      .captura__modos,
+      .solicitud__analisis-grid,
+      .resultado__auditoria-grid,
+      .resultado__auditoria
+    ) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.65rem;
+  }
+
+  .flujo-originacion
+    :is(
+      .validacion__field > label,
+      .validacion__label,
+      .autorizacion__consent-label,
+      .captura__modo-title strong,
+      .solicitud__field label,
+      .revision__field label
+    ) {
+    font-size: 0.78rem;
+  }
+
+  .flujo-originacion
+    :is(
+      .validacion__hint,
+      .autorizacion__legal-body p,
+      .captura__modo-copy small,
+      .captura__instrucciones,
+      .ocr__task small,
+      .revision__hint,
+      .solicitud__hint,
+      .consulta__consent-text,
+      .consulta-curso__tarea-texto small
+    ) {
+    font-size: 0.72rem;
+    line-height: 1.45;
+  }
+
+  .flujo-originacion
+    :is(
+      input:is(
+        [type='text'],
+        [type='email'],
+        [type='number'],
+        [type='date'],
+        [type='tel'],
+        [type='password'],
+        [type='search']
+      ),
+      select,
+      textarea
+    ) {
+    min-height: 2.9rem;
+    font-size: 16px;
+  }
+
+  .flujo-originacion
+    :is(
+      .validacion__actions,
+      .autorizacion__actions,
+      .captura__actions,
+      .ocr__actions,
+      .revision__actions,
+      .resultado__actions,
+      .solicitud__actions,
+      .consulta__actions,
+      .consulta-curso__acciones,
+      .informe-crediticio__acciones,
+      .evaluacion-integral__acciones,
+      .resultado-credito__acciones,
+      .flujo-originacion__acciones
+    ) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.55rem;
+  }
+
+  .flujo-originacion
+    :is(
+      .validacion__actions > button,
+      .autorizacion__actions button,
+      .captura__actions button,
+      .ocr__actions button,
+      .revision__actions button,
+      .resultado__actions button,
+      .solicitud__actions button,
+      .consulta__actions button,
+      .consulta-curso__acciones button,
+      .informe-crediticio__acciones button,
+      .evaluacion-integral__acciones button,
+      .resultado-credito__acciones button,
+      .flujo-originacion__acciones button
+    ) {
+    width: 100%;
+    min-height: 2.85rem;
   }
 
   .flujo-originacion__pendiente {
-    margin: 1rem auto;
-    padding: 1.25rem;
+    gap: 0.7rem;
+    margin: 0.4rem auto;
+    padding: 1rem;
+    border-radius: 0.85rem;
+  }
+
+  .flujo-originacion__pendiente h1 {
+    font-size: 1.25rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .flujo-originacion {
+    padding: 0.55rem;
+  }
+
+  .flujo-originacion
+    :is(
+      .validacion__form,
+      .autorizacion__form,
+      .captura__form,
+      .revision__form,
+      .solicitud__form,
+      .ocr__card,
+      .resultado__card,
+      .consulta__card,
+      .consulta-curso__panel,
+      .informe-crediticio__puntaje,
+      .informe-crediticio__politica,
+      .informe-crediticio__obligaciones,
+      .evaluacion-integral__factores,
+      .evaluacion-integral__recomendacion,
+      .resultado-credito__oferta,
+      .resultado-credito__estados
+    ) {
+    padding: 0.8rem;
+  }
+
+  .flujo-originacion .seguimiento__fases {
+    max-height: 48svh;
   }
 }

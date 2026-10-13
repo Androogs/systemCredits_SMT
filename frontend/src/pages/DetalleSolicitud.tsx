@@ -660,7 +660,7 @@ export default function DetalleSolicitud() {
                   aria-pressed={jsonTab === 'payload'}
                   className={`px-3 py-1.5 rounded-full ${jsonTab === 'payload' ? 'bg-white shadow font-medium' : 'text-slate-500'}`}
                 >
-                  Solicitud evaluada
+                  Solicitud Evaluada
                 </button>
               </div>
             </div>

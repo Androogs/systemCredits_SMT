@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
+      allowedHosts: ['damaged-bedrooms-contributing-whether.trycloudflare.com'],
       proxy: {
         '/api': apiUrl,
       },
