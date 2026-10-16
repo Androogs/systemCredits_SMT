@@ -32,6 +32,16 @@ def client(tmp_path, monkeypatch):
         "INCOME_BASE_URL_DEMO",
         "INCOME_TOKEN_URL_DEMO",
         "INCOME_SUBSCRIBER_NAME",
+        # Canales de notificación: vacíos → modo simulado (log), sin
+        # depender de las credenciales del .env local.
+        "WATI_BASE_URL",
+        "WATI_TENANT_ID",
+        "WATI_API_TOKEN",
+        "WATI_CHANNEL_NUMBER",
+        "SMTP_HOST",
+        "SMTP_USER",
+        "SMTP_PASSWORD",
+        "SMTP_DESDE",
     ):
         monkeypatch.setenv(nombre, "")
     get_settings.cache_clear()
