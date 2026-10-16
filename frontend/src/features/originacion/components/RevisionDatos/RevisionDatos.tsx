@@ -5,19 +5,27 @@ import './RevisionDatos.css'
 // --- STUBS TEMPORALES para que compile aunque no tengas los módulos ---
 // Cuando encuentres tu Boton real, borra esto y vuelve a poner el import
 
-const Boton = ({ children, onClick, type, variante, tamano, iconoInicio, iconoFin,...props }: any) => (
+const Boton = ({ children, onClick, type, variante, iconoInicio, iconoFin, ...props }: {
+  children?: React.ReactNode
+  onClick?: () => void
+  type?: string
+  variante?: string
+  iconoInicio?: React.ReactNode
+  iconoFin?: React.ReactNode
+  [key: string]: unknown
+}) => (
   <button type={type || 'button'} onClick={onClick} className={`btn btn--${variante || 'primario'}`} {...props}>
     {iconoInicio}{children}{iconoFin}
   </button>
 )
-const emitirToast = (args: any) => console.log('TOAST:', args)
+const emitirToast = (args: unknown) => console.log('TOAST:', args)
 const SeguimientoOriginacion = ({ pasoActual }: { pasoActual: number }) => (
   <div style={{padding:'8px', background:'#f0f0f0', borderRadius:'8px', margin:'12px 0'}}>Paso {pasoActual} de 5</div>
 )
 // Schema dummy - acepta todo para que no bloquee el formulario
 const datosPersonalesSchema = {
-  safeParse: (datos: any) => ({ success: true, data: datos, error: { issues: [] } })
-} as any
+  safeParse: (datos: unknown) => ({ success: true, data: datos, error: { issues: [] } } as const )
+} as const
 
 // Tipos que antes venían de originacionApi
 type CampoOCRApi = { valor: string; confianza: number }
@@ -34,7 +42,7 @@ type ResultadoOCRApi = {
   fecha_expedicion?: CampoOCRApi
   lugar_nacimiento?: CampoOCRApi
   ciudad_expedicion?: CampoOCRApi
-  [key: string]: any
+  [key: string]: unknown
 }
 // --- FIN STUBS ---
 
