@@ -43,7 +43,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.db_models.base import Base
@@ -79,10 +79,28 @@ ESTADO_DESEMBOLSO_DB = Enum(
     "pendiente", "confirmado", "rechazado", "anulado",
     name="estado_desembolso", create_type=False,
 )
+ESTADO_OTP_DB = Enum(
+    "pendiente", "aprobado", "expirado", "fallido",
+    name="estado_otp", create_type=False,
+)
+TIPO_SEGURO_DB = Enum(
+    "vida_decreciente", "vida_nivelada", "todo_riesgo",
+    "desempleo", "asistencia", "otro",
+    name="tipo_seguro", create_type=False,
+)
 
 
 def _ahora_utc() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class Ciudad(Base):
+    __tablename__ = "ciudad"
+
+    id_ciudad: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(120))
+    departamento: Mapped[str] = mapped_column(String(120))
+    pais: Mapped[str] = mapped_column(String(80), default="Colombia")
 
 
 class Cliente(Base):
@@ -95,9 +113,17 @@ class Cliente(Base):
     # Agregado por el motor: HDC+ exige el primer apellido para consultar.
     primer_apellido: Mapped[str | None] = mapped_column(String(60))
     fecha_nacimiento: Mapped[date] = mapped_column(Date)
+    # Datos de la cédula capturados en la revisión (paso 3): alimentan
+    # los documentos de legalización (expedida en, fecha de expedición).
+    fecha_expedicion: Mapped[date | None] = mapped_column(Date)
+    id_ciudad_expedicion: Mapped[int | None] = mapped_column(ForeignKey("ciudad.id_ciudad"))
+    id_ciudad_nacimiento: Mapped[int | None] = mapped_column(ForeignKey("ciudad.id_ciudad"))
     ocupacion: Mapped[str | None] = mapped_column(OCUPACION_DB)
     es_persona_natural: Mapped[bool] = mapped_column(Boolean, default=True)
     nacionalidad: Mapped[str] = mapped_column(String(80), default="Colombia")
+
+    ciudad_expedicion: Mapped["Ciudad | None"] = relationship(foreign_keys=[id_ciudad_expedicion])
+    ciudad_nacimiento: Mapped["Ciudad | None"] = relationship(foreign_keys=[id_ciudad_nacimiento])
 
     solicitudes: Mapped[list["SolicitudCredito"]] = relationship(back_populates="cliente")
 
@@ -119,6 +145,10 @@ class SolicitudCredito(Base):
     linea_credito: Mapped[str | None] = mapped_column(String(60))
     destino_credito: Mapped[str | None] = mapped_column(String(80))
     plazo_deseado_meses: Mapped[int | None] = mapped_column(SmallInteger)
+    # Firma desmaterializada del pagaré: se llenan al aprobar el OTP.
+    fecha_hora_firma: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    uuid_firma: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    autenticacion: Mapped[str | None] = mapped_column(String(100))
 
     cliente: Mapped["Cliente"] = relationship(back_populates="solicitudes")
     datos_laborales: Mapped["DatosLaborales"] = relationship(back_populates="solicitud", uselist=False)
@@ -128,6 +158,7 @@ class SolicitudCredito(Base):
     capacidades_pago: Mapped[list["CapacidadPago"]] = relationship(back_populates="solicitud")
     causales: Mapped[list["SolicitudCausal"]] = relationship(back_populates="solicitud")
     ofertas: Mapped[list["OfertaCredito"]] = relationship(back_populates="solicitud")
+    consentimientos: Mapped[list["ConsentimientoHabeas"]] = relationship(back_populates="solicitud")
 
 
 class DatosLaborales(Base):
@@ -143,11 +174,21 @@ class DatosLaborales(Base):
     meses_continuidad: Mapped[int | None] = mapped_column(Integer)
     ingreso_mensual: Mapped[float | None] = mapped_column(Numeric(18, 2))
     otros_ingresos: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    # Información laboral detallada capturada en la formalización (paso
+    # previo a la firma OTP).
+    nombre_empresa: Mapped[str | None] = mapped_column(String(200))
+    id_ciudad_empresa: Mapped[int | None] = mapped_column(ForeignKey("ciudad.id_ciudad"))
+    fecha_ingreso: Mapped[date | None] = mapped_column(Date)
+    nivel_educativo: Mapped[str | None] = mapped_column(String(100))
+    profesion: Mapped[str | None] = mapped_column(String(120))
+    cargo: Mapped[str | None] = mapped_column(String(120))
+    actividad_comercial: Mapped[str | None] = mapped_column(String(180))
 
     # Agregado al implementar el motor propio: solo aplica para
     # Independientes (perfil de ingreso, ver reglas_perfil.py).
     anios_camara_comercio: Mapped[float | None] = mapped_column(Numeric(6, 2))
 
+    ciudad_empresa: Mapped["Ciudad | None"] = relationship()
     solicitud: Mapped["SolicitudCredito"] = relationship(back_populates="datos_laborales")
 
 
@@ -163,8 +204,54 @@ class SolicitudContactoVivienda(Base):
     estrato: Mapped[int | None] = mapped_column(SmallInteger)
     personas_a_cargo: Mapped[int | None] = mapped_column(SmallInteger)
     tipo_vivienda: Mapped[str | None] = mapped_column(String(50))
+    correo: Mapped[str | None] = mapped_column(String(320))
+    telefono: Mapped[str | None] = mapped_column(String(40))
+    direccion: Mapped[str | None] = mapped_column(String(250))
+    barrio: Mapped[str | None] = mapped_column(String(120))
+    id_ciudad: Mapped[int | None] = mapped_column(ForeignKey("ciudad.id_ciudad"))
+    # Información personal y financiera capturada en la formalización.
+    zona_rural: Mapped[bool | None] = mapped_column(Boolean)
+    estado_civil: Mapped[str | None] = mapped_column(String(40))
+    num_hijos: Mapped[int | None] = mapped_column(SmallInteger)
+    es_cabeza_familia: Mapped[bool | None] = mapped_column(Boolean)
+    cuenta_bienes_raices: Mapped[bool | None] = mapped_column(Boolean)
+    cuenta_vehiculo: Mapped[bool | None] = mapped_column(Boolean)
+    tiene_moto: Mapped[bool | None] = mapped_column(Boolean)
+    tiene_carro: Mapped[bool | None] = mapped_column(Boolean)
+    primera_moto: Mapped[bool | None] = mapped_column(Boolean)
+    estoy_financiando: Mapped[bool | None] = mapped_column(Boolean)
 
+    ciudad: Mapped["Ciudad | None"] = relationship()
     solicitud: Mapped["SolicitudCredito"] = relationship(back_populates="contacto_vivienda")
+
+
+class Otp(Base):
+    __tablename__ = "otp"
+
+    id_otp: Mapped[int] = mapped_column(primary_key=True)
+    id_solicitud: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("solicitud_credito.id_solicitud"),
+    )
+    codigo_otp_hash: Mapped[str] = mapped_column(Text)
+    fecha_hora_otp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_ahora_utc
+    )
+    fecha_expiracion: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    otp_aprobacion: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fecha_hora_otp_aprobacion: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    intentos_fallidos: Mapped[int] = mapped_column(SmallInteger, default=0)
+    # INET en Postgres (schema.sql); VARCHAR(45) en SQLite.
+    ip_solicitud: Mapped[str | None] = mapped_column(
+        INET().with_variant(String(45), "sqlite")
+    )
+    autenticacion: Mapped[str | None] = mapped_column(String(100))
+    accion: Mapped[str | None] = mapped_column(String(100))
+    estado: Mapped[str] = mapped_column(ESTADO_OTP_DB, default="pendiente")
+
+    solicitud: Mapped["SolicitudCredito"] = relationship()
 
 
 class Cotizante(Base):
@@ -362,9 +449,32 @@ class OfertaCredito(Base):
     cuota_mensual: Mapped[float | None] = mapped_column(Numeric(18, 2))
     monto_aprobado: Mapped[float | None] = mapped_column(Numeric(18, 2))
     seleccionada: Mapped[bool] = mapped_column(Boolean, default=False)
+    fecha_vigencia: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     solicitud: Mapped["SolicitudCredito"] = relationship(back_populates="ofertas")
     producto: Mapped["AliadoProducto"] = relationship(back_populates="ofertas")
+
+
+class ConsentimientoHabeas(Base):
+    """Prueba del consentimiento Habeas Data (Ley 1581): qué texto
+    aceptó el cliente (versión + sha256 del cuerpo exacto), por qué
+    canal, desde qué IP y cuándo."""
+
+    __tablename__ = "consentimiento_habeas"
+
+    id_consentimiento: Mapped[int] = mapped_column(primary_key=True)
+    id_solicitud: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("solicitud_credito.id_solicitud")
+    )
+    version_texto: Mapped[str] = mapped_column(String(20))
+    hash_texto: Mapped[str] = mapped_column(String(64))
+    canal: Mapped[str] = mapped_column(String(20))
+    ip: Mapped[str | None] = mapped_column(String(45))
+    fecha_aceptacion: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_ahora_utc
+    )
+
+    solicitud: Mapped["SolicitudCredito"] = relationship(back_populates="consentimientos")
 
 
 # ---------------------------------------------------------------------------
@@ -401,6 +511,38 @@ class CuentaBancaria(Base):
     activa: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class Aseguradora(Base):
+    __tablename__ = "aseguradora"
+
+    id_aseguradora: Mapped[int] = mapped_column(primary_key=True)
+    nit: Mapped[str] = mapped_column(String(30), unique=True)
+    nombre: Mapped[str] = mapped_column(String(180), unique=True)
+    telefono: Mapped[str | None] = mapped_column(String(40))
+    correo: Mapped[str | None] = mapped_column(String(180))
+    activa: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class SeguroProducto(Base):
+    __tablename__ = "seguro_producto"
+    __table_args__ = (
+        UniqueConstraint("id_aseguradora", "tipo", "nombre", name="uq_seguro_producto"),
+    )
+
+    id_seguro_producto: Mapped[int] = mapped_column(primary_key=True)
+    id_aseguradora: Mapped[int] = mapped_column(ForeignKey("aseguradora.id_aseguradora"))
+    # tipo_seguro del esquema: vida_decreciente | vida_nivelada | ...
+    tipo: Mapped[str] = mapped_column(TIPO_SEGURO_DB)
+    nombre: Mapped[str] = mapped_column(String(180))
+    descripcion: Mapped[str | None] = mapped_column(Text)
+    vigencia_meses: Mapped[int] = mapped_column(SmallInteger, default=12)
+    valor_asegurado_min: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    valor_asegurado_max: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    # % mensual sobre el saldo financiado (0.22 en el formato real).
+    tasa_prima: Mapped[float | None] = mapped_column(Numeric(10, 6))
+    prima_minima: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 class ProductoVehiculo(Base):
     __tablename__ = "producto_vehiculo"
 
@@ -412,6 +554,15 @@ class ProductoVehiculo(Base):
     modelo: Mapped[str | None] = mapped_column(String(30))
     color: Mapped[str | None] = mapped_column(String(60))
     valor_moto_iva: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    # Desglose de la hoja de negocio capturado al elegir la oferta
+    # (migración 0010): alimenta el documento "Solicitud de crédito".
+    descuento_pesos: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    descuento_pct: Mapped[float] = mapped_column(Numeric(8, 4), default=0)
+    accesorios: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    matricula: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    soat: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    impuestos: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    aval_pct: Mapped[float | None] = mapped_column(Numeric(8, 4))
 
 
 class CreditoFinanciacion(Base):
@@ -423,6 +574,7 @@ class CreditoFinanciacion(Base):
     id_oferta: Mapped[int | None] = mapped_column(ForeignKey("oferta_credito.id_oferta"))
     id_aliado_financiero: Mapped[int | None] = mapped_column(ForeignKey("aliado_financiero.id_aliado"))
     ganadora: Mapped[bool] = mapped_column(Boolean, default=False)
+    aval_pct: Mapped[float | None] = mapped_column(Numeric(8, 4))
     tasa: Mapped[float] = mapped_column(Numeric(8, 4))
     plazo: Mapped[int] = mapped_column(Integer)
     seguro: Mapped[float] = mapped_column(Numeric(18, 2), default=0)

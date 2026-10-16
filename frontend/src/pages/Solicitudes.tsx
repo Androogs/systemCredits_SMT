@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
 import { FilasSkeleton } from '../shared/ui/Skeleton'
@@ -10,15 +10,23 @@ import {
   estadoParaVista,
   etiquetaSolicitud,
   numero,
+  ESTADOS_RETOMABLES,
   OCUPACION_LABELS,
   useSolicitudes,
   type EstadoVisual,
 } from '../entities/credit/model/solicitudesPanel'
-import { ChevronLeft, ChevronRight, Search, RefreshCw } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Play,
+  Search,
+  RefreshCw,
+} from 'lucide-react'
 
 const TAMANOS_PAGINA = [10, 25, 50] as const
 
 export default function Solicitudes() {
+  const navigate = useNavigate()
   const rol = useRol()
   const esAsesor = rol === 'asesor'
   const {
@@ -35,11 +43,14 @@ export default function Solicitudes() {
   const [pagina, setPagina] = useState(1)
   const [porPagina, setPorPagina] = useState<number>(10)
 
+  const retomar = (idSolicitud: string) =>
+    navigate('/nueva-solicitud', { state: { retomarId: idSolicitud } })
+
   const filtradas = solicitudes.filter((s) => {
     const texto =
       `${s.num_solicitud} ${s.nombre_cliente} ${s.num_cedula} ${s.linea_credito ?? ''} ${s.destino_credito ?? ''}`.toLowerCase()
     if (q && !texto.includes(q.toLowerCase())) return false
-    if (estado && estadoParaVista(s, esAsesor) !== estado) return false
+    if (estado && estadoParaVista(s) !== estado) return false
     if (ocupacion && s.ocupacion !== ocupacion) return false
     return true
   })
@@ -48,7 +59,7 @@ export default function Solicitudes() {
   const paginaActual = Math.min(pagina, totalPaginas)
   const desde = (paginaActual - 1) * porPagina
   const visibles = filtradas.slice(desde, desde + porPagina)
-  const columnas = esAsesor ? 7 : 8
+  const columnas = esAsesor ? 8 : 9
 
   const cambiarFiltro = (accion: () => void) => {
     accion()
@@ -99,11 +110,6 @@ export default function Solicitudes() {
               <option value="">Todos los estados</option>
               <option value="APROBADO">Aprobado</option>
               <option value="RECHAZADO">Rechazado</option>
-              {/* El asesor no distingue la revisión del motor: para él es
-                  "pendiente" hasta que exista una decisión final */}
-              {!esAsesor && (
-                <option value="REQUIERE_REVISION">En revisión</option>
-              )}
               <option value="PENDIENTE">Pendiente de evaluación</option>
             </select>
             <select
@@ -171,13 +177,16 @@ export default function Solicitudes() {
                   <th scope="col" className="px-5 py-3">
                     Estado
                   </th>
+                  <th scope="col" className="px-5 py-3">
+                    Acciones
+                  </th>
                 </tr>
               </thead>
               <tbody aria-busy={cargando}>
                 {visibles.map((s) => {
                   const cupo = numero(s.evaluacion?.cupo_sugerido)
                   const mostrarCupo =
-                    cupo != null && estadoParaVista(s, esAsesor) === 'APROBADO'
+                    cupo != null && estadoParaVista(s) === 'APROBADO'
                   return (
                     <tr
                       key={s.id_solicitud}
@@ -215,22 +224,34 @@ export default function Solicitudes() {
                       </td>
                       <td className="px-5 py-3">
                         <span className="inline-flex items-center gap-2">
-                          <InsigniaEstado
-                            status={estadoParaVista(s, esAsesor)}
-                          />
+                          <InsigniaEstado status={estadoParaVista(s)} />
                           {/* La decisión interna del motor solo la ve el
-                              administrador; al asesor le basta el estado */}
-                          {!esAsesor && (
-                            <span className="text-xs text-slate-600">
-                              {s.decision
-                                ? s.decision === 'perfil_gris'
+                              administrador, y solo cuando aporta algo
+                              distinto a la insignia (perfil gris). */}
+                          {!esAsesor &&
+                            s.decision != null &&
+                            s.decision.toLowerCase() !==
+                              estadoParaVista(s).toLowerCase() && (
+                              <span className="text-xs text-slate-600">
+                                {s.decision === 'perfil_gris'
                                   ? (s.evaluacion?.decision_interna ??
                                     'Perfil gris')
-                                  : s.decision
-                                : 'Pendiente'}
-                            </span>
-                          )}
+                                  : s.decision}
+                              </span>
+                            )}
                         </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        {ESTADOS_RETOMABLES.has(s.estado) && (
+                          <button
+                            type="button"
+                            className="btn-ghost inline-flex items-center gap-1 px-2 py-1 text-xs"
+                            title="Continuar la originación donde quedó"
+                            onClick={() => retomar(s.id_solicitud)}
+                          >
+                            <Play size={13} aria-hidden="true" /> Continuar
+                          </button>
+                        )}
                       </td>
                     </tr>
                   )

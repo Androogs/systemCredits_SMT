@@ -74,6 +74,20 @@ SET tasa_min = 1.5,
 WHERE nombre = 'Financiacion de motocicleta'
   AND id_aliado = (SELECT id_aliado FROM aliado_financiero WHERE nit = '814005081');
 
+-- Seguro de vida deudores incluido en la cuota. Prima vigente del
+-- negocio: 0,35 % mensual sobre el saldo financiado
+-- (cuota_seguro = saldo * 0,35 %; valor_seguro_vida = prima * plazo).
+INSERT INTO aseguradora (nit, nombre, activa) VALUES
+    ('999999999', 'ASEGURADORA ALIADA', TRUE)
+ON CONFLICT (nit) DO NOTHING;
+
+INSERT INTO seguro_producto (id_aseguradora, tipo, nombre, descripcion, vigencia_meses, tasa_prima, activo)
+SELECT id_aseguradora, 'vida_decreciente', 'Seguro de vida deudores',
+       'Cubre el saldo insoluto de la deuda', 60, 0.35, TRUE
+FROM aseguradora
+WHERE nit = '999999999'
+ON CONFLICT (id_aseguradora, tipo, nombre) DO NOTHING;
+
 -- Catalogo de causales del motor de decision (PPT v4 + BRD).
 -- R* = rechazo, RC* = requiere codeudor, E* = estudio (decision interna).
 INSERT INTO criterio_evaluacion (codigo, descripcion, tipo) VALUES

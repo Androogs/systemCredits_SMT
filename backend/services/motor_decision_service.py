@@ -21,11 +21,14 @@ causales que disparen):
 
 Decisión interna = la de mayor prioridad entre las causales
 (Rechazo > Requiere codeudor > Estudio > Aprobado). La decisión
-PÚBLICA es binaria: Aprobado solo si no hay ninguna causal; cualquier
-otro caso es Rechazado con sus causales ordenadas por prioridad. Si el
-motor no puede justificar una aprobación y no hay causal explícita
-(p. ej. falta el score), se usa R20 "Información insuficiente para
-aprobar": nunca se aprueba por omisión.
+PÚBLICA es binaria: Aprobado solo si no hay ninguna causal que decida;
+cualquier otro caso es Rechazado con sus causales ordenadas por
+prioridad. Las causales que la matriz anexa a un APROBADO (E4/E5/E6,
+perfil de ingreso bajo) son solo trazabilidad: se reportan en
+`causales` pero no alteran la decisión. Si el motor no puede
+justificar una aprobación y no hay causal explícita (p. ej. falta el
+score), se usa R20 "Información insuficiente para aprobar": nunca se
+aprueba por omisión.
 """
 
 import time
@@ -113,6 +116,9 @@ class MotorDecision:
         advertencias = list(advertencias or [])
         traza: list[PasoTraza] = []
         causales: list[Causal] = []
+        # Causales que la matriz anexa a un APROBADO: solo trazabilidad,
+        # no participan en la decisión.
+        causales_traza: list[Causal] = []
         logger.info("Evaluando | id=%s | ocupacion=%s", evaluacion_id, solicitud.ocupacion.value)
 
         # --- Score y Quanto ---
@@ -225,7 +231,10 @@ class MotorDecision:
                 solicitud, perfil_score_res.perfil, perfil_ingreso_res.perfil, parametros
             )
             if decision_res.causal:
-                causales.append(decision_res.causal)
+                if decision_res.decision == Decision.APROBADO:
+                    causales_traza.append(decision_res.causal)
+                else:
+                    causales.append(decision_res.causal)
         traza.append(
             PasoTraza(
                 etapa="matriz_decision",
@@ -254,9 +263,12 @@ class MotorDecision:
         # ninguna etapa dejó causal explícita, se reporta R20.
         if decision_res.decision != Decision.APROBADO and not causales:
             causales.append(Causal.R20)
-        causales_finales = ordenar_causales(causales)
-        if causales_finales:
-            decision_interna = max((c.tipo for c in causales_finales), key=PRIORIDAD_DECISION.get)
+        # causales_finales incluye las de trazabilidad para reporte;
+        # la decisión se calcula solo con las causales que deciden.
+        causales_finales = ordenar_causales([*causales, *causales_traza])
+        causales_decision = ordenar_causales(causales)
+        if causales_decision:
+            decision_interna = max((c.tipo for c in causales_decision), key=PRIORIDAD_DECISION.get)
             # Conservar REQUIERE_CODEUDOR y ESTUDIO para trazabilidad interna
             # La decisión pública continúa siendo binaria
             decision_publica = DecisionFinal.RECHAZADO

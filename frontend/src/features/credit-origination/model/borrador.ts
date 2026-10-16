@@ -16,6 +16,17 @@ import type { DatosSolicitud } from '../ui/CrearSolicitud'
 import type { OfertaSeleccionada } from '../ui/ResultadoCredito'
 import type { ResultadoEvaluacionCredito } from './resultado-evaluacion'
 
+/** Valores que llegan del simulador al iniciar una solicitud. */
+export interface SimulacionPrevia {
+  /** Valor de la moto simulado → precarga "Valor moto + IVA". */
+  valorMoto: number
+  plazoMeses: number
+  /** Adicionales agrupados (matrícula, SOAT, impuestos): solo referencia. */
+  adicionales: number
+  montoFinanciar: number
+  cuotaMensual: number
+}
+
 export interface ContextoOriginacion {
   validacion?: DatosValidacion
   autorizacion?: DatosAutorizacion
@@ -27,6 +38,8 @@ export interface ContextoOriginacion {
   idSolicitud?: string
   resultadoEvaluacion?: ResultadoEvaluacionCredito
   ofertaSeleccionada?: OfertaSeleccionada
+  /** Simulación con la que el asesor abrió la solicitud. */
+  simulacion?: SimulacionPrevia
 }
 
 export interface BorradorOriginacion {

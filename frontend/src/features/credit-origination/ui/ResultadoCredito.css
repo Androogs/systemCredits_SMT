@@ -178,30 +178,6 @@
   background: #c02f28;
 }
 
-/* Revision manual */
-
-.resultado-credito__veredicto--revision {
-  border-color: #edd9ae;
-  background: #fdf6e6;
-}
-
-.resultado-credito__veredicto--revision .resultado-credito__veredicto-icono {
-  background: #c8901f;
-  box-shadow: 0 0.7rem 1.6rem rgb(200 144 31 / 30%);
-}
-
-.resultado-credito__veredicto--revision .resultado-credito__veredicto-eyebrow {
-  color: #9a6b1f;
-}
-
-.resultado-credito__veredicto--revision .resultado-credito__veredicto-titulo {
-  color: #6b4d14;
-}
-
-.resultado-credito__veredicto--revision .resultado-credito__veredicto-pill {
-  background: #b07d1e;
-}
-
 @keyframes rc-veredicto-entrar {
   from {
     opacity: 0;
@@ -440,9 +416,21 @@
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 560px) {
-  .resultado-credito__grid {
-    grid-template-columns: 1fr;
+@media (max-width: 680px) {
+  /* El héroe ya muestra el cupo; en la tarjeta queda solo la cuota guía */
+  .resultado-credito__cupo small,
+  .resultado-credito__cupo strong {
+    display: none;
+  }
+
+  /* El resumen lateral repite los valores de la tarjeta principal */
+  .resultado-credito__vehiculo-datos,
+  .resultado-credito__inclusion {
+    display: none;
+  }
+
+  .resultado-credito__vehiculo {
+    gap: 0.7rem;
   }
 }
 
@@ -659,15 +647,55 @@
   color: #fff;
 }
 
-.resultado-credito__primario--estudio {
-  border-color: #d97706;
-  background: #d97706;
-  color: #fff;
+/* ---- Firma del pagaré con OTP ---- */
+.resultado-credito__otp {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.2rem 1.1rem 1.3rem;
+  justify-items: start;
 }
 
-.resultado-credito__primario--estudio:disabled {
-  border-color: #d97706;
-  background: #d97706;
+.resultado-credito__otp-icono {
+  color: #099dd7;
+}
+
+.resultado-credito__otp-texto {
+  margin: 0;
+  color: #475467;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.resultado-credito__otp-demo {
+  margin: 0;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.5rem;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.9rem;
+}
+
+.resultado-credito__otp-campo {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #344054;
+}
+
+.resultado-credito__otp-campo .input-base {
+  width: 9.5rem;
+  text-align: center;
+  letter-spacing: 0.35rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.resultado-credito__otp-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.3rem;
 }
 
 .resultado-credito__secundario:disabled,
@@ -688,10 +716,113 @@
   }
 }
 
+/* Tira compacta: el héroe de aprobación se colapsa a los segundos (o al
+   avanzar a datos/OTP) para no ocupar media pantalla. De ahí puede
+   ocultarse del todo — queda el chip mínimo para reabrirlo. */
+
+.resultado-credito__resumen {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #b7e4ce;
+  border-radius: 0.75rem;
+  background: #ecf8f1;
+  color: #0b4d30;
+}
+
+.resultado-credito__resumen > svg {
+  flex-shrink: 0;
+  color: #12a150;
+}
+
+.resultado-credito__resumen-texto {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+  font-size: 0.82rem;
+}
+
+.resultado-credito__resumen-texto span {
+  color: #0f7a4d;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.resultado-credito__resumen-ver {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 0.2rem 0.4rem;
+  border: 0;
+  background: none;
+  color: #03658c;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.resultado-credito__resumen-cerrar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #0f7a4d;
+  cursor: pointer;
+}
+
+.resultado-credito__resumen-cerrar:hover {
+  background: #d7efdf;
+}
+
+.resultado-credito__resumen-ver:hover {
+  text-decoration: underline;
+}
+
+.resultado-credito__resumen-ver:focus-visible,
+.resultado-credito__resumen-cerrar:focus-visible,
+.resultado-credito__chip:focus-visible {
+  outline: 2px solid #099dd7;
+  outline-offset: 2px;
+}
+
+/* Chip mínimo cuando el aviso quedó oculto: reabre el héroe. */
+
+.resultado-credito__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  justify-self: start;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid #b7e4ce;
+  border-radius: 999px;
+  background: #ecf8f1;
+  color: #0f7a4d;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.resultado-credito__chip:hover {
+  background: #d7efdf;
+}
+
 @media (max-width: 560px) {
   .resultado-credito__veredicto {
     gap: 0.45rem;
     padding: 1.7rem 1rem 1.4rem;
+  }
+
+  .resultado-credito__veredicto-eyebrow {
+    display: none;
   }
 
   .resultado-credito__veredicto-icono {
@@ -709,8 +840,18 @@
     font-size: 1.45rem;
   }
 
-  .resultado-credito__valores {
-    grid-template-columns: 1fr;
+  /* Una columna en móvil: dos columnas de ~140px cortan los toggles. */
+  .resultado-credito__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .datos-cliente__sino {
+    flex-wrap: wrap;
+  }
+
+  .resultado-credito__valores > div {
+    min-height: 3.6rem;
+    padding: 0.55rem 0.65rem;
   }
 
   .resultado-credito__acciones {
@@ -720,4 +861,112 @@
   .resultado-credito__acciones button {
     width: 100%;
   }
+
+  .resultado-credito__otp-acciones {
+    display: grid;
+  }
+
+  .resultado-credito__otp-acciones button {
+    width: 100%;
+  }
+}
+
+/* Datos del cliente (formalización, antes del OTP) */
+
+.datos-cliente {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.datos-cliente__seccion {
+  display: grid;
+  gap: 0.9rem;
+  padding: 0.95rem 1rem 1.05rem;
+  border: 1px solid var(--borde, #e2e8f0);
+  border-radius: 0.8rem;
+  background: var(--superficie, #fff);
+}
+
+.datos-cliente__seccion > header {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.datos-cliente__seccion h3 {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--texto-secundario, #64748b);
+}
+
+.datos-cliente__seccion header small {
+  font-size: 0.8rem;
+  color: var(--texto-secundario, #64748b);
+}
+
+/* Dirección compuesta: vista previa en vivo */
+.datos-cliente__preview {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.6rem;
+  background: var(--superficie-alt, #f8fafc);
+  font-size: 0.85rem;
+  color: var(--texto-secundario, #64748b);
+}
+
+.datos-cliente__preview strong {
+  color: inherit;
+}
+
+/* Preguntas Sí/No como toggle segmentado (menos ruido que un select) */
+.datos-cliente__sino {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.datos-cliente__sino-label {
+  font-size: 0.85rem;
+}
+
+.datos-cliente__sino-ops {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--borde, #cbd5e1);
+  border-radius: 999px;
+}
+
+.datos-cliente__sino-op {
+  padding: 0.4rem 0.95rem;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--texto-secundario, #64748b);
+  cursor: pointer;
+}
+
+.datos-cliente__sino-op + .datos-cliente__sino-op {
+  border-left: 1px solid var(--borde, #cbd5e1);
+}
+
+.datos-cliente__sino-op--activo {
+  background: var(--primario, #099dd7);
+  color: #fff;
+}
+
+.datos-cliente__sino-op:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.datos-cliente__cargando {
+  margin: 0;
+  padding: 1rem;
+  font-size: 0.85rem;
+  color: var(--texto-secundario, #64748b);
 }

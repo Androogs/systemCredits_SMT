@@ -14,3 +14,11 @@ export const dateShort = (iso: string | Date) =>
     month: 'short',
     year: 'numeric',
   })
+
+export const dateTime = (iso: string | Date) =>
+  `${dateShort(iso)} ${new Date(iso).toLocaleTimeString('es-CO', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })}`

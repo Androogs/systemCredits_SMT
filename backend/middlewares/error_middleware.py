@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from backend.services.motor_exceptions import (
+    ConflictoEstadoError,
     DataCreditoError,
     ParametrosError,
     ReglaNoDefinidaError,
@@ -30,6 +31,7 @@ _MAPA = [
     (ValidacionError, 422, "validacion"),
     (ParametrosError, 422, "parametros_invalidos"),
     (ReporteBuroNoEvaluableError, 422, "reporte_buro_no_evaluable"),
+    (ConflictoEstadoError, 409, "conflicto_estado"),
     (ReglaNoDefinidaError, 501, "regla_no_definida"),
     (DataCreditoError, 502, "error_datacredito"),
 ]

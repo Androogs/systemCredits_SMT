@@ -24,7 +24,7 @@ Persistencia:
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -62,6 +62,7 @@ from backend.services.motor_exceptions import (
 )
 from backend.services.motor_parametros import MotorParametros, ParametrosStore
 from backend.services.reglas_filtros_duros import evaluar_exclusion_score, evaluar_filtros_duros
+from backend.services.seguro_service import seguro_vida_vigente
 from backend.services.validaciones_identidad import advertencias_consistencia, validar_identidad
 from backend.services.valor_ingreso_service import (
     aportantes_desde_cotizantes,
@@ -300,9 +301,21 @@ class EvaluacionService:
             "monto_solicitado": s.saldo_financiar,
             "plazo": s.plazo,
             "tasa_referencia": s.tasa,
+            "prima_seguro_pct": self._prima_seguro_vida(),
         }
         servicio = EligibilidadService()
-        repo.guardar_ofertas([servicio.evaluar_producto(id_solicitud, p, datos) for p in productos])
+        ofertas = [servicio.evaluar_producto(id_solicitud, p, datos) for p in productos]
+        vigencia = datetime.now(UTC) + timedelta(days=self.settings.oferta_vigencia_dias)
+        for oferta in ofertas:
+            oferta.fecha_vigencia = vigencia
+        repo.guardar_ofertas(ofertas)
+
+    def _prima_seguro_vida(self) -> Decimal | None:
+        """Tasa de prima vigente del seguro de vida deudores (catálogo)."""
+        if self.db is None:
+            return None
+        seguro = seguro_vida_vigente(self.db)
+        return Decimal(str(seguro.tasa_prima)) if seguro is not None else None
 
     # ------------------------------------------------------------------
     # Valor Ingreso propio (cotizantes almacenados)

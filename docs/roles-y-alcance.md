@@ -20,7 +20,7 @@ financiera las ve todas.
 Implicación técnica: `solicitud_credito` necesita `id_concesionario`
 (NOT NULL) y `usuario.id_concesionario` para filtrar cada consulta por
 el tenant del token. Los listados (`GET /solicitudes`, panel asesor,
-bandeja de comité, reportes) aplican el filtro siempre server-side —
+reportes) aplican el filtro siempre server-side —
 nunca por parámetro del cliente.
 
 ## 2. Roles propuestos
@@ -29,9 +29,13 @@ nunca por parámetro del cliente.
 
 | Rol | Alcance |
 |---|---|
-| `admin_financiera` | Todo: configura productos/tasas/catálogos, concesionarios y usuarios; ve score, causales, indicadores de buró, auditoría y trazabilidad; re-evalúa con otros parámetros desde el detalle; resuelve comité; confirma desembolsos. |
-| `comite` | Bandeja `en_revision`: aprueba/rechaza con monto y plazo propios, comenta la resolución. Ve el detalle completo de las solicitudes en revisión (incluidas causales y buró). Solo lectura del resto. |
-| `analista` | Consulta solicitudes de todos los concesionarios, ve evaluación y auditoría. Sin acciones de negocio (no resuelve, no re-evalúa, no desembolsa). |
+| `admin_financiera` | Todo: configura productos/tasas/catálogos, concesionarios y usuarios; ve score, causales, indicadores de buró, auditoría y trazabilidad; re-evalúa con otros parámetros desde el detalle (la "reapertura" de una solicitud rechazada); confirma desembolsos. |
+| `analista` | Consulta solicitudes de todos los concesionarios, ve evaluación y auditoría. Sin acciones de negocio (no re-evalúa, no desembolsa). |
+
+> **Sin comité**: la decisión visible es binaria (aprobado/rechazado).
+> Las causales internas de estudio/codeudor del motor se presentan como
+> rechazo; la alternativa aprobatoria es la re-evaluación del admin con
+> otros parámetros, no una resolución manual por comité.
 
 Lo que la financiera **no** necesita: el wizard de originación de 5
 pasos ni el simulador operativo (los puede ver, pero su herramienta es
@@ -43,24 +47,23 @@ la financiera solo confirma el desembolso.
 | Rol | Alcance |
 |---|---|
 | `admin_concesionario` | Gestiona los asesores de su dealer; ve todas las solicitudes de **su** concesionario con decisión binaria y estado; reportes propios. No ve score, causales ni buró (dato sensible del cliente). |
-| `asesor` | Wizard de originación completo: radica, captura evidencias, ve resultado binario, envía a estudio, formaliza la oferta capturando el vehículo. Solo sus propias solicitudes (o las de su dealer en modo lectura si se define). |
+| `asesor` | Wizard de originación completo: radica, captura evidencias, ve resultado binario, reabre una solicitud rechazada corrigiendo datos, formaliza la oferta capturando el vehículo (con firma OTP del pagaré). Solo sus propias solicitudes (o las de su dealer en modo lectura si se define). |
 
 ## 3. Matriz permiso × funcionalidad
 
-| Funcionalidad | asesor | admin_conces. | analista | comite | admin_fin. |
-|---|---|---|---|---|---|
-| Radicar solicitud (wizard) | ✅ | — | — | — | — |
-| Resultado binario aprobado/rechazado | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Enviar a estudio | ✅ | — | — | — | ✅ |
-| Corregir datos y re-radicar | ✅ | — | — | — | ✅ |
-| Seleccionar oferta + datos vehículo | ✅ | — | — | — | ✅ |
-| Ver causales, score, buró, trazabilidad | — | — | ✅ | ✅ | ✅ |
-| Re-evaluar con otros parámetros | — | — | — | — | ✅ |
-| Resolver comité (monto/plazo custom) | — | — | — | ✅ | ✅ |
-| Registrar desembolso | — | — | — | — | ✅ |
-| Gestionar usuarios/concesionarios | — | su dealer | — | — | ✅ |
-| Ver solicitudes de otros dealers | — | — | ✅ | ✅ | ✅ |
-| Configurar productos/tasas/políticas | — | — | — | — | ✅ |
+| Funcionalidad | asesor | admin_conces. | analista | admin_fin. |
+|---|---|---|---|---|
+| Radicar solicitud (wizard) | ✅ | — | — | — |
+| Resultado binario aprobado/rechazado | ✅ | ✅ | ✅ | ✅ |
+| Reabrir rechazada (corregir datos) | ✅ | — | — | ✅ |
+| Re-evaluar con parámetros | — | — | — | ✅ |
+| Seleccionar oferta + datos vehículo | ✅ | — | — | ✅ |
+| Firma OTP del pagaré (cliente) | ✅ | — | — | ✅ |
+| Ver causales, score, buró, trazabilidad | — | — | ✅ | ✅ |
+| Registrar desembolso | — | — | — | ✅ |
+| Gestionar usuarios/concesionarios | — | su dealer | — | ✅ |
+| Ver solicitudes de otros dealers | — | — | ✅ | ✅ |
+| Configurar productos/tasas/políticas | — | — | — | ✅ |
 
 ## 4. Permisos atómicos (backend)
 
@@ -70,7 +73,7 @@ por endpoint, no por nombre de rol:
 - `solicitud:crear`, `solicitud:leer:propias`, `solicitud:leer:tenant`,
   `solicitud:leer:global`
 - `evaluacion:ejecutar`, `evaluacion:parametros`
-- `comite:resolver`, `estudio:enviar`
+- `evaluacion:parametros` (reapertura/re-evaluación del admin)
 - `oferta:seleccionar`, `desembolso:registrar`
 - `datos:sensibles` (score/causales/buró/auditoría)
 - `catalogo:administrar`, `usuario:administrar`

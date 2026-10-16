@@ -259,6 +259,7 @@ CREATE TABLE oferta_credito (
     seleccionada BOOLEAN NOT NULL DEFAULT FALSE,
     fecha_generacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     fecha_actualizacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    fecha_vigencia TIMESTAMPTZ,
     version_api VARCHAR(20),
     respuesta_raw JSONB,
     CONSTRAINT uq_oferta_solicitud_aliado UNIQUE (id_solicitud, id_aliado_producto),
@@ -272,6 +273,23 @@ CREATE TABLE oferta_credito (
         )
     )
 );
+
+-- Prueba del consentimiento Habeas Data (Ley 1581): texto aceptado
+-- versionado (hash SHA-256), canal, IP y momento. Un cliente puede
+-- registrar más de uno (paso 2 web + firma OTP).
+CREATE TABLE consentimiento_habeas (
+    id_consentimiento BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_solicitud UUID NOT NULL REFERENCES solicitud_credito(id_solicitud) ON DELETE CASCADE,
+    version_texto VARCHAR(20) NOT NULL,
+    hash_texto CHAR(64) NOT NULL,
+    canal VARCHAR(20) NOT NULL,
+    ip VARCHAR(45),
+    fecha_aceptacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT ck_consentimiento_canal CHECK (
+        canal IN ('web_asesor', 'otp_firma')
+    )
+);
+CREATE INDEX idx_consentimiento_solicitud ON consentimiento_habeas(id_solicitud);
 
 CREATE UNIQUE INDEX uq_oferta_seleccionada
 ON oferta_credito (id_solicitud)
@@ -526,6 +544,9 @@ CREATE TABLE producto_vehiculo (
     matricula NUMERIC(18,2) NOT NULL DEFAULT 0,
     soat NUMERIC(18,2) NOT NULL DEFAULT 0,
     impuestos NUMERIC(18,2) NOT NULL DEFAULT 0,
+    -- Captura del % de fondo de garantía al elegir la oferta; el
+    -- desembolso lo propaga a credito_financiacion.aval_pct.
+    aval_pct NUMERIC(8,4),
     CONSTRAINT ck_vehiculo_descuento_pct CHECK (descuento_pct BETWEEN 0 AND 100)
 );
 
@@ -1076,7 +1097,7 @@ CREATE TABLE documento_evidencia (
     tipo            VARCHAR(20)  NOT NULL,
     ruta            VARCHAR(255) NOT NULL,
     nombre_original VARCHAR(255),
-    mime            VARCHAR(60)  NOT NULL,
+    mime            VARCHAR(120) NOT NULL,
     tamano_bytes    BIGINT       NOT NULL,
     hash_sha256     VARCHAR(64)  NOT NULL,
     creado_en       TIMESTAMPTZ  NOT NULL DEFAULT now()

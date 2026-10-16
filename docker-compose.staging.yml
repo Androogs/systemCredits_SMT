@@ -1,0 +1,75 @@
+# Ambiente de pruebas completo: frontend + API + PostgreSQL en un solo stack.
+#
+#   1. Copiar el env:        copy .env.staging.example .env.staging   (y editar claves)
+#   2. Levantar:             docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
+#   3. Datos de prueba:      docker compose -f docker-compose.staging.yml exec api python -m backend.database.seed_demo
+#
+# Todo entra por http://localhost:8080 — nginx sirve la SPA y reenvía /api al
+# backend (mismo origen → sin CORS ni VITE_API_URL). La API y la BD no se
+# exponen al host.
+#
+# Compartirlo: cloudflared tunnel --url http://localhost:8080
+# (URL HTTPS gratis → la cámara del celular funciona en CapturaMovil).
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD en .env.staging}
+      POSTGRES_DB: ${POSTGRES_DB:-creditos_qa}
+    volumes:
+      - pgdata_qa:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy   # el CMD del Dockerfile corre `alembic upgrade head` al arrancar
+    env_file:
+      - .env           # credenciales Experian (UAT/demo), SMTP, product IDs…
+      - .env.staging   # DEMO_USER_*, POSTGRES_*, STAGING_PORT…
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-creditos_qa}
+      ENVIRONMENT: demo            # login demo + mock_buro (Experian simulado) + OTP visible en pantalla
+      APP_TITLE: Creditos API - QA
+      SMMLV: ${SMMLV:-1750905}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DEMO_USER_EMAIL: ${DEMO_USER_EMAIL:-qa@pacifico.co}
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:?define DEMO_USER_PASSWORD en .env.staging}
+      CORS_ORIGINS: ${PUBLIC_URL:-http://localhost:8080}
+      EVIDENCIAS_DIR: /app/uploads/evidencias
+      # Detrás de nginx todas las peticiones llegan con la misma IP de la red
+      # interna: se relaja el rate limit para no frenar a los testers, y se
+      # activa el manejo de headers X-Forwarded-* del proxy.
+      RATE_LIMIT_MAX_PETICIONES: ${RATE_LIMIT_MAX_PETICIONES:-300}
+      UVICORN_PROXY_HEADERS: "true"
+      # Experian: con las claves *_DEMO de .env consulta el ambiente UAT
+      # (SPLA) real; si faltan, la evaluación responde error de config.
+      # SMTP vacío → las notificaciones se registran en log.
+    volumes:
+      - evidencias_qa:/app/uploads
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Vacío = llamadas /api relativas al mismo origen (nginx las reenvía).
+        VITE_API_URL: ""
+    depends_on:
+      - api
+    ports:
+      - "${STAGING_PORT:-8080}:80"
+    restart: unless-stopped
+
+volumes:
+  pgdata_qa:
+  evidencias_qa:

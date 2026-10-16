@@ -2,10 +2,15 @@ import { useState } from 'react'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
+import { correoSchema, telefonoSchema } from '../schemas/persona'
 import './AutorizacionDatos.css'
 
 export interface DatosAutorizacion {
   autorizaTratamiento: boolean
+  /** Celular del cliente: canal de notificaciones y OTP de firma. */
+  telefono: string
+  /** Correo del cliente: canal de notificaciones y OTP de firma. */
+  correo: string
   fechaRegistro: string
   ipAsesor: string
 }
@@ -40,16 +45,32 @@ const finalidades = [
 function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
   const [marcaRegistro] = useState(marcaTiempoActual)
   const [autoriza, setAutoriza] = useState(false)
+  const [telefono, setTelefono] = useState(
+    import.meta.env.DEV ? '3001234567' : '',
+  )
+  const [correo, setCorreo] = useState(
+    import.meta.env.DEV ? 'carlos.restrepo@correo.com' : '',
+  )
   const [intentado, setIntentado] = useState(false)
   const [registrado, setRegistrado] = useState(false)
 
   const error = intentado && !autoriza
+  const errorTelefono = intentado
+    ? (telefonoSchema.safeParse(telefono).error?.issues[0]?.message ?? null)
+    : null
+  const errorCorreo = intentado
+    ? (correoSchema.safeParse(correo).error?.issues[0]?.message ?? null)
+    : null
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setIntentado(true)
 
-    if (!autoriza) {
+    if (
+      !autoriza ||
+      !telefonoSchema.safeParse(telefono).success ||
+      !correoSchema.safeParse(correo).success
+    ) {
       setRegistrado(false)
       return
     }
@@ -57,6 +78,8 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
     setRegistrado(true)
     onContinue?.({
       autorizaTratamiento: true,
+      telefono: telefono.trim(),
+      correo: correo.trim(),
       fechaRegistro: marcaRegistro,
       // En dev se muestra una IP de ejemplo para completar la demo; en
       // producción queda como no capturada hasta que el backend registre
@@ -97,10 +120,6 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
               <dd>Palmira - Centro Interno</dd>
             </div>
           </dl>
-          <span className="autorizacion__server">
-            <span aria-hidden="true" />
-            Servidor de Validación Activo v2.4.12-Prod (SSL)
-          </span>
         </aside>
       </header>
 
@@ -184,6 +203,73 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
             Descargar el documento legal completo de Habeas Data (DOCX)
           </a>
         </div>
+
+        <fieldset className="autorizacion__contacto">
+          <legend>Datos de contacto del cliente</legend>
+          <p className="autorizacion__contacto-nota">
+            El cliente autoriza estos canales para recibir notificaciones del
+            proceso (resultado, oferta y desembolso) y el código de firma del
+            pagaré.
+          </p>
+          <div className="autorizacion__contacto-grid">
+            <div
+              className={`autorizacion__contacto-field${
+                errorTelefono ? ' has-error' : ''
+              }`}
+            >
+              <label htmlFor="aut-telefono">
+                Teléfono celular
+                <span aria-hidden="true"> *</span>
+              </label>
+              <input
+                id="aut-telefono"
+                type="tel"
+                inputMode="numeric"
+                autoComplete="tel-national"
+                maxLength={10}
+                placeholder="Ej: 3001234567"
+                value={telefono}
+                aria-invalid={Boolean(errorTelefono)}
+                onChange={(event) => {
+                  setTelefono(event.target.value.replace(/\D/g, ''))
+                  setRegistrado(false)
+                }}
+              />
+              {errorTelefono && (
+                <p className="autorizacion__error" role="alert">
+                  {errorTelefono}
+                </p>
+              )}
+            </div>
+            <div
+              className={`autorizacion__contacto-field${
+                errorCorreo ? ' has-error' : ''
+              }`}
+            >
+              <label htmlFor="aut-correo">
+                Correo electrónico
+                <span aria-hidden="true"> *</span>
+              </label>
+              <input
+                id="aut-correo"
+                type="email"
+                autoComplete="email"
+                placeholder="Ej: cliente@correo.com"
+                value={correo}
+                aria-invalid={Boolean(errorCorreo)}
+                onChange={(event) => {
+                  setCorreo(event.target.value)
+                  setRegistrado(false)
+                }}
+              />
+              {errorCorreo && (
+                <p className="autorizacion__error" role="alert">
+                  {errorCorreo}
+                </p>
+              )}
+            </div>
+          </div>
+        </fieldset>
 
         <div
           className={`autorizacion__consent${error ? ' has-error' : ''}${

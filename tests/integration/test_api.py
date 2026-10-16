@@ -1,6 +1,8 @@
 """Pruebas de la API completa (FastAPI + SQLite en memoria + escenarios demo)."""
 
 import pytest
+import uuid
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from backend.db_models import session as db_session
@@ -8,6 +10,7 @@ from backend.db_models.models import (
     AliadoFinanciero,
     AliadoProducto,
     AliadoReglaElegibilidad,
+    Aseguradora,
     Banco,
     CapacidadPago,
     Cotizante,
@@ -16,7 +19,9 @@ from backend.db_models.models import (
     CuentaBancaria,
     Desembolso,
     EvaluacionCredito,
+    OfertaCredito,
     ProductoVehiculo,
+    SeguroProducto,
     SolicitudCausal,
     SolicitudCredito,
 )
@@ -33,7 +38,7 @@ ESPERADO = {
     "embargo": ("Rechazado", ["R2"]),
     "castigada": ("Rechazado", ["R4"]),
     "mora_30": ("Rechazado", ["E2"]),
-    "perfil_bajo": ("Rechazado", ["E4"]),
+    "perfil_bajo": ("Aprobado", ["E4"]),
     "sin_valor_ingreso": ("Rechazado", ["RC1"]),
     "endeudamiento_alto": ("Rechazado", ["R17"]),
 }
@@ -251,6 +256,41 @@ def test_seleccion_oferta_con_monto_y_plazo(client):
         cuota_anualidad(Decimal(str(cupo / 2)), Decimal(str(tasa)), 12)
     )
     assert float(oferta["cuota_mensual"]) == cuota_esperada
+
+
+def test_oferta_vigencia_y_expiracion(client):
+    """La oferta se genera con fecha_vigencia futura; si ya venció, la
+    selección responde 409 y la API la reporta como expirada."""
+    db = db_session.SessionLocal()
+    aliado = AliadoFinanciero(nit="900000002", nombre="Aliado Vigencia", tipo="banco")
+    db.add(aliado)
+    db.flush()
+    db.add(AliadoProducto(id_aliado=aliado.id_aliado, nombre="Producto A"))
+    db.commit()
+    db.close()
+
+    id_solicitud = _crear_solicitud(client)
+    assert client.post(f"/api/solicitudes/{id_solicitud}/evaluar", json=CREDITO).json()["decision"] == "Aprobado"
+    ofertas = client.get(f"/api/solicitudes/{id_solicitud}/ofertas").json()
+    elegible = next(o for o in ofertas if o["elegible"])
+    assert elegible["fecha_vigencia"] is not None and elegible["expirada"] is False
+
+    db = db_session.SessionLocal()
+    oferta = db.query(OfertaCredito).filter_by(id_oferta=elegible["id_oferta"]).one()
+    oferta.fecha_vigencia = datetime.now(UTC) - timedelta(days=1)
+    db.commit()
+    db.close()
+
+    expirada = next(
+        o for o in client.get(f"/api/solicitudes/{id_solicitud}/ofertas").json()
+        if o["id_oferta"] == elegible["id_oferta"]
+    )
+    assert expirada["expirada"] is True
+    r = client.post(
+        f"/api/solicitudes/{id_solicitud}/ofertas/seleccionar",
+        json={"id_oferta": elegible["id_oferta"]},
+    )
+    assert r.status_code == 409
 
 
 def test_listar_solicitudes(client):
@@ -488,7 +528,7 @@ def test_desembolso_flujo_completo(client):
     assert d["emisor"] == "INVERSIONES PACIFICO S.A."
     assert d["receptor"] == "Cliente Ficticio"
     assert d["capital"] == "20000000.00"  # cupo del motor acotado a monto_max
-    assert d["plazo"] == 36 and d["tasa"] == "1.5000"
+    assert d["plazo"] == 36 and d["tasa"] == "2.0000"
     assert d["referencia_pago"] == "TRX-TEST-1"
     assert d["fecha_desembolso"] is not None
 
@@ -686,58 +726,391 @@ def test_desembolso_confirma_pendiente_existente(client):
     assert d["capital"] == "10000000.00"
 
 
-# ---------------------------------------------------------------------------
-# Resolución de comité (solicitudes 'en_revision' por causales E/RC)
-# ---------------------------------------------------------------------------
-def _solicitud_en_revision(client) -> str:
-    """E4 (perfil ingreso bajo) es causal de estudio: la solicitud queda
-    'en_revision' aunque la decisión pública sea 'rechazado'."""
-    id_solicitud = _crear_solicitud(client)
-    ev = client.post(
-        f"/api/solicitudes/{id_solicitud}/evaluar",
-        json={**CREDITO, "escenario_mock": "perfil_bajo"},
-    ).json()
-    assert ev["decision"] == "Rechazado" and ev["decision_interna"] == "Estudio"
-    detalle = client.get(f"/api/solicitudes/{id_solicitud}").json()
-    assert detalle["estado"] == "en_revision"
-    return id_solicitud
-
-
-def test_resolver_comite_rechaza(client):
-    id_solicitud = _solicitud_en_revision(client)
-    r = client.post(
-        f"/api/solicitudes/{id_solicitud}/resolver",
-        json={"decision": "rechazado", "comentario": "Historial no viable"},
-    )
-    assert r.status_code == 200, r.text
-    detalle = r.json()
-    assert detalle["estado"] == "rechazada" and detalle["decision"] == "rechazado"
-
-
-def test_resolver_comite_aprueba_y_genera_ofertas(client):
+def test_desembolso_desglosa_seguro_vida(client):
+    """Con el catálogo de seguros sembrado, la oferta trae la cuota
+    TOTAL y el crédito la desglosa: anualidad + prima mensual."""
     db = db_session.SessionLocal()
     _sembrar_cadena_desembolso(db)
+    aseguradora = Aseguradora(nit="999999999", nombre="Aseguradora Test")
+    db.add(aseguradora)
+    db.flush()
+    db.add(
+        SeguroProducto(
+            id_aseguradora=aseguradora.id_aseguradora,
+            tipo="vida_decreciente",
+            nombre="Vida deudores",
+            tasa_prima=0.35,
+            activo=True,
+        )
+    )
+    db.commit()
     db.close()
 
-    id_solicitud = _solicitud_en_revision(client)
+    id_solicitud = _solicitud_aprobada_con_oferta(client)
+    r = client.post(f"/api/solicitudes/{id_solicitud}/desembolso", json=DESEMBOLSO)
+    assert r.status_code == 201, r.text
+
+    db = db_session.SessionLocal()
+    try:
+        credito = db.query(CreditoFinanciacion).one()
+        # cupo 20.000.000 al 2 % a 36 meses → anualidad + 0,22 %/mes
+        assert float(credito.cuota_seguro_vida) > 0
+        assert abs(
+            float(credito.cuota_total)
+            - (float(credito.cuota_financiacion) + float(credito.cuota_seguro_vida))
+        ) < 1
+        assert float(credito.valor_seguro_vida) == pytest.approx(
+            float(credito.cuota_seguro_vida) * credito.plazo, abs=1
+        )
+        assert credito.dia_pago == 20
+        desembolso = db.query(Desembolso).one()
+        assert float(desembolso.valor_seguro) > 0
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# OTP: emisión, verificación y firma del pagaré
+# ---------------------------------------------------------------------------
+def test_otp_generar_envia_correo_demo(client):
+    """En modo demo el código viaja en la respuesta (sin proveedor externo)."""
+    id_solicitud = _crear_solicitud(client)
+    r = client.post(f"/api/solicitudes/{id_solicitud}/otp", json={})
+    assert r.status_code == 201, r.text
+    cuerpo = r.json()
+    assert cuerpo["expira_en_segundos"] > 0
+    assert cuerpo["codigo_demo"] is not None
+    assert len(cuerpo["codigo_demo"]) == 6
+
+
+def test_otp_verificar_firma_pagare(client):
+    id_solicitud = _crear_solicitud(client)
+    codigo = client.post(
+        f"/api/solicitudes/{id_solicitud}/otp", json={}
+    ).json()["codigo_demo"]
     r = client.post(
-        f"/api/solicitudes/{id_solicitud}/resolver",
-        json={"decision": "aprobado", "comentario": "Cliente de la casa"},
+        f"/api/solicitudes/{id_solicitud}/otp/verificar",
+        json={"accion": "firma_pagare", "codigo": codigo},
     )
     assert r.status_code == 200, r.text
-    detalle = r.json()
-    assert detalle["estado"] == "aprobada" and detalle["decision"] == "aprobado"
-    assert len(detalle["ofertas"]) > 0
+    assert r.json()["verificado"] is True
+    assert r.json()["uuid_firma"]
+    # El OTP ya usado no se puede reutilizar.
+    assert (
+        client.post(
+            f"/api/solicitudes/{id_solicitud}/otp/verificar",
+            json={"accion": "firma_pagare", "codigo": codigo},
+        ).status_code
+        == 422
+    )
 
 
-def test_resolver_comite_solo_en_revision(client):
-    id_solicitud = _crear_solicitud(client)
-    client.post(f"/api/solicitudes/{id_solicitud}/evaluar", json=CREDITO)
+def test_consentimiento_habeas_data(client):
+    """El consentimiento del paso 2 y el de la firma OTP quedan
+    persistidos con versión de texto, hash SHA-256, canal e IP."""
     r = client.post(
-        f"/api/solicitudes/{id_solicitud}/resolver", json={"decision": "rechazado"}
+        "/api/solicitudes",
+        json={**SOLICITUD, "consentimiento": {"aceptado": True}},
+    )
+    assert r.status_code == 201, r.text
+    id_solicitud = r.json()["id_solicitud"]
+
+    detalle = client.get(f"/api/solicitudes/{id_solicitud}").json()
+    assert len(detalle["consentimientos"]) == 1
+    web = detalle["consentimientos"][0]
+    assert web["canal"] == "web_asesor"
+    assert web["version_texto"] == "v1"
+    assert len(web["hash_texto"]) == 64 and web["ip"]
+    # La fecha de aceptación lleva hora exacta (ISO con hh:mm:ss).
+    assert "T" in web["fecha_aceptacion"] and ":" in web["fecha_aceptacion"]
+
+    codigo = client.post(
+        f"/api/solicitudes/{id_solicitud}/otp", json={}
+    ).json()["codigo_demo"]
+    r = client.post(
+        f"/api/solicitudes/{id_solicitud}/otp/verificar",
+        json={"accion": "firma_pagare", "codigo": codigo},
+    )
+    assert r.status_code == 200, r.text
+    canales = [
+        c["canal"]
+        for c in client.get(f"/api/solicitudes/{id_solicitud}").json()[
+            "consentimientos"
+        ]
+    ]
+    assert canales == ["web_asesor", "otp_firma"]
+
+
+def test_cancelar_solicitud(client):
+    """creada→cancelada con motivo (queda en descripcion_estado, que el
+    trigger de Postgres copia al historial). Cancelada o desembolsada
+    no se puede volver a cancelar → 409; sin motivo → 422."""
+    id_solicitud = _crear_solicitud(client)
+    r = client.post(
+        f"/api/solicitudes/{id_solicitud}/cancelar",
+        json={"motivo": "el cliente desistió del crédito"},
+    )
+    assert r.status_code == 200 and r.json()["estado"] == "cancelada"
+    detalle = client.get(f"/api/solicitudes/{id_solicitud}").json()
+    assert detalle["estado"] == "cancelada"
+    assert "desistió" in (detalle["descripcion_estado"] or "")
+
+    # Ya cancelada → conflicto
+    r = client.post(
+        f"/api/solicitudes/{id_solicitud}/cancelar",
+        json={"motivo": "duplicada"},
+    )
+    assert r.status_code == 409
+
+    # Desembolsada no se puede cancelar
+    otra = _crear_solicitud(client)
+    db = db_session.SessionLocal()
+    db.query(SolicitudCredito).filter_by(id_solicitud=uuid.UUID(otra)).update(
+        {"estado": "desembolsada"}
+    )
+    db.commit()
+    db.close()
+    r = client.post(
+        f"/api/solicitudes/{otra}/cancelar",
+        json={"motivo": "error de digitación"},
+    )
+    assert r.status_code == 409
+
+    # Sin motivo válido → 422; inexistente → 404
+    assert (
+        client.post(
+            f"/api/solicitudes/{otra}/cancelar", json={"motivo": "x"}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/solicitudes/00000000-0000-0000-0000-000000000000/cancelar",
+            json={"motivo": "no existe"},
+        ).status_code
+        == 404
+    )
+
+
+def test_otp_codigo_incorrecto_y_renovacion(client):
+    id_solicitud = _crear_solicitud(client)
+    r = client.post(
+        f"/api/solicitudes/{id_solicitud}/otp/verificar",
+        json={"accion": "firma_pagare", "codigo": "000000"},
     )
     assert r.status_code == 422
-    assert client.post(
-        f"/api/solicitudes/00000000-0000-0000-0000-000000000000/resolver",
-        json={"decision": "aprobado"},
-    ).status_code == 404
+    client.post(f"/api/solicitudes/{id_solicitud}/otp", json={})
+    malo = client.post(
+        f"/api/solicitudes/{id_solicitud}/otp/verificar",
+        json={"accion": "firma_pagare", "codigo": "999999"},
+    )
+    assert malo.status_code == 422
+    # Generar uno nuevo invalida el pendiente anterior.
+    codigo = client.post(
+        f"/api/solicitudes/{id_solicitud}/otp", json={}
+    ).json()["codigo_demo"]
+    assert (
+        client.post(
+            f"/api/solicitudes/{id_solicitud}/otp/verificar",
+            json={"accion": "firma_pagare", "codigo": codigo},
+        ).status_code
+        == 200
+    )
+
+
+def test_otp_whatsapp_simulado_y_firma(client):
+    """Sin credenciales WATI el canal whatsapp queda 'simulado' (log) y
+    la firma se sella como otp_whatsapp."""
+    r = client.post(
+        "/api/solicitudes",
+        json={
+            **SOLICITUD,
+            "contacto_vivienda": {"telefono": "300 123 4567"},
+        },
+    )
+    assert r.status_code == 201, r.text
+    id_solicitud = r.json()["id_solicitud"]
+
+    r = client.post(
+        f"/api/solicitudes/{id_solicitud}/otp",
+        json={"canal": "whatsapp"},
+    )
+    assert r.status_code == 201, r.text
+    cuerpo = r.json()
+    assert cuerpo["canal"] == "whatsapp"
+    assert cuerpo["estado_envio"] == "simulado"
+    assert cuerpo["destino"] == "573001234567"
+
+    codigo = cuerpo["codigo_demo"]
+    assert (
+        client.post(
+            f"/api/solicitudes/{id_solicitud}/otp/verificar",
+            json={"accion": "firma_pagare", "codigo": codigo},
+        ).status_code
+        == 200
+    )
+    db = db_session.SessionLocal()
+    try:
+        solicitud = db.query(SolicitudCredito).filter_by(
+            id_solicitud=uuid.UUID(id_solicitud)
+        ).one()
+        assert solicitud.autenticacion == "otp_whatsapp"
+    finally:
+        db.close()
+
+
+def test_otp_whatsapp_cae_a_email_sin_telefono(client):
+    """canal=whatsapp sin teléfono válido cae al correo del cliente."""
+    r = client.post(
+        "/api/solicitudes",
+        json={
+            **SOLICITUD,
+            "contacto_vivienda": {"correo": "cliente@correo.co"},
+        },
+    )
+    id_solicitud = r.json()["id_solicitud"]
+    cuerpo = client.post(
+        f"/api/solicitudes/{id_solicitud}/otp",
+        json={"canal": "whatsapp"},
+    ).json()
+    assert cuerpo["canal"] == "email"
+    assert cuerpo["destino"] == "cliente@correo.co"
+
+
+def test_otp_canal_email_explicito_y_por_defecto(client):
+    """canal='email' va directo al correo; sin canal se asume whatsapp y
+    sin teléfono cae a email (sin_destino si tampoco hay correo)."""
+    r = client.post(
+        "/api/solicitudes",
+        json={
+            **SOLICITUD,
+            "contacto_vivienda": {"correo": "cliente@correo.co"},
+        },
+    )
+    id_solicitud = r.json()["id_solicitud"]
+    cuerpo = client.post(
+        f"/api/solicitudes/{id_solicitud}/otp", json={"canal": "email"}
+    ).json()
+    assert cuerpo["canal"] == "email"
+    assert cuerpo["destino"] == "cliente@correo.co"
+
+    # Solicitud sin contacto: whatsapp→email→sin_destino.
+    id_solicitud = _crear_solicitud(client)
+    cuerpo = client.post(
+        f"/api/solicitudes/{id_solicitud}/otp", json={}
+    ).json()
+    assert cuerpo["canal"] == "email"
+    assert cuerpo["estado_envio"] == "sin_destino"
+
+
+# ---------------------------------------------------------------------------
+# Datos de formalización (información del cliente antes del OTP)
+# ---------------------------------------------------------------------------
+def test_datos_formalizacion_guarda_y_expone(client):
+    id_solicitud = _crear_solicitud(client)
+    payload = {
+        "via_principal": "Calle",
+        "numero_via": "48",
+        "letra_via": "A",
+        "sector": "Norte",
+        "numero_cruce": "101",
+        "letra_cruce": "B",
+        "numero_final": "40",
+        "otras_caracteristicas": "Casa 10",
+        "barrio": "La Flora",
+        "ciudad": "Cali, Valle del Cauca",
+        "estrato": 4,
+        "tipo_vivienda": "Arrendada",
+        "zona_rural": False,
+        "estado_civil": "Casado(a)",
+        "personas_a_cargo": 3,
+        "num_hijos": 2,
+        "es_cabeza_familia": True,
+        "cuenta_bienes_raices": True,
+        "cuenta_vehiculo": True,
+        "tiene_moto": True,
+        "tiene_carro": False,
+        "primera_moto": False,
+        "estoy_financiando": True,
+        "nombre_empresa": "Distribuciones ABC",
+        "ciudad_empresa": "Palmira, Valle del Cauca",
+        "fecha_ingreso": "2020-03-01",
+        "nivel_educativo": "Profesional",
+        "profesion": "Administrador",
+        "cargo": "Auxiliar administrativo",
+        "actividad_comercial": "Comercio",
+    }
+    r = client.put(f"/api/solicitudes/{id_solicitud}/datos-formalizacion", json=payload)
+    assert r.status_code == 204, r.text
+
+    detalle = client.get(f"/api/solicitudes/{id_solicitud}").json()
+    contacto = detalle["contacto_vivienda"]
+    assert contacto["direccion"] == "Calle 48 A Norte No. 101 B-40, Casa 10"
+    assert contacto["barrio"] == "La Flora"
+    assert contacto["ciudad"] == "Cali, Valle del Cauca"
+    assert contacto["estrato"] == 4
+    assert contacto["tipo_vivienda"] == "Arrendada"
+    assert contacto["zona_rural"] is False
+    assert contacto["estado_civil"] == "Casado(a)"
+    assert contacto["personas_a_cargo"] == 3
+    assert contacto["num_hijos"] == 2
+    assert contacto["es_cabeza_familia"] is True
+    assert contacto["cuenta_bienes_raices"] is True
+    assert contacto["tiene_moto"] is True
+    assert contacto["tiene_carro"] is False
+    assert contacto["primera_moto"] is False
+    assert contacto["estoy_financiando"] is True
+    # Los canales capturados en originación no se tocan.
+    assert contacto["correo"] is None and contacto["telefono"] is None
+
+    laboral = detalle["datos_laborales"]
+    assert laboral["nombre_empresa"] == "Distribuciones ABC"
+    assert laboral["ciudad_empresa"] == "Palmira, Valle del Cauca"
+    assert laboral["fecha_ingreso"] == "2020-03-01"
+    assert laboral["nivel_educativo"] == "Profesional"
+    assert laboral["profesion"] == "Administrador"
+    assert laboral["cargo"] == "Auxiliar administrativo"
+    assert laboral["actividad_comercial"] == "Comercio"
+
+
+def test_datos_formalizacion_parcial_no_borra(client):
+    """Un segundo PUT con pocos campos actualiza solo esos."""
+    id_solicitud = _crear_solicitud(client)
+    client.put(
+        f"/api/solicitudes/{id_solicitud}/datos-formalizacion",
+        json={"barrio": "Centro", "estado_civil": "Soltero(a)"},
+    )
+    client.put(
+        f"/api/solicitudes/{id_solicitud}/datos-formalizacion",
+        json={"num_hijos": 1},
+    )
+    detalle = client.get(f"/api/solicitudes/{id_solicitud}").json()
+    contacto = detalle["contacto_vivienda"]
+    assert contacto["barrio"] == "Centro"
+    assert contacto["estado_civil"] == "Soltero(a)"
+    assert contacto["num_hijos"] == 1
+
+
+def test_datos_formalizacion_solicitud_inexistente(client):
+    r = client.put(
+        "/api/solicitudes/00000000-0000-0000-0000-000000000000/datos-formalizacion",
+        json={"barrio": "Centro"},
+    )
+    assert r.status_code == 404
+
+
+def test_crear_solicitud_persiste_nombre_empresa(client):
+    """El empleador capturado en el paso 4 queda en datos_laborales para
+    precargar el formulario de formalización."""
+    solicitud = {
+        **SOLICITUD,
+        "cliente": {**SOLICITUD["cliente"], "num_cedula": "1000000099"},
+        "datos_laborales": {
+            **SOLICITUD["datos_laborales"],
+            "nombre_empresa": "Empleador Precargado S.A.S.",
+        },
+    }
+    r = client.post("/api/solicitudes", json=solicitud)
+    assert r.status_code == 201, r.text
+    detalle = client.get(f"/api/solicitudes/{r.json()['id_solicitud']}").json()
+    assert detalle["datos_laborales"]["nombre_empresa"] == "Empleador Precargado S.A.S."

@@ -9,7 +9,7 @@ frontera de traducción: los services escriben *_A_DB y leen con
 *_DESDE_DB, tolerando también valores legados escritos a mano.
 """
 
-from backend.models.enums import Decision, DecisionFinal, Ocupacion, TipoContrato
+from backend.models.enums import DecisionFinal, Ocupacion, TipoContrato
 
 
 def _normalizar(valor: str) -> str:
@@ -49,10 +49,7 @@ DECISION_A_DB = {
 def estado_solicitud(resultado) -> str:
     """Estado de solicitud_credito tras una evaluación.
 
-    Las causales internas Estudio / Requiere Codeudor dejan la
-    solicitud 'en_revision' para que la resuelva el comité; el resto
-    sigue la decisión pública.
+    Sin comité: las causales internas Estudio / Requiere Codeudor ya no
+    dejan la solicitud 'en_revision'; siguen la decisión pública.
     """
-    if resultado.decision_interna in (Decision.ESTUDIO, Decision.REQUIERE_CODEUDOR):
-        return "en_revision"
     return "aprobada" if resultado.decision == DecisionFinal.APROBADO else "rechazada"

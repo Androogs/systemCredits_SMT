@@ -12,6 +12,11 @@ import {
   listarProductos,
   type ProductoApi,
 } from '../features/credit-origination/api/originacionApi'
+import {
+  PRIMA_SEGURO_VIDA_PCT,
+  TASA_MENSUAL_REFERENCIA,
+} from '../features/credit-origination/model/resultado-evaluacion'
+import type { SimulacionPrevia } from '../features/credit-origination/model/borrador'
 import { Calculator, ArrowRight, AlertTriangle } from 'lucide-react'
 
 // Rangos de referencia si el catálogo no está disponible (coinciden
@@ -35,9 +40,8 @@ const initial = {
   valorVehiculo: 10_000_000,
   cuotaInicial: 1_000_000,
   adicionales: 1_150_000,
-  cargoAdministrativo: 200_000,
-  seguroMensual: 36_000,
-  tasaMensual: 2.16,
+  // Misma tasa con la que el motor evalúa capacidad de pago.
+  tasaMensual: TASA_MENSUAL_REFERENCIA,
   plazoMeses: 48,
 }
 
@@ -86,13 +90,11 @@ export default function Simulador() {
     setForm((prev) => ({ ...prev, [key]: n ?? 0 }))
 
   const resultado = useMemo(() => {
-    // Saldo a financiar = valor moto + adicionales + cargo admin − cuota inicial
+    // Saldo a financiar = valor moto + adicionales − cuota inicial.
+    // El cargo administrativo es interno: no entra en la vista del asesor.
     const montoFinanciar = Math.max(
       0,
-      form.valorVehiculo +
-        form.adicionales +
-        form.cargoAdministrativo -
-        form.cuotaInicial,
+      form.valorVehiculo + form.adicionales - form.cuotaInicial,
     )
     const plazoSeguro = Math.max(1, form.plazoMeses)
     const cuotaFinanciacion = cuotaAnualidad(
@@ -100,7 +102,9 @@ export default function Simulador() {
       form.tasaMensual,
       plazoSeguro,
     )
-    const cuotaSeguros = form.seguroMensual
+    // Seguro de vida: prima mensual fija del 0,35 % sobre el saldo a
+    // financiar (espeja seguro_producto.tasa_prima y el pagaré).
+    const cuotaSeguros = (montoFinanciar * PRIMA_SEGURO_VIDA_PCT) / 100
     const cuota = cuotaFinanciacion + cuotaSeguros
     const cuotaDiaria = cuota / DIAS_MES
     const tasaEA = (Math.pow(1 + form.tasaMensual / 100, 12) - 1) * 100
@@ -215,8 +219,9 @@ export default function Simulador() {
                       currency(Math.round(resultado.cuotaFinanciacion)),
                     ],
                     [
-                      'Cuota seguros',
+                      'Seguro de vida',
                       currency(Math.round(resultado.cuotaSeguros)),
+                      `${PRIMA_SEGURO_VIDA_PCT}% m.v. del saldo`,
                     ],
                     [
                       'Tasa mensual',
@@ -260,12 +265,6 @@ export default function Simulador() {
                   <dt className="text-slate-300">Cuota inicial</dt>
                   <dd className="font-semibold text-cyan-300">
                     − {currency(form.cuotaInicial)}
-                  </dd>
-                </div>
-                <div className="flex items-baseline justify-between gap-3">
-                  <dt className="text-slate-300">Cargo administrativo</dt>
-                  <dd className="font-semibold">
-                    {currency(form.cargoAdministrativo)}
                   </dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-3 border-t border-white/10 pt-1.5">
@@ -446,24 +445,12 @@ export default function Simulador() {
                 value={form.cuotaInicial}
                 onValor={(n) => actualizarValor('cuotaInicial', n)}
               />
-              <CampoNumerico
-                className="input-base"
-                label="Cargo administrativo (COP)"
-                formatoMiles
-                minimo={0}
-                maximo={500_000_000}
-                value={form.cargoAdministrativo}
-                onValor={(n) => actualizarValor('cargoAdministrativo', n)}
-              />
-              <CampoNumerico
-                className="input-base"
-                label="Seguro mensual (COP)"
-                formatoMiles
-                minimo={0}
-                maximo={10_000_000}
-                value={form.seguroMensual}
-                onValor={(n) => actualizarValor('seguroMensual', n)}
-              />
+              {/* El seguro de vida no es editable: prima fija del 0,35 %
+                  m.v. sobre el saldo a financiar (política del producto). */}
+              <p className="text-xs text-slate-500 rounded-lg bg-slate-50 border border-slate-200 p-3">
+                Seguro de vida: {PRIMA_SEGURO_VIDA_PCT}% m.v. sobre el saldo a
+                financiar — {currency(Math.round(resultado.cuotaSeguros))}/mes.
+              </p>
               <CampoNumerico
                 className="input-base"
                 label={`Tasa mensual % (${rangos.tasaMin}–${rangos.tasaMax})`}
@@ -486,7 +473,19 @@ export default function Simulador() {
                 variante="primario"
                 className="w-full justify-center"
                 iconoFin={<ArrowRight size={16} aria-hidden="true" />}
-                onClick={() => navigate('/nueva-solicitud')}
+                onClick={() =>
+                  navigate('/nueva-solicitud', {
+                    state: {
+                      simulacion: {
+                        valorMoto: form.valorVehiculo,
+                        plazoMeses: form.plazoMeses,
+                        adicionales: form.adicionales,
+                        montoFinanciar: Math.round(resultado.montoFinanciar),
+                        cuotaMensual: Math.round(resultado.cuota),
+                      } satisfies SimulacionPrevia,
+                    },
+                  })
+                }
               >
                 Usar en una solicitud
               </Boton>
@@ -501,7 +500,8 @@ export default function Simulador() {
             </h3>
             <p className="text-xs text-slate-500">
               {form.plazoMeses} cuotas de{' '}
-              {currency(Math.round(resultado.cuotaFinanciacion))} (sin seguros)
+              {currency(Math.round(resultado.cuotaFinanciacion))} + seguro
+              mensual de {currency(resultado.cuotaSeguros)}
             </p>
           </div>
           <div className="overflow-auto max-h-96">
@@ -513,6 +513,9 @@ export default function Simulador() {
                   </th>
                   <th scope="col" className="px-5 py-3">
                     Cuota
+                  </th>
+                  <th scope="col" className="px-5 py-3">
+                    Seguro
                   </th>
                   <th scope="col" className="px-5 py-3">
                     Interés
@@ -533,6 +536,9 @@ export default function Simulador() {
                   >
                     <td className="px-5 py-2.5">{fila.mes}</td>
                     <td className="px-5 py-2.5">{currency(fila.cuota)}</td>
+                    <td className="px-5 py-2.5">
+                      {currency(resultado.cuotaSeguros)}
+                    </td>
                     <td className="px-5 py-2.5">{currency(fila.interes)}</td>
                     <td className="px-5 py-2.5">
                       {currency(fila.abonoCapital)}

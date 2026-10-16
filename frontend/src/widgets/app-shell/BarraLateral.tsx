@@ -12,13 +12,11 @@ import {
   PanelLeftOpen,
   Briefcase,
   Calculator,
-  Gavel,
   X,
   UserCog,
   ShieldCheck,
 } from 'lucide-react'
 import { guardarRol, useRol } from '../../shared/lib/sesion'
-import { useSolicitudes } from '../../entities/credit/model/solicitudesPanel'
 
 interface ItemNav {
   to: string
@@ -54,25 +52,7 @@ export default function BarraLateral({
     () => window.matchMedia('(max-width: 767.98px)').matches,
   )
   const rol = useRol()
-  // Conteo de casos pendientes del comité (badge del menú; solo admin).
-  // Comparte la caché ['solicitudes'] con las páginas, sin fetch extra.
-  const { datos: solicitudes } = useSolicitudes({ limite: 200 })
-  const pendientesComite = useMemo(
-    () => solicitudes.filter((s) => s.estado === 'en_revision').length,
-    [solicitudes],
-  )
-  const itemsNav = useMemo<ItemNav[]>(() => {
-    const items = [...nav]
-    if (rol === 'administrador') {
-      items.splice(3, 0, {
-        to: '/comite',
-        label: 'Comité',
-        icon: Gavel,
-        badge: pendientesComite || undefined,
-      })
-    }
-    return items
-  }, [rol, pendientesComite])
+  const itemsNav = useMemo<ItemNav[]>(() => [...nav], [])
   const botonCerrarRef = useRef<HTMLButtonElement>(null)
   const asideRef = useRef<HTMLElement>(null)
   const menuEstabaAbierto = useRef(false)

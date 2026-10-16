@@ -102,6 +102,45 @@ class Settings(BaseSettings):
     rate_limit_habilitado: bool = True
     rate_limit_max_peticiones: int = 30  # métodos mutadores por IP
     rate_limit_ventana_seg: float = 60.0
+    # --- Notificaciones al cliente (email SMTP) ---
+    # Sin SMTP configurado, el servicio solo registra el envío en log
+    # (modo demo: la notificación se muestra en la UI del asesor).
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_desde: str = ""
+    smtp_tls: bool = True
+    # --- Notificaciones al cliente (WhatsApp vía WATI) ---
+    # Sin credenciales el envío queda 'simulado' en log, igual que SMTP.
+    # El OTP se envía como plantilla de autenticación aprobada por Meta.
+    wati_base_url: str = ""  # ej: https://live-mt-server.wati.io
+    wati_tenant_id: str = ""
+    wati_api_token: str = ""
+    # Número WABA del tenant; solo necesario en tenants multi-WABA.
+    wati_channel_number: str = ""
+    # Nombre de la plantilla de autenticación aprobada para el OTP.
+    wati_plantilla_otp: str = "otp_verificacion"
+    wati_timeout_segundos: float = 15.0
+    # --- OTP ---
+    otp_ttl_minutos: int = 10
+    otp_max_intentos: int = 3
+
+    # --- Ofertas ---
+    oferta_vigencia_dias: int = 15
+
+    # --- Documentos de legalización (paquete de firma) ---
+    # Plantillas DOCX con MERGEFIELDs; la firma (OTP) los genera llenos.
+    documentos_plantillas_dir: str = str(
+        RAIZ_PROYECTO / "backend" / "documentos" / "plantillas"
+    )
+    # Ciudad donde se firma el paquete (sede del concesionario que radica).
+    documentos_ciudad_firma: str = "PALMIRA"
+    # Día de pago pactado para la primera cuota del pagaré (como el 20
+    # del formato real): la primera cuota cae ese día del mes siguiente
+    # a la firma.
+    documentos_dia_pago: int = Field(20, ge=1, le=28)
+
     # --- Captura remota de evidencias ---
     evidencias_dir: str = "uploads/evidencias"  # storage local del MVP; S3 en producción
     captura_ttl_minutos: int = 30  # vigencia del link con token

@@ -35,7 +35,6 @@ import {
 const STATUS_COLORS = {
   APROBADO: '#10b981',
   RECHAZADO: '#ef4444',
-  REQUIERE_REVISION: '#f59e0b',
   PENDIENTE: '#94a3b8',
 }
 
@@ -90,19 +89,14 @@ export default function Resumen() {
       : solicitudes
 
   const total = base.length
-  const approved = base.filter(
-    (s) => estadoParaVista(s, esAsesor) === 'APROBADO',
-  ).length
-  const rejected = base.filter(
-    (s) => estadoParaVista(s, esAsesor) === 'RECHAZADO',
-  ).length
+  const approved = base.filter((s) => estadoParaVista(s) === 'APROBADO').length
+  const rejected = base.filter((s) => estadoParaVista(s) === 'RECHAZADO').length
   const pendientes = base.filter(
-    (s) => estadoParaVista(s, esAsesor) === 'PENDIENTE',
+    (s) => estadoParaVista(s) === 'PENDIENTE',
   ).length
-  const review = total - approved - rejected - pendientes
 
   const cupos = base
-    .filter((s) => estadoParaVista(s, esAsesor) === 'APROBADO')
+    .filter((s) => estadoParaVista(s) === 'APROBADO')
     .map((s) => numero(s.evaluacion?.cupo_sugerido))
     .filter((n): n is number => n != null)
   const capacidades = base
@@ -137,18 +131,12 @@ export default function Resumen() {
       color: STATUS_COLORS.RECHAZADO,
     },
     {
-      estado: 'REQUIERE_REVISION',
-      name: 'En revisión',
-      value: review,
-      color: STATUS_COLORS.REQUIERE_REVISION,
-    },
-    {
       estado: 'PENDIENTE',
       name: 'Pendientes de evaluación',
       value: pendientes,
       color: STATUS_COLORS.PENDIENTE,
     },
-  ].filter((item) => !(esAsesor && item.estado === 'REQUIERE_REVISION'))
+  ]
 
   const byEmployment = Object.entries(OCUPACION_LABELS).map(
     ([tipo, label]) => ({
@@ -181,10 +169,10 @@ export default function Resumen() {
     .map(([tipo, label]) => {
       const grupo = base.filter((s) => s.ocupacion === tipo)
       const aprobadas = grupo.filter(
-        (s) => estadoParaVista(s, esAsesor) === 'APROBADO',
+        (s) => estadoParaVista(s) === 'APROBADO',
       ).length
       const rechazadas = grupo.filter(
-        (s) => estadoParaVista(s, esAsesor) === 'RECHAZADO',
+        (s) => estadoParaVista(s) === 'RECHAZADO',
       ).length
       return {
         tipo,
@@ -205,7 +193,7 @@ export default function Resumen() {
       ? solicitudes
       : solicitudes.filter((s) => {
           if (filtro.campo === 'estado')
-            return estadoParaVista(s, esAsesor) === filtro.valor
+            return estadoParaVista(s) === filtro.valor
           if (filtro.campo === 'ocupacion') return s.ocupacion === filtro.valor
           const d = new Date(s.fecha_hora)
           return `${d.getFullYear()}-${d.getMonth()}` === filtro.valor
@@ -251,7 +239,7 @@ export default function Resumen() {
           <Kpi
             label="Solicitudes activas"
             valor={total}
-            detalle={`${review + pendientes} requieren gestión`}
+            detalle={`${pendientes} requieren gestión`}
             tone="brand"
             cargando={cargando}
           />
@@ -272,12 +260,8 @@ export default function Resumen() {
           />
           <Kpi
             label="Requieren gestión"
-            valor={review + pendientes}
-            detalle={
-              esAsesor
-                ? `${pendientes} por gestionar`
-                : `${review} en comité · ${pendientes} sin evaluar`
-            }
+            valor={pendientes}
+            detalle={`${pendientes} pendientes de evaluar`}
             tone="red"
             cargando={cargando}
           />
@@ -800,13 +784,12 @@ export default function Resumen() {
                         </td>
                       )}
                       <td className="py-3 pr-4">
-                        {cupo != null &&
-                        estadoParaVista(s, esAsesor) === 'APROBADO'
+                        {cupo != null && estadoParaVista(s) === 'APROBADO'
                           ? currency(cupo)
                           : '—'}
                       </td>
                       <td className="py-3 pr-4">
-                        <InsigniaEstado status={estadoParaVista(s, esAsesor)} />
+                        <InsigniaEstado status={estadoParaVista(s)} />
                       </td>
                     </tr>
                   )

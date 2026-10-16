@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import ValidacionInicial from './ValidacionInicial'
 import AutorizacionDatos from './AutorizacionDatos'
 import EvidenciaYDatos from './EvidenciaYDatos'
@@ -7,12 +8,23 @@ import EvaluacionYResultado from './EvaluacionYResultado'
 import {
   type BorradorOriginacion,
   type ContextoOriginacion,
+  type SimulacionPrevia,
   cargarBorrador,
   guardarBorrador,
   limpiarBorrador,
 } from '../model/borrador'
 import type { PasoOriginacion } from '../model/etapas-originacion'
-import type { IdentidadSolicitante } from '../model/mapeos-api'
+import {
+  normalizarFecha,
+  tipoDocumentoUi,
+  type IdentidadSolicitante,
+} from '../model/mapeos-api'
+import { obtenerSolicitud } from '../api/originacionApi'
+import {
+  numero,
+  OCUPACION_LABELS,
+} from '../../../entities/credit/model/solicitudesPanel'
+import type { DatosSolicitud } from './CrearSolicitud'
 import './FlujoOriginacion.css'
 
 /**
@@ -24,7 +36,9 @@ function identidadDesdeContexto(
   contexto: ContextoOriginacion,
 ): IdentidadSolicitante | null {
   const { validacion, revision } = contexto
-  if (!validacion || !revision?.nombres.trim() || !revision.apellidos.trim()) {
+  // Basta con documento + nombre: en una solicitud retomada el nombre
+  // completo llega sin separar en nombres/apellidos.
+  if (!validacion || !revision?.nombres.trim()) {
     return null
   }
   // La cédula digitada en el paso 1 es la fuente de verdad: el OCR y la
@@ -38,29 +52,129 @@ function identidadDesdeContexto(
     apellidos: revision.apellidos,
     fechaNacimiento: normalizarFecha(revision.fechaNacimiento),
     nacionalidad: validacion.nacionalidad,
+    telefono: contexto.autorizacion?.telefono,
+    correo: contexto.autorizacion?.correo,
+    autorizoHabeas: contexto.autorizacion?.autorizaTratamiento === true,
+    fechaExpedicion: revision.fechaExpedicion,
+    ciudadExpedicion: revision.ciudadExpedicion,
+    lugarNacimiento: revision.lugarNacimiento,
   }
 }
 
-/** Acepta 'YYYY-MM-DD' o 'DD/MM/YYYY' y devuelve formato ISO. */
-function normalizarFecha(valor: string): string {
-  const texto = valor.trim()
-  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto
-  const ddmmyyyy = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(texto)
-  if (ddmmyyyy) {
-    const [, dia, mes, anio] = ddmmyyyy
-    return `${anio}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`
+/** Reconstruye el contexto del paso 5 desde una solicitud persistida. */
+function contextoDesdeSolicitud(
+  datos: Awaited<ReturnType<typeof obtenerSolicitud>>,
+): ContextoOriginacion {
+  // El backend expone el nombre completo sin separar: se reparte por la
+  // mitad como aproximación nombres/apellidos (convención colombiana).
+  const partes = datos.nombre_cliente.trim().split(/\s+/)
+  const mitad = Math.ceil(partes.length / 2)
+  const laborales = datos.datos_laborales
+  const solicitud: DatosSolicitud = {
+    lineaCredito: datos.linea_credito ?? 'Inversiones Pacífico',
+    destinoCredito: datos.destino_credito ?? 'Financiamiento de Vehículos',
+    plazoMeses: datos.plazo_deseado_meses ?? 24,
+    ocupacion: OCUPACION_LABELS[datos.ocupacion ?? ''] ?? datos.ocupacion ?? '',
+    tipoContrato: laborales?.tipo_contrato ?? '',
+    subtipoIndependiente: '',
+    empresa: '',
+    mesesContinuidad: laborales?.meses_continuidad ?? 0,
+    aniosCamara: numero(laborales?.anios_camara_comercio),
+    ingresosMensuales: numero(laborales?.ingreso_mensual) ?? 0,
+    entidadPagadora: '',
   }
-  return texto
+  return {
+    idSolicitud: datos.id_solicitud,
+    solicitud,
+    validacion: {
+      tipoDocumento: tipoDocumentoUi(datos.tipo_documento),
+      numeroDocumento: datos.num_cedula,
+      edad: 0,
+      nacionalidad: 'Colombia',
+      multasPendientes: false,
+    },
+    revision: {
+      nombres: partes.slice(0, mitad).join(' '),
+      apellidos: partes.slice(mitad).join(' '),
+      numeroIdentificacion: datos.num_cedula,
+      sexo: '',
+      fechaNacimiento: '',
+      lugarNacimiento: '',
+      fechaExpedicion: '',
+      ciudadExpedicion: '',
+    },
+  }
 }
 
 function FlujoOriginacion() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  // El simulador llega por state de ruta; se siembra en el contexto (el
+  // autoguardado del borrador lo mantiene) y se limpia la ruta para que
+  // un refresh o un "volver" no lo reinyecte.
+  const simulacionRuta = (
+    location.state as { simulacion?: SimulacionPrevia } | null
+  )?.simulacion
+  // "Continuar" desde la lista de solicitudes: reconstruye el contexto
+  // desde el backend y aterriza en el paso 5 (evaluación y oferta).
+  const retomarId = (location.state as { retomarId?: string } | null)?.retomarId
+  const [retomando, setRetomando] = useState(Boolean(retomarId))
+  const [errorRetomar, setErrorRetomar] = useState<string | null>(null)
+
   const [pasoActual, setPasoActual] = useState<PasoOriginacion>(1)
-  const [contexto, setContexto] = useState<ContextoOriginacion>({})
+  const [contexto, setContexto] = useState<ContextoOriginacion>(() =>
+    simulacionRuta ? { simulacion: simulacionRuta } : {},
+  )
   const [formalizacionIniciada, setFormalizacionIniciada] = useState(false)
   // Borrador detectado al abrir el flujo: se muestra la opción de
   // retomar antes de guardar nada encima.
   const [borradorPendiente, setBorradorPendiente] =
     useState<BorradorOriginacion | null>(() => cargarBorrador())
+
+  useEffect(() => {
+    if (simulacionRuta || retomarId) {
+      navigate(location.pathname, { replace: true, state: null })
+    }
+    if (retomarId) {
+      let cancelado = false
+      obtenerSolicitud(retomarId)
+        .then((datos) => {
+          if (cancelado) return
+          // El borrador local es de otra solicitud: al retomar una
+          // persistida se descarta y el autoguardado crea uno nuevo.
+          limpiarBorrador()
+          setBorradorPendiente(null)
+          // Oferta ya seleccionada: la originación quedó cerrada; lo que
+          // sigue es la formalización/desembolso en el detalle.
+          if (
+            datos.ofertas.some((o) => o.seleccionada) ||
+            datos.estado === 'desembolsada'
+          ) {
+            navigate(`/solicitudes/${datos.id_solicitud}`, {
+              replace: true,
+            })
+            return
+          }
+          setContexto(contextoDesdeSolicitud(datos))
+          setPasoActual(5)
+        })
+        .catch(() => {
+          if (!cancelado) {
+            setErrorRetomar(
+              'No se pudo recuperar la solicitud; revisa la conexión e intenta de nuevo.',
+            )
+          }
+        })
+        .finally(() => {
+          if (!cancelado) setRetomando(false)
+        })
+      return () => {
+        cancelado = true
+      }
+    }
+    // Solo al montar: consumir el state de la ruta una vez.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const heading = document.querySelector<HTMLElement>('#main-content h1')
@@ -89,7 +203,11 @@ function FlujoOriginacion() {
 
   const retomarBorrador = () => {
     if (!borradorPendiente) return
-    setContexto(borradorPendiente.contexto)
+    setContexto(
+      simulacionRuta
+        ? { ...borradorPendiente.contexto, simulacion: simulacionRuta }
+        : borradorPendiente.contexto,
+    )
     setFormalizacionIniciada(borradorPendiente.formalizacionIniciada)
     setPasoActual(
       Math.min(5, Math.max(1, borradorPendiente.paso)) as PasoOriginacion,
@@ -119,6 +237,27 @@ function FlujoOriginacion() {
     setFormalizacionIniciada(false)
     setPasoActual(4)
   }
+
+  const renderRetomando = () => (
+    <section className="flujo-originacion__pendiente">
+      <p>Originación</p>
+      <h1>Recuperando solicitud…</h1>
+      <p role="status">Cargando los datos persistidos de la solicitud.</p>
+    </section>
+  )
+
+  const renderErrorRetomar = () => (
+    <section className="flujo-originacion__pendiente">
+      <p>Originación</p>
+      <h1>No se pudo retomar</h1>
+      <p role="alert">{errorRetomar}</p>
+      <div className="flujo-originacion__acciones">
+        <button type="button" onClick={reiniciar}>
+          Empezar una solicitud nueva
+        </button>
+      </div>
+    </section>
+  )
 
   const renderBorradorPendiente = () => {
     const ctx = borradorPendiente!.contexto
@@ -225,6 +364,7 @@ function FlujoOriginacion() {
           solicitud={contexto.solicitud}
           identidad={identidadDesdeContexto(contexto) ?? undefined}
           validacion={contexto.validacion}
+          simulacion={contexto.simulacion}
           resultadoInicial={contexto.resultadoEvaluacion ?? null}
           onBack={() => setPasoActual(4)}
           onModificar={modificarSolicitud}
@@ -237,7 +377,6 @@ function FlujoOriginacion() {
             // consulta ya no se puede reabrir para modificarla.
             setFormalizacionIniciada(true)
           }}
-          onEnviadaEstudio={() => setFormalizacionIniciada(true)}
         />
       )
     }
@@ -269,7 +408,13 @@ function FlujoOriginacion() {
 
   return (
     <div className="flujo-originacion">
-      {borradorPendiente ? renderBorradorPendiente() : renderPasoActual()}
+      {retomando
+        ? renderRetomando()
+        : errorRetomar
+          ? renderErrorRetomar()
+          : borradorPendiente
+            ? renderBorradorPendiente()
+            : renderPasoActual()}
     </div>
   )
 }

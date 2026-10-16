@@ -12,74 +12,154 @@ Plataforma de financiación de créditos con **frontend en React + TypeScript + 
 
 ## Estructura del proyecto
 
+### Visión general
+
 ```text
-.env.example
-.gitignore
-alembic.ini
-alembic/
-package.json
-package-lock.json
-.husky/
-README.md
-
-parametros.json               # Parámetros del motor (score, endeudamiento, SMMLV)
-tests/                        # Suite pytest del motor (unit/ + integration/)
-reportes/                     # Reportes Experian de prueba (CLI evaluar_local)
-scripts/                      # evaluar_local.py, probar_api.py, probar_hdc.py…
-docs/motor_decision/          # Documentación funcional del motor (BRD/PPT v4)
-
-backend/                      # API FastAPI + motor de decisión integrado
-  main.py                     # App FastAPI (CORS, /api, lifespan)
-  config.py                   # Settings (.env): BD, Experian, SMMLV, CORS
-  requirements.txt
-  database/
-    schema.sql                # DDL canónico del esquema SUMOTO
-    insert.sql                # Catálogos + producto semilla
-  routes/                     # solicitudes, motor, parametros, auditoria, health
-  services/                   # motor, evaluación, elegibilidad, finanzas, reglas
-  repositories/               # acceso a solicitud/evaluación/auditoría
-  models/                     # DTOs Pydantic + enums de dominio
-  db_models/                  # ORM SQLAlchemy (models, auditoria, session)
-  integrations/datacredito/   # HDC+, Valor Ingreso, parsers, mock_buro
-  middlewares/
-  utils/
-
-frontend/                     # SPA React + Vite (Feature-Sliced Design)
-  .env.example
-  eslint.config.js
-  .prettierrc.json
-  .prettierignore
-  package.json
-  vite.config.ts
-  postcss.config.js
-  tailwind.config.js
-  tsconfig*.json
-  index.html
-  public/
-    brand/                    # Única fuente de logos (iconográfico + Pacífico)
-  src/
-    app/                      # Configuración global
-      routing/                # React Router (público/protegido)
-      styles/                 # Estilos globales, Tailwind base
-    pages/                    # Vistas (Login, Dashboard, Clientes, etc.)
-    widgets/                  # Composición de features
-      app-shell/              # Layout, Sidebar único, Header
-    features/                 # Acciones de usuario
-      credit-origination/     # Flujo SOCIP: dashboard, solicitudes, simulación
-    entities/                 # Modelos de negocio
-      credit/
-        model/                # Tipos y estado (LoanStatus, InterestRate)
-        ui/                   # Componentes mínimos (CreditRow, StatusBadge)
-    shared/                   # Reutilizable sin lógica de negocio
-      api/                    # Cliente HTTP, interceptores
-      lib/                    # Formatters (currency, dates, interés)
-      styles/
-      ui/                     # UI Kit (Button, Input, Modal, Table…)
+┌─────────────────────────────────────────────────────────────┐
+│  FRONTEND  React + TypeScript + Vite (SPA, Feature-Sliced)  │
+│  pages → widgets → features → entities → shared             │
+│  Cliente HTTP: features/*/api + fetch (timeout, reintentos) │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ HTTP/JSON  /api/*
+        dev: proxy Vite ───┴──► API_PROXY_TARGET (:8001)
+        prod: VITE_API_URL (absoluta) o mismo origen
+┌──────────────────────────▼──────────────────────────────────┐
+│  BACKEND  FastAPI (backend.main:app, todo bajo /api)        │
+│  middlewares: RateLimit + CORS + manejadores de error       │
+│                                                             │
+│  routes (HTTP) → services (negocio) → repositories → ORM    │
+│                                                             │
+│  Motor de decisión (services, puro):                        │
+│  evaluacion_service (orquesta)                              │
+│    → datacredito (HDC+/Valor Ingreso o mock/archivos)       │
+│    → parsers (raw JSON → modelos normalizados)              │
+│    → motor_decision_service: filtros → ingreso → perfiles   │
+│      → matriz ocupación → capacidad → decisión binaria      │
+│                                                             │
+│  Persistencia: SQLAlchemy → PostgreSQL (o SQLite en demo)   │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+### Backend (`backend/`)
+
+| Directorio / archivo | Responsabilidad |
+|---|---|
+| `main.py` | `crear_app()`: middlewares, manejadores, routers bajo `/api` |
+| `config.py` | Settings Pydantic: `.env` — BD, Experian (`HDC_*`, `INCOME_*`, `OKTA_*`), SMMLV, CORS, rate limit, resiliencia, captura |
+| **routes/** | Solo HTTP: validan request, llaman services, devuelven response |
+| `health_routes.py` | `GET /api/health`, `GET /api/` |
+| `auth_routes.py` | `POST /api/auth/login` |
+| `motor_routes.py` | `POST /evaluar`, `POST /ingreso`, `GET /escenarios`, `POST /evaluar-con-archivos` (subir JSON HDC/VI) |
+| `solicitud_routes.py` | CRUD + ciclo: `POST /solicitudes`, `GET /solicitudes`, `GET /{id}`, `POST /{id}/evaluar`, `GET /{id}/ofertas`, `POST /ofertas/seleccionar`, `PUT /datos-formalizacion`, `POST /otp`, `POST /otp/verificar`, `POST /desembolso`, `POST /{id}/cancelar` (motivo obligatorio; 409 si desembolsada) |
+| `auditoria_routes.py` | `GET /auditoria`, `GET /auditoria/{id}` — trazabilidad completa |
+| `parametros_routes.py` | `GET/PUT /parametros`, `POST /parametros/reset` |
+| `catalogo_routes.py` | `GET /productos`, `GET /bancos` |
+| `evidencia_routes.py` | `POST /sesiones-captura`, `GET /captura/{token}`, `POST /captura/{token}/evidencias` (multipart), `GET /evidencias/{id}/contenido` |
+| `dependencies.py` | Inyección de repositorios/sesión DB |
+| **services/** | Lógica de negocio pura (sin HTTP) |
+| `evaluacion_service.py` | **Orquestador**: recupera/crea solicitud, consulta Experian o mock, valida identidad, llama motor, persiste evaluación + auditoría |
+| `motor_decision_service.py` | **Pipeline del motor**: score → filtros duros → ingreso final → perfiles → matriz por ocupación → capacidad → decisión. `causales_traza` separa trazabilidad de causales que deciden |
+| `reglas_filtros_duros.py` | Causales R1–R23: fallecido, embargos, mora, castigos, cancelaciones por mal hábito (R3), edad, documento |
+| `reglas_ingreso.py` | Precedencia de ingreso final: Valor Ingreso > Quanto medio > declarado |
+| `reglas_perfil.py` | Perfiles score (escaleras EP/IF) e ingreso (ALTO/MEDIO/BAJO/GRIS), continuidad por contrato, matriz `cruzar_perfiles_*` por ocupación, exclusión 0/4 |
+| `valor_ingreso_service.py` | **Cálculos derivados de `resultado_pagos`**: línea de tiempo unificada multi-aportante, continuidad calendario, mediana/promedio/desviación/pendiente/tendencia, indicadores agregados, `respuesta_desde_cotizantes` (BD → modelo) |
+| `capacidad_pago_service.py` | Endeudamiento, gastos personales por banda SMMLV, capacidad de pago, cupo/cuota sugeridos, causal E9 |
+| `elegibilidad_service.py` | Reglas de aliados/productos → ofertas |
+| `solicitud_service.py` | Ciclo de vida de la solicitud (crear, consultar, formalización, cancelación, consentimiento Habeas Data) |
+| `otp_service.py` | OTP para firma de pagaré; al verificar dispara el paquete legal |
+| `documento_service.py` | Paquete de legalización: 8 documentos DOCX (5 por MERGEFIELD, solicitud de crédito por tokens `{{CAMPO}}`, compromiso por reemplazo literal, asegurabilidad generada con python-docx), todos sellados con `uuid_firma` |
+| `desembolso_service.py` | Registro del desembolso |
+| `evidencia_service.py` | Sesiones de captura, evidencias en `EVIDENCIAS_DIR` |
+| `validaciones_identidad.py` | Cruce identidad solicitud vs. buró |
+| `finanzas.py` | Anualidad/cuota |
+| `letras.py`, `mapeos_db.py`, `notificacion_service.py`, `autenticacion_service.py`, `seguro_service.py`, `health_service.py`, `textos_legales.py` | Soporte: letras/conversión, mapeo ORM↔DTO, notificaciones, auth, seguros, health, textos legales versionados |
+| `motor_parametros.py` | Carga/validación de `parametros.json` → `MotorParametros` |
+| `motor_exceptions.py` | Excepciones de dominio |
+| **repositories/** | Acceso a datos (SQLAlchemy), sin lógica de negocio |
+| `solicitud_repository.py`, `evaluacion_repository.py`, `auditoria_repository.py`, `evidencia_repository.py`, `health_repository.py` | CRUD de cada agregado |
+| **models/** | DTOs Pydantic + enums de dominio |
+| `enums.py` | `Decision` (interna), `DecisionFinal` (binaria), `PerfilScore`, `PerfilIngreso`, `Ocupacion`, `TipoContrato`, `Causal` (catálogo completo + tipo) |
+| `buro_models.py` | Modelos normalizados de Experian: `RespuestaHDC`, `RespuestaValorIngreso`, `Aportante`, `PeriodoPago`, `Indicadores`, `ResumenGeneralIngresos`, cuentas, alertas |
+| `motor_models.py` | `Solicitud`, `ResultadoMotor`, `PasoTraza`, responses API |
+| `solicitud_models.py`, `auth_models.py`, `health_model.py` | DTOs por módulo |
+| **db_models/** | ORM SQLAlchemy |
+| `models.py` | `cliente`, `solicitud_credito`, `datos_laborales`, `solicitud_contacto_vivienda`, `otp`, `cotizante`, `cotizante_ingreso_mensual`, `criterio_evaluacion`, `evaluacion_credito`, `evaluacion_detalle`, `solicitud_causal`, `capacidad_pago`, `aliado_*`, `oferta_credito` (con `fecha_vigencia`), `banco`, `cuenta_bancaria`, `aseguradora`, `seguro_producto`, `producto_vehiculo` (incluye desglose de hoja de negocio), `credito_financiacion`, `desembolso`, `consentimiento_habeas` |
+| `auditoria_models.py` | `motor_evaluacion_auditoria` (request + resultado completo) |
+| `evidencia_models.py` | `sesion_captura`, `documento_evidencia` |
+| `session.py`, `base.py` | Engine, SessionLocal, Base declarativo |
+| **integrations/datacredito/** | Experian |
+| `hdc_client.py`, `income_client.py` | Clientes REST HDC+ y Valor Ingreso |
+| `auth.py` | OAuth2/Okta tokens |
+| `resiliencia.py` | Timeout, reintentos con backoff, circuit breaker por servicio |
+| `mock_buro.py` | Escenarios mock para `ENVIRONMENT=demo` |
+| `parsers/hdc_parser.py`, `parsers/income_parser.py` | Raw JSON → modelos normalizados (agregados recalculados, no copiados) |
+| **middlewares/** | `rate_limit_middleware.py`, `error_middleware.py` |
+| **database/** | `schema.sql` (DDL canónico SUMOTO), `insert.sql` (catálogos), `seed_demo.py` (tablas + seed idempotente, sirve con SQLite) |
+| **utils/** | `fechas.py`, `lectura_reportes.py`, `loggers.py` |
+
+### Motor de decisión — flujo interno
+
+```text
+POST /api/solicitudes/{id}/evaluar  o  /api/motor/evaluar
+  └─ evaluacion_service
+       ├─ HDC+ / Valor Ingreso (en línea | archivos | escenario_mock)
+       ├─ parsers → RespuestaHDC / RespuestaValorIngreso (normalizados)
+       └─ motor_decision_service.evaluar()
+            1. filtros_duros    → R1–R23
+            2. ingreso_final    → Valor Ingreso > Quanto > declarado
+            3. perfil_score     → A/B/C/D (EP: 750/680/600/500, IF: 770/700/620/520)
+            4. perfil_ingreso   → ALTO/MEDIO/BAJO/GRIS (+continuidad/cámara)
+            5. matriz_decision  → por ocupación (Empleado+BAJO aprueba con
+                                  causal traza; Pensionado/FFMM/Ind+BAJO rechaza)
+            6. capacidad_pago   → endeudamiento, capacidad, cuota moto (E9…)
+            └─ Decisión pública BINARIA: Aprobado solo sin causales que decidan;
+               E4/E5/E6 son trazabilidad cuando la matriz aprueba
+       └─ persistencia: evaluacion_credito + detalle + causales + auditoría
+```
+
+Parámetros vivos en `parametros.json` (editables por `PUT /api/parametros`):
+umbrales de score, perfiles de ingreso por ocupación, continuidad
+(`meses_cont_1/2`), años cámara (`anios_cam_1..4`), endeudamiento, SMMLV.
+
+### Frontend (`frontend/src/`) — Feature-Sliced Design
+
+| Capa | Contenido |
+|---|---|
+| `app/routing/` | `RutasAplicacion.tsx` — rutas protegidas bajo layout + públicas (`/login`, `/captura/:token`) |
+| `app/styles/` | Tailwind base |
+| **pages/** | `IniciarSesion`, `Resumen` (dashboard), `PanelAsesor`, `Originacion` (wizard), `Simulador`, `Solicitudes`, `DetalleSolicitud`, `Resultado`, `Clientes`, `Riesgo`, `Estados`, `Ajustes`, `CapturaMovil` (página pública del celular) |
+| `widgets/app-shell/` | `BarraLateral` (sidebar único), `Encabezado`, `ContenedorPanel` — layout compartido |
+| `features/credit-origination/` | Flujo SOCIP completo: `api/originacionApi.ts` (cliente HTTP: timeout 30s/120s evaluar, reintentos solo GET), `model/` (borrador, etapas, mapeos-api, schemas Zod), `schemas/` (validación por paso), `ui/` (pantallas del wizard: ValidacionInicial, CapturaCedula, CrearSolicitud, EvaluacionYResultado, ResultadoCredito, DatosClienteFormalizacion, EvidenciaYDatos, RevisionDatos, AutorizacionDatos, SeguimientoOriginacion) |
+| `features/auth/` | Login (`autenticacionApi.ts`) |
+| `features/settings/` | `EditorParametros.tsx` — edita `parametros.json` vía API |
+| `entities/credit/` | Tipos/estado del crédito (`solicitudesPanel`, `underwritingEngine`), UI mínima (`InsigniaEstado`) |
+| `shared/` | `lib/` (formatters, finanzas, sesión, toastBus, campoNumerico), `ui/` (UI kit: Boton, Alerta, CampoEntrada, CampoNumerico, Selector, Tarjeta, Toasts, Skeleton) |
+| `env.ts` | `VITE_API_URL` validada con Zod; vacío = `/api` mismo origen |
 
 > **Regla FSD:** una capa superior puede importar de capas inferiores, nunca al revés
 > (`app → pages → widgets → features → entities → shared`). Esto evita dependencias
 > circulares y facilita auditorías.
+
+### Persistencia
+
+- `backend/database/schema.sql` — DDL canónico (esquema SUMOTO); Alembic
+  `0001_baseline` lo ejecuta (`alembic upgrade head`).
+- `insert.sql` — catálogos + producto semilla; `seed_demo.py` lo aplica
+  idempotente y crea tablas auxiliares (`rol`, `concesionario`, `aliado_concesionario`).
+- `DATABASE_URL` soporta PostgreSQL (prod) y SQLite (demo/tests).
+- Evidencias de captura en `EVIDENCIAS_DIR` (`uploads/`).
+
+### Tests, scripts y docs
+
+| Ruta | Contenido |
+|---|---|
+| `tests/unit/` | Motor puro: calculos, filtros BRD, parsers, motor, parámetros, perfil ingreso/continuidad, reglas perfil, rate limit, rechazo, resiliencia, elegibilidad, valor ingreso |
+| `tests/integration/` | API con SQLite en memoria: `test_api.py` (escenarios mock con decisión+ causales esperadas), auth, documentos, evaluar_local, evidencias, experian en línea |
+| `tests/conftest.py`, `tests/modelos.py` | Fixtures compartidas (motor, solicitud, HDC, VI, parámetros demo) |
+| `scripts/` | `evaluar_local.py` (evaluar archivos JSON sin API), `probar_api.py`, `probar_hdc.py`, `probar_income.py` |
+| `reportes/caso_revision/` | Reportes Experian de prueba |
+| `docs/` | `manual_integracion_aliados.md`, `roles-y-alcance.md`, `openapi.{json,yaml}`, `motor_decision/` (BRD, reglas de negocio, parámetros, origen de cálculos, bitácora) |
+| Raíz | `parametros.json`, `alembic.ini`, `Dockerfile`, `docker-compose`, `package.json` (husky+lint-staged), `.env.example` |
 
 ## Variables de entorno
 
@@ -268,6 +348,46 @@ celular nunca toca el backend directo ni hay temas de CORS.
 Alternativa en la misma Wi-Fi (solo fotos — el video requiere HTTPS):
 `npm run dev -- --host`, abrir la app por la IP LAN y ajustar
 `VITE_API_URL`/`CORS_ORIGINS` a esa IP.
+
+## Ambiente de pruebas (staging)
+
+Stack completo en un comando — PostgreSQL + API + frontend detrás de
+nginx, todo por un solo puerto. `ENVIRONMENT=demo`: login demo y OTP
+visible en pantalla (no se envían correos reales). DataCrédito consulta
+el UAT si el `.env` trae credenciales `HDC_*`/`INCOME_*`; si están
+vacías, cae a `mock_buro`.
+
+```powershell
+# 1. Crear el env de staging
+copy .env.staging.example .env.staging   # editar las claves
+
+# 2. Levantar el stack (el API corre `alembic upgrade head` al arrancar)
+docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
+
+# 3. Cargar datos de prueba (asesores, solicitudes, catálogos)
+docker compose -f docker-compose.staging.yml --env-file .env.staging exec api python -m backend.database.seed_demo
+```
+
+Abrir `http://localhost:8080` — nginx sirve la SPA y reenvía `/api` al
+backend por la red interna (mismo origen → sin CORS). La API y la BD no
+quedan expuestas al host.
+
+Notas del staging:
+
+- El contenedor `api` lee `.env` **además** de `.env.staging` (credenciales
+  Experian/SMTP se comparten con el dev local). Con credenciales UAT en
+  `.env` la evaluación consulta DataCrédito real; sin ellas cae a
+  `mock_buro`.
+- **Cambiar `POSTGRES_*` exige recrear el volumen** — Postgres solo
+  inicializa el usuario/clave la primera vez. Si se edita:
+  `docker compose -f docker-compose.staging.yml --env-file .env.staging down -v`
+  y volver a subir + seed (borra los datos de prueba).
+
+**Compartirlo**: `cloudflared tunnel --url http://localhost:8080` da una
+URL HTTPS gratis (necesaria para la cámara en CapturaMovil); para algo
+permanente, el mismo compose en cualquier VM detrás de un dominio con TLS.
+
+Ver también `ARQUITECTURA.md` para el despliegue objetivo en nube.
 
 ## Navegación principal
 

@@ -12,8 +12,11 @@ validaciones para que el contrato sea idéntico en cualquier motor
 import calendar
 import uuid
 from datetime import date, datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy.orm import Session
+
+from backend.config import get_settings
 
 from backend.db_models.models import (
     AliadoFinanciero,
@@ -26,6 +29,7 @@ from backend.db_models.models import (
     SolicitudCredito,
 )
 from backend.models.solicitud_models import DesembolsoResponse, RegistrarDesembolsoRequest
+from backend.services.finanzas import cuota_anualidad
 from backend.services.motor_exceptions import SolicitudNoEncontradaError, ValidacionError
 
 
@@ -199,10 +203,18 @@ class DesembolsoService:
         vehiculo: ProductoVehiculo,
     ) -> CreditoFinanciacion:
         monto = oferta.monto_aprobado
-        cuota = oferta.cuota_mensual
+        # oferta.cuota_mensual ya es la cuota TOTAL (anualidad + seguro
+        # de vida) que el cliente vio al aceptar la oferta; aquí se
+        # desglosa para persistir cada componente.
+        cuota_total = oferta.cuota_mensual or 0
         plazo = oferta.plazo_ofrecido or solicitud.plazo_deseado_meses or 0
         if plazo <= 0:
             raise ValidacionError("La oferta seleccionada no define un plazo válido.")
+        cuota_fin = Decimal(
+            str(cuota_anualidad(Decimal(str(monto or 0)), Decimal(str(oferta.tasa_ofrecida or 0)), plazo))
+        ).quantize(Decimal("0.01"))
+        cuota_vida = max(Decimal(str(cuota_total)) - cuota_fin, Decimal(0))
+        valor_vida = cuota_vida * plazo
         hoy = date.today()
         aliado = (
             self.db.query(AliadoFinanciero)
@@ -215,15 +227,20 @@ class DesembolsoService:
             id_oferta=oferta.id_oferta,
             id_aliado_financiero=aliado.id_aliado if aliado else None,
             ganadora=True,
+            aval_pct=vehiculo.aval_pct,
             tasa=oferta.tasa_ofrecida,
             plazo=plazo,
             valor_financiar=monto,
             saldo_financiar=monto,
             valor_financiacion=monto,
-            total_a_pagar=(cuota or 0) * plazo,
-            cuota_financiacion=cuota or 0,
-            cuota_total=cuota or 0,
+            seguro=valor_vida,
+            valor_seguro_vida=valor_vida,
+            total_a_pagar=cuota_total * plazo,
+            cuota_financiacion=cuota_fin,
+            cuota_seguro_vida=cuota_vida,
+            cuota_total=cuota_total,
             moneda=solicitud.moneda or "COP",
+            dia_pago=get_settings().documentos_dia_pago,
             fecha_inicio=hoy,
             fecha_fin=_fecha_fin(hoy, plazo),
         )

@@ -41,19 +41,9 @@ describe('estadoVisual', () => {
     expect(estadoVisual({ ...base, estado: 'en_evaluacion' })).toBe('PENDIENTE')
   })
 
-  it('perfil gris y en_revision siguen siendo REQUIERE_REVISION', () => {
-    expect(estadoVisual({ ...base, estado: 'en_revision' })).toBe(
-      'REQUIERE_REVISION',
-    )
-    expect(estadoVisual({ ...base, decision: 'perfil_gris' })).toBe(
-      'REQUIERE_REVISION',
-    )
-  })
-
-  it('en_revision prima: la solicitud sigue pendiente de comité', () => {
-    expect(
-      estadoVisual({ ...base, estado: 'en_revision', decision: 'rechazado' }),
-    ).toBe('REQUIERE_REVISION')
+  it('sin comité: en_revision (legado) y perfil gris son RECHAZADO', () => {
+    expect(estadoVisual({ ...base, estado: 'en_revision' })).toBe('RECHAZADO')
+    expect(estadoVisual({ ...base, decision: 'perfil_gris' })).toBe('RECHAZADO')
   })
 })
 

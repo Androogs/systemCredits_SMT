@@ -43,6 +43,20 @@ export const validacionInicialSchema = z.object({
   }),
 })
 
+export const telefonoSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^\d{10}$/,
+    'Ingresa el celular del cliente: 10 dígitos, sin espacios.',
+  )
+
+export const correoSchema = z
+  .string()
+  .trim()
+  .email('Ingresa un correo electrónico válido.')
+  .max(320)
+
 export const datosPersonalesSchema = z
   .object({
     nombres: z.string().trim().min(1, 'Los nombres son obligatorios.'),

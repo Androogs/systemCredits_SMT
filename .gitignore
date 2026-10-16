@@ -29,6 +29,7 @@ build/
 .env
 .env.*
 !.env.example
+!.env.staging.example
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
@@ -121,3 +122,6 @@ motor_decision.db
 
 # Evidencias de captura remota (storage local del MVP)
 uploads/
+
+# Artefacto de `> nul` en Git Bash (Windows)
+nul

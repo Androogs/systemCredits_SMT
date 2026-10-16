@@ -21,6 +21,15 @@ export interface IdentidadSolicitante {
   apellidos: string
   fechaNacimiento: string
   nacionalidad: string
+  /** Contacto del cliente: OTP por WhatsApp y notificaciones por correo. */
+  telefono?: string
+  correo?: string
+  /** true cuando el asesor registró la autorización Habeas Data (paso 2). */
+  autorizoHabeas?: boolean
+  /** Datos de la cédula confirmados en la revisión (paso 3). */
+  fechaExpedicion?: string
+  ciudadExpedicion?: string
+  lugarNacimiento?: string
 }
 
 /** Backend TipoIdentificacion: CC=1, NIT=2, PJE=3, CE=4, PAS=5, PPT=6, TI=7, DNI=8, PEP=9. */
@@ -37,6 +46,18 @@ const TIPO_DOCUMENTO_API: Record<string, string> = {
 
 export function tipoDocumentoApi(codigo: string): string {
   return TIPO_DOCUMENTO_API[codigo.trim().toUpperCase()] ?? codigo
+}
+
+/** Inverso: código numérico del backend ('1') → etiqueta UI ('CC'). */
+const TIPO_DOCUMENTO_UI: Record<string, string> = Object.fromEntries(
+  Object.entries(TIPO_DOCUMENTO_API).map(([etiqueta, codigo]) => [
+    codigo,
+    etiqueta,
+  ]),
+)
+
+export function tipoDocumentoUi(codigo: string | null | undefined): string {
+  return TIPO_DOCUMENTO_UI[codigo ?? ''] ?? codigo ?? 'CC'
 }
 
 /**
@@ -69,6 +90,18 @@ export function primerApellido(apellidos: string): string {
   return apellidos.trim().split(/\s+/)[0] ?? ''
 }
 
+/** Acepta 'YYYY-MM-DD' o 'DD/MM/YYYY' y devuelve formato ISO. */
+export function normalizarFecha(valor: string): string {
+  const texto = valor.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto
+  const ddmmyyyy = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(texto)
+  if (ddmmyyyy) {
+    const [, dia, mes, anio] = ddmmyyyy
+    return `${anio}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`
+  }
+  return texto
+}
+
 export function construirCrearSolicitudPayload(
   identidad: IdentidadSolicitante,
   solicitud: DatosSolicitud,
@@ -88,6 +121,11 @@ export function construirCrearSolicitudPayload(
       fecha_nacimiento: identidad.fechaNacimiento,
       ocupacion,
       nacionalidad: identidad.nacionalidad || 'Colombia',
+      fecha_expedicion: identidad.fechaExpedicion
+        ? normalizarFecha(identidad.fechaExpedicion)
+        : null,
+      ciudad_expedicion: identidad.ciudadExpedicion || null,
+      ciudad_nacimiento: identidad.lugarNacimiento || null,
     },
     datos_laborales: {
       tipo_contrato: tipoContrato,
@@ -95,8 +133,16 @@ export function construirCrearSolicitudPayload(
       ingreso_mensual: solicitud.ingresosMensuales,
       otros_ingresos: 0,
       anios_camara_comercio: solicitud.aniosCamara ?? null,
+      // Empleador (empleado/independiente) o entidad pagadora
+      // (pensionado/FFMM): precarga el formulario de formalización.
+      nombre_empresa:
+        solicitud.empresa.trim() || solicitud.entidadPagadora.trim() || null,
     },
-    contacto_vivienda: {},
+    contacto_vivienda: {
+      telefono: identidad.telefono || null,
+      correo: identidad.correo || null,
+    },
+    ...(identidad.autorizoHabeas ? { consentimiento: { aceptado: true } } : {}),
     linea_credito: solicitud.lineaCredito,
     destino_credito: solicitud.destinoCredito,
     plazo_deseado_meses: solicitud.plazoMeses,

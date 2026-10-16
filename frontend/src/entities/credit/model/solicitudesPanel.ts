@@ -24,15 +24,16 @@ const ESTADOS_NEGATIVOS = new Set(['rechazada', 'cancelada'])
  * que es el perfil gris decidido por el motor).
  */
 export function estadoVisual(s: SolicitudResumenApi): EstadoVisual {
-  // en_revision = pendiente de comité: gana sobre la decisión pública
-  // binaria del motor ("rechazado" con causales E/RC sigue abierta).
-  if (s.estado === 'en_revision') {
-    return 'REQUIERE_REVISION'
-  }
   if (s.decision === 'aprobado' || ESTADOS_POSITIVOS.has(s.estado)) {
     return 'APROBADO'
   }
-  if (s.decision === 'rechazado' || ESTADOS_NEGATIVOS.has(s.estado)) {
+  if (
+    s.decision === 'rechazado' ||
+    ESTADOS_NEGATIVOS.has(s.estado) ||
+    // Legado: 'en_revision' era la espera del comité; sin comité se
+    // muestra como no aprobada.
+    s.estado === 'en_revision'
+  ) {
     return 'RECHAZADO'
   }
   if (
@@ -41,21 +42,26 @@ export function estadoVisual(s: SolicitudResumenApi): EstadoVisual {
   ) {
     return 'PENDIENTE'
   }
-  return 'REQUIERE_REVISION'
+  return 'RECHAZADO'
 }
 
 /**
- * Vista del estado según el rol. Al asesor no se le expone la revisión
- * del motor ni el perfil gris: solo ve el resultado binario final
- * (aprobado / rechazado) o "pendiente" mientras no haya decisión.
+ * Vista del estado para la UI. La decisión visible es binaria para
+ * todos los roles; los detalles sensibles (score, causales) se ocultan
+ * al asesor en el detalle, no en el estado.
  */
-export function estadoParaVista(
-  s: SolicitudResumenApi,
-  esAsesor: boolean,
-): EstadoVisual {
-  const visual = estadoVisual(s)
-  return esAsesor && visual === 'REQUIERE_REVISION' ? 'PENDIENTE' : visual
+export function estadoParaVista(s: SolicitudResumenApi): EstadoVisual {
+  return estadoVisual(s)
 }
+
+// Solicitudes retomables desde la lista o el detalle: aún no están
+// firmadas ni cerradas (rechazada, desembolsada o cancelada son
+// estados finales del flujo de originación).
+export const ESTADOS_RETOMABLES = new Set([
+  'creada',
+  'en_evaluacion',
+  'aprobada',
+])
 
 export const OCUPACION_LABELS: Record<string, string> = {
   empleado: 'Empleado',

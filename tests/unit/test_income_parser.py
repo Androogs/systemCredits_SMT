@@ -50,22 +50,30 @@ def test_parse_pagos(payload):
 
 
 def test_parse_indicadores(payload):
+    """Indicadores derivados de resultado_pagos, no del JSON agregado.
+
+    El fixture reporta tiempo_sin_pago=9 e ingreso_total_ult_mes=4000000,
+    pero sus pagos reales muestran 2 meses sin pago y 1M en el último mes.
+    """
     r = IncomeParser().parse(payload)
     assert r.indicadores is not None
-    assert r.indicadores.tiempo_sin_pago == 9
+    assert r.indicadores.tiempo_sin_pago == 2
     assert r.indicadores.tiempo_total_laborado == 3
-    assert r.indicadores.ingreso_total_ult_mes == Decimal("4000000")
+    assert r.indicadores.ingreso_total_ult_mes == Decimal("1000000")
     assert r.indicadores.total_ult_tres_meses == Decimal("1000000")
     assert r.indicadores.promedio_ult_tres_meses == Decimal("1000000")
 
 
 def test_parse_resumen(payload):
+    """Resumen derivado de resultado_pagos (ingreso plano -> Estable)."""
     r = IncomeParser().parse(payload)
     assert r.resumen_general is not None
-    assert r.resumen_general.tendencia_ingresos == "Decreciente"
+    assert r.resumen_general.tendencia_ingresos == "Estable"
     assert r.resumen_general.meses_continuidad == 3
     assert r.resumen_general.cantidad_fuentes_ingreso == 1
     assert r.resumen_general.ultimo_periodo_cotizado == "06-2020"
+    assert r.resumen_general.consecutivos_seis_meses == 3
+    assert r.resumen_general.mediana_ingresos_cotizante == Decimal("1000000")
 
 
 def test_parse_vacio():

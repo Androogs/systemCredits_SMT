@@ -107,10 +107,6 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
               <dd>Palmira - Centro Interno</dd>
             </div>
           </dl>
-          <span className="validacion__server">
-            <span aria-hidden="true" />
-            Servidor de Validación Activo v2.4.12-Prod (SSL)
-          </span>
         </aside>
       </header>
 

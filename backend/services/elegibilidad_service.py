@@ -18,6 +18,7 @@ from typing import Any
 
 from backend.db_models.models import AliadoProducto, OfertaCredito
 from backend.services.finanzas import cuota_anualidad
+from backend.services.seguro_service import cuota_seguro
 from backend.utils.loggers import get_logger
 
 logger = get_logger("motor_decision.elegibilidad")
@@ -118,7 +119,10 @@ class EligibilidadService:
         cuota no nulos en ofertas elegibles. El monto ofrecido es el
         cupo sugerido por el motor acotado al rango del producto.
         """
-        tasa = getattr(producto, "tasa_min", None) or datos.get("tasa_referencia")
+        # La tasa ofrecida es la que evaluó el motor (tasa_referencia del
+        # request): el cupo y la cuota que vio el asesor responden a esa
+        # tasa; el rango del catálogo queda como respaldo.
+        tasa = datos.get("tasa_referencia") or getattr(producto, "tasa_min", None)
         plazo = _acotar(
             datos.get("plazo"),
             getattr(producto, "plazo_min_meses", None),
@@ -131,4 +135,10 @@ class EligibilidadService:
         oferta.plazo_ofrecido = int(plazo) if plazo is not None else None
         oferta.monto_aprobado = monto
         if tasa is not None and plazo and monto is not None:
-            oferta.cuota_mensual = cuota_anualidad(Decimal(str(monto)), Decimal(str(tasa)), int(plazo))
+            # cuota_mensual es la cuota TOTAL que paga el cliente:
+            # anualidad + seguro de vida deudores (como la carta real).
+            cuota = cuota_anualidad(Decimal(str(monto)), Decimal(str(tasa)), int(plazo))
+            prima_pct = datos.get("prima_seguro_pct")
+            if prima_pct:
+                cuota += cuota_seguro(Decimal(str(monto)), Decimal(str(prima_pct)))
+            oferta.cuota_mensual = cuota

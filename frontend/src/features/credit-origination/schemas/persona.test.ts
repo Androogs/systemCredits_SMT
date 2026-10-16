@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { datosPersonalesSchema, validacionInicialSchema } from './persona'
+import {
+  correoSchema,
+  datosPersonalesSchema,
+  telefonoSchema,
+  validacionInicialSchema,
+} from './persona'
 
 const validacionValida = {
   numeroDocumento: '1032448900',
@@ -92,5 +97,13 @@ describe('datosPersonalesSchema', () => {
       fechaNacimiento: '2015-01-01',
     })
     expect(r.success).toBe(false)
+  })
+
+  it('exige celular de 10 dígitos y correo válido', () => {
+    expect(telefonoSchema.safeParse('3001234567').success).toBe(true)
+    expect(telefonoSchema.safeParse('300123').success).toBe(false)
+    expect(telefonoSchema.safeParse('300 123 4567').success).toBe(false)
+    expect(correoSchema.safeParse('carlos@correo.com').success).toBe(true)
+    expect(correoSchema.safeParse('no-es-correo').success).toBe(false)
   })
 })

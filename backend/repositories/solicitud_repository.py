@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import String, cast, or_
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from backend.db_models.models import (
     AliadoProducto,
     CapacidadPago,
+    Ciudad,
     Cliente,
     Cotizante,
     CreditoFinanciacion,
@@ -17,7 +19,26 @@ from backend.db_models.models import (
     SolicitudCredito,
 )
 from backend.services.finanzas import cuota_anualidad
-from backend.services.motor_exceptions import SolicitudNoEncontradaError, ValidacionError
+from backend.services.motor_exceptions import (
+    ConflictoEstadoError,
+    SolicitudNoEncontradaError,
+    ValidacionError,
+)
+
+
+def oferta_expirada(oferta: OfertaCredito, ahora: datetime | None = None) -> bool:
+    """True si la oferta pasó su fecha_vigencia.
+
+    Una oferta sin vigencia registrada (previa a la migración) se
+    considera vigente: el UPDATE de la migración 0008 la rellena, así
+    que None solo aparece en flujos ajenos a _generar_ofertas.
+    """
+    if oferta.fecha_vigencia is None:
+        return False
+    vigencia = oferta.fecha_vigencia
+    if vigencia.tzinfo is None:
+        vigencia = vigencia.replace(tzinfo=UTC)
+    return (ahora or datetime.now(UTC)) > vigencia
 
 
 class SolicitudRepository:
@@ -97,6 +118,7 @@ class SolicitudRepository:
                 selectinload(SolicitudCredito.capacidades_pago),
                 selectinload(SolicitudCredito.causales),
                 selectinload(SolicitudCredito.ofertas),
+                selectinload(SolicitudCredito.consentimientos),
             )
             .filter(SolicitudCredito.id_solicitud == id_solicitud)
             .one_or_none()
@@ -139,6 +161,26 @@ class SolicitudRepository:
         self.db.add(cliente)
         self.db.flush()  # necesitamos cliente.id_cliente
         return cliente
+
+    def obtener_o_crear_ciudad(self, texto: str | None) -> Ciudad | None:
+        """Resuelve 'Palmira, Valle del Cauca' (o solo 'Palmira') contra
+        el catálogo `ciudad`; crea la fila si no existe."""
+        if not texto or not texto.strip():
+            return None
+        partes = [p.strip() for p in texto.rsplit(",", 1)]
+        nombre = partes[0]
+        departamento = partes[1] if len(partes) > 1 else "Colombia"
+        ciudad = (
+            self.db.query(Ciudad)
+            .filter(Ciudad.nombre == nombre, Ciudad.departamento == departamento)
+            .one_or_none()
+        )
+        if ciudad is not None:
+            return ciudad
+        ciudad = Ciudad(nombre=nombre, departamento=departamento)
+        self.db.add(ciudad)
+        self.db.flush()
+        return ciudad
 
     def crear_solicitud(
         self,
@@ -204,6 +246,12 @@ class SolicitudRepository:
             raise SolicitudNoEncontradaError(f"No existe la oferta {id_oferta} para la solicitud {id_solicitud}")
         if not oferta.elegible:
             raise ValidacionError(f"No se puede seleccionar una oferta no elegible: {oferta.motivo_no_elegible}")
+        if oferta_expirada(oferta):
+            raise ConflictoEstadoError(
+                "La oferta expiró el "
+                f"{oferta.fecha_vigencia:%Y-%m-%d %H:%M} UTC; "
+                "genera una nueva evaluación para renovarla."
+            )
 
         # El cliente puede tomar menos del cupo aprobado o un plazo más
         # corto; nunca más de lo evaluado. El tope real es la capacidad

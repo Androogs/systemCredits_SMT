@@ -44,6 +44,7 @@ def _evidencia_dict(e) -> dict[str, Any]:
     return {
         "id_evidencia": e.id_evidencia,
         "tipo": e.tipo,
+        "nombre_original": e.nombre_original,
         "mime": e.mime,
         "tamano_bytes": e.tamano_bytes,
         "hash_sha256": e.hash_sha256,

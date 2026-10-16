@@ -72,6 +72,8 @@ export interface OfertaApi {
   plazo_ofrecido: number | null
   cuota_mensual: string | null
   monto_aprobado: string | null
+  fecha_vigencia: string | null
+  expirada: boolean
 }
 
 export interface CrearSolicitudPayload {
@@ -83,6 +85,10 @@ export interface CrearSolicitudPayload {
     fecha_nacimiento: string
     ocupacion: string
     nacionalidad: string
+    /** Datos de la cédula (paso 3): documentos de legalización. */
+    fecha_expedicion?: string | null
+    ciudad_expedicion?: string | null
+    ciudad_nacimiento?: string | null
   }
   datos_laborales: {
     tipo_contrato: string | null
@@ -90,11 +96,21 @@ export interface CrearSolicitudPayload {
     ingreso_mensual: number
     otros_ingresos: number
     anios_camara_comercio: number | null
+    /** Empleador/entidad pagadora del paso 4: precarga la formalización. */
+    nombre_empresa?: string | null
   }
-  contacto_vivienda: Record<string, never>
+  contacto_vivienda: {
+    estrato?: number | null
+    personas_a_cargo?: number | null
+    tipo_vivienda?: string | null
+    correo?: string | null
+    telefono?: string | null
+  }
   linea_credito?: string
   destino_credito?: string
   plazo_deseado_meses?: number
+  /** Aceptación Habeas Data del paso 2: el backend sella versión y hash. */
+  consentimiento?: { aceptado: boolean }
   /** Token del link de captura (paso 3): enlaza las evidencias del cliente. */
   sesion_captura?: string
 }
@@ -254,39 +270,84 @@ export function seleccionarOferta(
   )
 }
 
-/** El asesor escala una solicitud rechazada a estudio manual (comité). */
-export function enviarAEstudio(idSolicitud: string, comentario?: string) {
-  return request<SolicitudDetalleApi>(
-    `/api/solicitudes/${idSolicitud}/enviar-estudio`,
-    {
-      method: 'POST',
-      body: JSON.stringify(comentario ? { comentario } : {}),
-    },
-  )
+// ---------- Datos del cliente en formalización ----------
+
+/** Información adicional capturada tras los datos del vehículo y antes de
+ * enviar el OTP. La dirección viaja descompuesta; el backend la compone. */
+export interface DatosFormalizacionPayload {
+  via_principal?: string | null
+  numero_via?: string | null
+  letra_via?: string | null
+  sector?: string | null
+  numero_cruce?: string | null
+  letra_cruce?: string | null
+  numero_final?: string | null
+  otras_caracteristicas?: string | null
+  barrio?: string | null
+  ciudad?: string | null
+  estrato?: number | null
+  tipo_vivienda?: string | null
+  zona_rural?: boolean | null
+  estado_civil?: string | null
+  personas_a_cargo?: number | null
+  num_hijos?: number | null
+  es_cabeza_familia?: boolean | null
+  cuenta_bienes_raices?: boolean | null
+  cuenta_vehiculo?: boolean | null
+  tiene_moto?: boolean | null
+  tiene_carro?: boolean | null
+  primera_moto?: boolean | null
+  estoy_financiando?: boolean | null
+  nombre_empresa?: string | null
+  ciudad_empresa?: string | null
+  fecha_ingreso?: string | null
+  nivel_educativo?: string | null
+  profesion?: string | null
+  cargo?: string | null
+  actividad_comercial?: string | null
 }
 
-/** Decisión del comité sobre una solicitud 'en_revision'. */
-export function resolverSolicitud(
+export function guardarDatosFormalizacion(
   idSolicitud: string,
-  decision: 'aprobado' | 'rechazado',
-  comentario?: string,
-  montoAprobado?: number,
-  plazoMeses?: number,
+  payload: DatosFormalizacionPayload,
 ) {
-  return request<SolicitudDetalleApi>(
-    `/api/solicitudes/${idSolicitud}/resolver`,
+  return request<void>(`/api/solicitudes/${idSolicitud}/datos-formalizacion`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+// ---------- OTP (firma del pagaré) ----------
+
+export interface GenerarOtpResponse {
+  id_otp: number
+  expira_en_segundos: number
+  /** Canal por el que salió el código ('whatsapp' cae a 'email' cuando
+   * no hay teléfono válido o el envío por WATI falla). */
+  canal: 'whatsapp' | 'email'
+  destino: string | null
+  estado_envio: string
+  /** Solo en modo demo: el código se muestra en pantalla. */
+  codigo_demo: string | null
+}
+
+export function generarOtp(idSolicitud: string, accion = 'firma_pagare') {
+  return request<GenerarOtpResponse>(`/api/solicitudes/${idSolicitud}/otp`, {
+    method: 'POST',
+    body: JSON.stringify({ accion, canal: 'whatsapp' }),
+  })
+}
+
+export function verificarOtp(
+  idSolicitud: string,
+  codigo: string,
+  accion = 'firma_pagare',
+) {
+  return request<{ verificado: boolean; uuid_firma: string | null }>(
+    `/api/solicitudes/${idSolicitud}/otp/verificar`,
     {
       method: 'POST',
-      body: JSON.stringify({
-        decision,
-        ...(comentario ? { comentario } : {}),
-        ...(montoAprobado != null && montoAprobado > 0
-          ? { monto_aprobado: montoAprobado }
-          : {}),
-        ...(plazoMeses != null && plazoMeses > 0
-          ? { plazo_meses: plazoMeses }
-          : {}),
-      }),
+      body: JSON.stringify({ accion, codigo }),
     },
   )
 }
@@ -347,6 +408,7 @@ export interface SolicitudResumenApi {
   num_solicitud: number | null
   fecha_hora: string
   estado: string
+  descripcion_estado?: string | null
   decision: string | null
   nombre_cliente: string
   num_cedula: string
@@ -371,15 +433,47 @@ export interface SolicitudDetalleApi extends SolicitudResumenApi {
     ingreso_mensual: string | null
     otros_ingresos: string | null
     anios_camara_comercio: string | null
+    nombre_empresa?: string | null
+    ciudad_empresa?: string | null
+    fecha_ingreso?: string | null
+    nivel_educativo?: string | null
+    profesion?: string | null
+    cargo?: string | null
+    actividad_comercial?: string | null
   } | null
   contacto_vivienda: {
     estrato: number | null
     personas_a_cargo: number | null
     tipo_vivienda: string | null
+    correo?: string | null
+    telefono?: string | null
+    direccion?: string | null
+    barrio?: string | null
+    ciudad?: string | null
+    zona_rural?: boolean | null
+    estado_civil?: string | null
+    num_hijos?: number | null
+    es_cabeza_familia?: boolean | null
+    cuenta_bienes_raices?: boolean | null
+    cuenta_vehiculo?: boolean | null
+    tiene_moto?: boolean | null
+    tiene_carro?: boolean | null
+    primera_moto?: boolean | null
+    estoy_financiando?: boolean | null
   } | null
   causales: CausalSolicitudApi[]
   ofertas: OfertaApi[]
   desembolso: DesembolsoApi | null
+  consentimientos?: ConsentimientoApi[]
+}
+
+/** Registro de una aceptación Habeas Data (Ley 1581). */
+export interface ConsentimientoApi {
+  version_texto: string
+  hash_texto: string
+  canal: string
+  ip: string | null
+  fecha_aceptacion: string
 }
 
 export interface FiltrosSolicitudes {
@@ -403,6 +497,14 @@ export function listarSolicitudes(filtros: FiltrosSolicitudes = {}) {
 
 export function obtenerSolicitud(idSolicitud: string) {
   return request<SolicitudDetalleApi>(`/api/solicitudes/${idSolicitud}`)
+}
+
+/** Anula la solicitud con motivo; 409 si ya está desembolsada/cancelada. */
+export function cancelarSolicitud(idSolicitud: string, motivo: string) {
+  return request<SolicitudResumenApi>(
+    `/api/solicitudes/${idSolicitud}/cancelar`,
+    { method: 'POST', body: JSON.stringify({ motivo }) },
+  )
 }
 
 // ---------- Catálogo de productos ----------
@@ -534,7 +636,9 @@ export interface ResultadoOCRApi {
 
 export interface EvidenciaApi {
   id_evidencia: number
-  tipo: TipoEvidencia
+  /** cedula_frontal | cedula_reverso | video_prueba_vida | doc_* (legalización) */
+  tipo: string
+  nombre_original: string | null
   mime: string
   tamano_bytes: number
   hash_sha256: string

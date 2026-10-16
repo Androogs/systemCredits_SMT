@@ -326,10 +326,6 @@ function RevisionDatos({
                 <dd>Palmira - Centro Interno</dd>
               </div>
             </dl>
-            <span className="revision__server">
-              <span aria-hidden="true" />
-              Servidor de Validación Activo v2.4.12-Prod (SSL)
-            </span>
           </aside>
         </header>
       )}
@@ -550,7 +546,7 @@ function RevisionDatos({
                 ) : (
                   <input
                     id={`rev-${campo.id}`}
-                    type={campo.tipo === 'date' ? 'date' : 'text'}
+                    type={campo.tipo}
                     value={datos[campo.id]}
                     readOnly={esSoloLectura}
                     aria-invalid={error}

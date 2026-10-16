@@ -6,14 +6,14 @@ from typing import Any
 from backend.integrations.datacredito.parsers.common import _dec, _int, _str
 from backend.models.buro_models import (
     Aportante,
-    Indicadores,
     PeriodoPago,
     RespuestaValorIngreso,
-    ResumenGeneralIngresos,
 )
 from backend.services.valor_ingreso_service import (
     calcular_indicadores_agregados,
     calcular_ingreso_min_max,
+    calcular_resumen_general,
+    mediana_ingresos,
     obtener_ultima_empresa,
     promedio_aportante,
 )
@@ -49,27 +49,6 @@ class IncomeParser:
         # Determine última empresa
         ultima_empresa = obtener_ultima_empresa(aportantes)
 
-        # Recalculate indicators from actual payment data
-        indicadores_calculados = calcular_indicadores_agregados(aportantes)
-
-        # Parse original indicators to preserve other fields
-        indicadores_originales = self._parse_indicadores(payload.get("indicadores"))
-
-        # Merge: use calculated values for averages, preserve other fields from original
-        if indicadores_originales:
-            indicadores_finales = Indicadores(
-                tiempo_sin_pago=indicadores_originales.tiempo_sin_pago,
-                tiempo_total_laborado=indicadores_originales.tiempo_total_laborado,
-                promedio_ult_mes=indicadores_calculados.promedio_ult_mes,
-                ingreso_total_ult_mes=indicadores_originales.ingreso_total_ult_mes,
-                promedio_ult_tres_meses=indicadores_calculados.promedio_ult_tres_meses,
-                total_ult_tres_meses=indicadores_calculados.total_ult_tres_meses,
-                promedio_ult_doce_meses=indicadores_calculados.promedio_ult_doce_meses,
-                total_ult_doce_meses=indicadores_calculados.total_ult_doce_meses,
-            )
-        else:
-            indicadores_finales = indicadores_calculados if aportantes else None
-
         respuesta = RespuestaValorIngreso(
             tipo_id=_str(payload.get("tipo_identificacion_persona_natural_id")),
             numero_id=_str(payload.get("numero_identificacion_persona_natural")),
@@ -79,8 +58,10 @@ class IncomeParser:
             afp=_str(payload.get("AFP")),
             respuesta_id=_int(payload.get("respuesta_id"), default=None),
             aportantes=aportantes,
-            indicadores=indicadores_finales,
-            resumen_general=self._parse_resumen(payload.get("resumen_general_ingresos")),
+            # Indicadores y resumen se derivan siempre de resultado_pagos;
+            # los valores agregados del JSON no son confiables.
+            indicadores=calcular_indicadores_agregados(aportantes) if aportantes else None,
+            resumen_general=calcular_resumen_general(aportantes),
             ultima_empresa=ultima_empresa,
         )
         return respuesta
@@ -108,7 +89,7 @@ class IncomeParser:
                     ingreso_maximo=ingreso_maximo,
                     ingreso_minimo=ingreso_minimo,
                     promedio_ingresos=promedio_calculado,
-                    media_ingresos=_dec(a.get("media_ingresos"), Decimal(0)) or Decimal(0),
+                    media_ingresos=mediana_ingresos(pagos),
                     tiene_salario_integral=a.get("tiene_salario_integral_actualmente"),
                     tiene_salario_fijo=a.get("tiene_salario_fijo_actualmente"),
                     tiene_salario_variable=a.get("tiene_salario_variable_actualmente"),
@@ -139,37 +120,3 @@ class IncomeParser:
                 )
             )
         return out
-
-    def _parse_indicadores(self, data: Any) -> Indicadores | None:
-        if not isinstance(data, dict):
-            return None
-        return Indicadores(
-            tiempo_sin_pago=_int(data.get("tiempo_sin_pago"), 0) or 0,
-            tiempo_total_laborado=_int(data.get("tiempo_total_laborado"), 0) or 0,
-            ingreso_total_ult_mes=_dec(data.get("ingreso_total_ult_mes"), Decimal(0)) or Decimal(0),
-            promedio_ult_tres_meses=_dec(data.get("promedio_ult_tres_meses"), Decimal(0)) or Decimal(0),
-            promedio_ult_doce_meses=_dec(data.get("promedio_ult_doce_meses"), Decimal(0)) or Decimal(0),
-        )
-
-    def _parse_resumen(self, data: Any) -> ResumenGeneralIngresos | None:
-        if not isinstance(data, dict):
-            return None
-        return ResumenGeneralIngresos(
-            promedio_ingresos_cotizante=_dec(data.get("promedio_ingresos_cotizante"), default=None),
-            mediana_ingresos_cotizante=_dec(data.get("mediana_ingresos_cotizante"), default=None),
-            desviacion_estandar=_dec(data.get("desviacion_estandar"), default=None),
-            ingreso_minimo_cotizante=_dec(data.get("ingreso_minimo_cotizante"), default=None),
-            ingreso_maximo_cotizante=_dec(data.get("ingreso_maximo_cotizante"), default=None),
-            pendiente_ingresos=_dec(data.get("pendiente_ingresos"), default=None),
-            tendencia_ingresos=_str(data.get("tendencia_ingresos")),
-            meses_continuidad=_int(data.get("meses_continuidad"), default=None),
-            cantidad_fuentes_ingreso=_int(data.get("cantidad_fuentes_ingreso"), default=None),
-            ultimo_periodo_cotizado=_str(data.get("ultimo_periodo_cotizado")),
-            promedio_ultimos_tres_meses_sin_dic_jun=_dec(
-                data.get("promedio_ultimos_tres_meses_sin_dic_jun"), default=None
-            ),
-            promedio_ultimos_seis_meses_sin_dic_jun=_dec(
-                data.get("promedio_ultimos_seis_meses_sin_dic_jun"), default=None
-            ),
-            consecutivos_seis_meses=_int(data.get("consecutivos_seis_meses"), default=None),
-        )

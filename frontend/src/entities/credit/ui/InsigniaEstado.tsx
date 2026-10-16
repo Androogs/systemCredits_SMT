@@ -1,4 +1,4 @@
-import { CheckCircle2, XCircle, AlertTriangle, Clock } from 'lucide-react'
+import { CheckCircle2, XCircle, Clock } from 'lucide-react'
 import type { EstadoSolicitud } from '../model/underwritingEngine'
 
 const CONFIG: Record<
@@ -19,10 +19,11 @@ const CONFIG: Record<
     className: 'bg-red-50 text-red-700 ring-red-600/20',
     label: 'Rechazado',
   },
+  // Sin comité: el estado gris del motor se muestra como no aprobado.
   REQUIERE_REVISION: {
-    Icon: AlertTriangle,
-    className: 'bg-amber-50 text-amber-700 ring-amber-600/25',
-    label: 'Requiere revisión',
+    Icon: XCircle,
+    className: 'bg-red-50 text-red-700 ring-red-600/20',
+    label: 'No aprobado',
   },
   PENDIENTE: {
     Icon: Clock,
@@ -36,7 +37,7 @@ export default function InsigniaEstado({
 }: {
   status: EstadoSolicitud
 }) {
-  const cfg = CONFIG[status] || CONFIG.REQUIERE_REVISION
+  const cfg = CONFIG[status] || CONFIG.RECHAZADO
   const Icon = cfg.Icon
 
   return (

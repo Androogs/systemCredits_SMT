@@ -39,11 +39,12 @@ def test_aprobado_limpio(motor, solicitud_empleado, hdc_basico, vi_con_continuid
     assert r.parametros_usados["score_ep_1"] == 750
 
 
-def test_salida_publica_siempre_binaria(motor, solicitud_empleado, hdc_basico, parametros_demo):
-    vi = crear_valor_ingreso(Decimal(SMMLV_PRUEBAS) * Decimal("1.2"))  # perfil BAJO -> Estudio
+def test_perfil_bajo_aprueba_con_causal_de_trazabilidad(motor, solicitud_empleado, hdc_basico, parametros_demo):
+    """Empleado + BAJO aprueba; E4 queda en causales solo como trazabilidad."""
+    vi = crear_valor_ingreso(Decimal(SMMLV_PRUEBAS) * Decimal("1.2"))  # perfil BAJO
     r = _eval(motor, solicitud_empleado, hdc_basico, vi, parametros_demo)
-    assert r.decision == DecisionFinal.RECHAZADO
-    assert r.decision_interna == Decision.ESTUDIO
+    assert r.decision == DecisionFinal.APROBADO
+    assert r.decision_interna == Decision.APROBADO
     assert r.causales == [Causal.E4]
 
 

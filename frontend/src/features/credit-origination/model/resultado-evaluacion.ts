@@ -12,6 +12,12 @@ import type { ResultadoMotorApi } from '../api/originacionApi'
 
 /** Alineada con `cupo_sugerido_tasa_pct` de parametros.json (motor). */
 export const TASA_MENSUAL_REFERENCIA = 2
+/**
+ * Prima del seguro de vida deudores incluida en la cuota: % mensual
+ * sobre el saldo financiado. Espeja `seguro_producto.tasa_prima`
+ * del catálogo (prima vigente del negocio: 0,35 %).
+ */
+export const PRIMA_SEGURO_VIDA_PCT = 0.35
 export const RATIO_CUOTA_INGRESO_MAX = 0.4
 export const CUPO_MAXIMO = 20_000_000
 
@@ -25,7 +31,8 @@ export const GASTOS_PERSONALES_UMBRAL_ALTO = 2.0
 export const CAPACIDAD_PAGO_PCT = 0.7
 export const CUPO_PLAZO_MESES = 24
 
-export type DecisionCredito = 'APROBADO' | 'RECHAZADO' | 'REVISION_MANUAL'
+/** Decisión visible del flujo: binaria (sin estudio ni comité). */
+export type DecisionCredito = 'APROBADO' | 'RECHAZADO'
 
 export interface CausalEvaluacion {
   codigo: string
@@ -79,12 +86,10 @@ export function resultadoDesdeApi(
   plazoMeses: number,
 ): ResultadoEvaluacionCredito {
   const interna = api.decision_interna
+  // Sin comité: las decisiones internas de estudio / codeudor se
+  // presentan como rechazo; el detalle sensible es solo admin.
   const decision: DecisionCredito =
-    api.decision === 'Aprobado'
-      ? 'APROBADO'
-      : interna === 'Estudio' || interna === 'Requiere Codeudor'
-        ? 'REVISION_MANUAL'
-        : 'RECHAZADO'
+    api.decision === 'Aprobado' ? 'APROBADO' : 'RECHAZADO'
   return {
     decision,
     decisionInterna: interna,
@@ -185,8 +190,11 @@ export function calcularCupoSugerido(
       valorPresenteAnualidad(capacidad, TASA_MENSUAL_REFERENCIA, plazoMeses),
     ),
   )
+  // Cuota que pagaría el cliente: anualidad + seguro de vida, como la
+  // oferta real (oferta.cuota_mensual del backend la incluye igual).
   const cuota = Math.round(
-    cuotaAnualidad(monto, TASA_MENSUAL_REFERENCIA, plazoMeses),
+    cuotaAnualidad(monto, TASA_MENSUAL_REFERENCIA, plazoMeses) +
+      (monto * PRIMA_SEGURO_VIDA_PCT) / 100,
   )
   return { monto, cuota, disponible, capacidad, gastosPersonales }
 }

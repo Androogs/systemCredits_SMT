@@ -180,6 +180,12 @@
 }
 
 @media (max-width: 680px) {
+  /* El seguimiento ya muestra la etapa; se ocultan los duplicados */
+  .evaluacion-resultado__eyebrow,
+  .evaluacion-resultado__subtitle {
+    display: none;
+  }
+
   .evaluacion-resultado__origen,
   .evaluacion-resultado__evaluando {
     padding: 0.95rem;

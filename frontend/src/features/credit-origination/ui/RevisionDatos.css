@@ -83,29 +83,6 @@
   text-align: right;
 }
 
-.revision__server {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.7rem;
-  border: 1px solid #d8eaf4;
-  border-radius: 0.55rem;
-  background: #f3fbff;
-  color: #11648a;
-  font-size: 0.7rem;
-  font-weight: 600;
-  line-height: 1.35;
-}
-
-.revision__server span {
-  width: 0.42rem;
-  height: 0.42rem;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: #18a873;
-  box-shadow: 0 0 0 3px rgb(24 168 115 / 14%);
-}
-
 /* ---------- Formulario ---------- */
 
 .revision__form {

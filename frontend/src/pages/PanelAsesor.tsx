@@ -35,17 +35,11 @@ export default function PanelAsesor() {
   const esAsesor = useRol() === 'asesor'
 
   const aprobadas = solicitudes.filter(
-    (s) => estadoParaVista(s, esAsesor) === 'APROBADO',
+    (s) => estadoParaVista(s) === 'APROBADO',
   ).length
-  const enCola = solicitudes.filter((s) => {
-    const v = estadoParaVista(s, esAsesor)
-    return v === 'REQUIERE_REVISION' || v === 'PENDIENTE'
-  })
+  const enCola = solicitudes.filter((s) => estadoParaVista(s) === 'PENDIENTE')
   const cola = [
-    ...enCola.filter((s) => estadoParaVista(s, esAsesor) === 'PENDIENTE'),
-    ...enCola.filter(
-      (s) => estadoParaVista(s, esAsesor) === 'REQUIERE_REVISION',
-    ),
+    ...enCola,
     ...solicitudes.filter((s) => !enCola.includes(s)),
   ].slice(0, 8)
 
@@ -78,7 +72,7 @@ export default function PanelAsesor() {
           />
           <Kpi
             icon={Clock}
-            label={esAsesor ? 'Pendientes' : 'En revisión / pendientes'}
+            label="Pendientes"
             valor={enCola.length}
             tone="amber"
             cargando={cargando}
@@ -162,7 +156,7 @@ export default function PanelAsesor() {
               </thead>
               <tbody aria-busy={cargando}>
                 {cola.map((s) => {
-                  const visual = estadoParaVista(s, esAsesor)
+                  const visual = estadoParaVista(s)
                   const cupo = numero(s.evaluacion?.cupo_sugerido)
                   return (
                     <tr
@@ -194,16 +188,18 @@ export default function PanelAsesor() {
                       <td className="px-5 py-3">
                         <span className="inline-flex items-center gap-2">
                           <InsigniaEstado status={visual} />
-                          {/* Decisión interna del motor: solo administrador */}
-                          {!esAsesor && (
-                            <span className="text-xs text-slate-600 capitalize">
-                              {s.decision
-                                ? (
-                                    s.evaluacion?.decision_interna ?? s.decision
-                                  ).toLowerCase()
-                                : 'pendiente'}
-                            </span>
-                          )}
+                          {/* Decisión interna del motor: solo administrador
+                              y solo cuando difiere de la insignia. */}
+                          {!esAsesor &&
+                            s.decision != null &&
+                            s.decision.toLowerCase() !==
+                              visual.toLowerCase() && (
+                              <span className="text-xs text-slate-600 capitalize">
+                                {(
+                                  s.evaluacion?.decision_interna ?? s.decision
+                                ).toLowerCase()}
+                              </span>
+                            )}
                         </span>
                       </td>
                     </tr>

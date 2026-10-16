@@ -17,6 +17,11 @@ opencv-python-headless>=4.9  # localización de la tarjeta (sin GUI: apto para s
 numpy>=1.26
 pillow-heif>=0.16  # opcional: fotos HEIC/HEIF de iPhone (sin esto, el OCR de HEIC se omite)
 
+# Paquete de legalización (DOCX con MERGEFIELD + números en letras)
+docx-mailmerge>=0.5
+python-docx>=1.0
+num2words>=0.5
+
 # Driver PostgreSQL (esquema SUMOTO). Con SQLite no se necesita.
 psycopg[binary]>=3.1
 alembic>=1.13

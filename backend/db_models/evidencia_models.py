@@ -54,7 +54,7 @@ class DocumentoEvidencia(Base):
     tipo: Mapped[str] = mapped_column(String(20))  # cedula_frontal | cedula_reverso | video_prueba_vida
     ruta: Mapped[str] = mapped_column(String(255))
     nombre_original: Mapped[str | None] = mapped_column(String(255))
-    mime: Mapped[str] = mapped_column(String(60))
+    mime: Mapped[str] = mapped_column(String(120))
     tamano_bytes: Mapped[int] = mapped_column(BigInteger)
     hash_sha256: Mapped[str] = mapped_column(String(64))
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora_utc)

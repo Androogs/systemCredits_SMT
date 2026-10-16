@@ -73,3 +73,29 @@ def test_elegibilidad_campo_ausente_no_cumple():
 def test_elegibilidad_operador_invalido():
     with pytest.raises(ValueError):
         EligibilidadService().evaluar_producto("id", _producto([("score", "~", 1)]), {"score": 1})
+
+
+def _terminos_datos(prima=None):
+    datos = {
+        "tasa_referencia": Decimal("1.88"),
+        "plazo": 48,
+        "cupo_sugerido": Decimal("12781665"),
+    }
+    if prima is not None:
+        datos["prima_seguro_pct"] = Decimal(str(prima))
+    return datos
+
+
+def test_oferta_cuota_sin_seguro_es_anualidad_pura():
+    oferta = EligibilidadService().evaluar_producto("id", _producto([]), _terminos_datos())
+    # Anualidad francesa: 12.781.665 al 1,88 % m.v. a 48 meses ≈ $406.596
+    assert abs(float(oferta.cuota_mensual) - 406_596) < 100
+
+
+def test_oferta_cuota_incluye_seguro_vida():
+    """La cuota de la oferta es la TOTAL: anualidad + prima 0,35 %/mes
+    sobre el saldo ($406.596 + $44.736 ≈ $451.332)."""
+    oferta = EligibilidadService().evaluar_producto(
+        "id", _producto([]), _terminos_datos(prima="0.35")
+    )
+    assert abs(float(oferta.cuota_mensual) - 451_332) < 100

@@ -1,4 +1,4 @@
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Encabezado from '../widgets/app-shell/Encabezado'
@@ -14,6 +14,7 @@ import {
   listarEscenariosMock,
   obtenerAuditoria,
   obtenerSolicitud,
+  cancelarSolicitud,
   registrarDesembolso,
   seleccionarOferta,
   listarEvidenciasSolicitud,
@@ -31,9 +32,10 @@ import {
   estadoParaVista,
   etiquetaSolicitud,
   numero,
+  ESTADOS_RETOMABLES,
   OCUPACION_LABELS,
 } from '../entities/credit/model/solicitudesPanel'
-import { currency, dateShort } from '../shared/lib/formatters'
+import { currency, dateShort, dateTime } from '../shared/lib/formatters'
 import { cuotaAnualidad } from '../shared/lib/finanzas'
 import { useRol } from '../shared/lib/sesion'
 import {
@@ -41,10 +43,12 @@ import {
   AlertTriangle,
   User,
   Briefcase,
+  Home,
   CreditCard,
   ListChecks,
   BadgePercent,
   Landmark,
+  ShieldCheck,
   XCircle,
   CheckCircle2,
   FileImage,
@@ -52,6 +56,7 @@ import {
   Database,
   Eye,
   Download,
+  History,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -117,6 +122,7 @@ const FORMAS_MONETARIAS = new Set([
 
 export default function DetalleSolicitud() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const qc = useQueryClient()
   const [bancoAch, setBancoAch] = useState('')
   const [numeroCuenta, setNumeroCuenta] = useState('')
@@ -129,6 +135,8 @@ export default function DetalleSolicitud() {
   const [reTasa, setReTasa] = useState('')
   const [reOrigen, setReOrigen] = useState<'demo' | 'experian'>('demo')
   const [reEscenario, setReEscenario] = useState('aprobado')
+  const [confirmarCancelacion, setConfirmarCancelacion] = useState(false)
+  const [motivoCancelar, setMotivoCancelar] = useState('')
   const [jsonTab, setJsonTab] = useState<'resultado' | 'payload'>('resultado')
   const [vista, setVista] = useState<'solicitud' | 'evaluacion' | 'gestion'>(
     'solicitud',
@@ -182,13 +190,18 @@ export default function DetalleSolicitud() {
   const evidenciaPorTipo = new Map(evidencias.map((e) => [e.tipo, e]))
 
   const idEvaluacion = datos?.evaluacion?.id_evaluacion
-  const { data: auditoria = null } = useQuery({
-    queryKey: ['auditoria-solicitud', datos?.id_solicitud],
+  // Todas las evaluaciones de la solicitud, más reciente primero: el
+  // historial deja constancia de las anteriores (p. ej. un rechazo que
+  // el administrador re-evaluó con otros parámetros).
+  const { data: auditorias = [] } = useQuery({
+    queryKey: ['auditorias-solicitud', datos?.id_solicitud],
     enabled: datos != null && idEvaluacion != null,
-    queryFn: async () => {
-      const lista = await listarAuditoriaSolicitud(datos!.id_solicitud)
-      return lista.length > 0 ? obtenerAuditoria(lista[0].evaluacion_id) : null
-    },
+    queryFn: () => listarAuditoriaSolicitud(datos!.id_solicitud),
+  })
+  const { data: auditoria = null } = useQuery({
+    queryKey: ['auditoria-solicitud', auditorias[0]?.evaluacion_id],
+    enabled: auditorias.length > 0,
+    queryFn: () => obtenerAuditoria(auditorias[0].evaluacion_id),
   })
 
   /** Tras una mutación el detalle y la lista del panel quedan frescos. */
@@ -215,6 +228,11 @@ export default function DetalleSolicitud() {
   const mutDesembolso = useMutation({
     mutationFn: (payload: RegistrarDesembolsoPayload) =>
       registrarDesembolso(datos!.id_solicitud, payload),
+    onSuccess: invalidar,
+  })
+  const mutCancelar = useMutation({
+    mutationFn: (motivo: string) =>
+      cancelarSolicitud(datos!.id_solicitud, motivo),
     onSuccess: invalidar,
   })
 
@@ -273,7 +291,7 @@ export default function DetalleSolicitud() {
     )
   }
 
-  const visual = estadoParaVista(datos, esAsesor)
+  const visual = estadoParaVista(datos)
   const evaluacion = datos.evaluacion
   const cupo = numero(evaluacion?.cupo_sugerido)
   const capacidad = numero(evaluacion?.capacidad_pago)
@@ -284,17 +302,52 @@ export default function DetalleSolicitud() {
   const puedeDesembolsar =
     datos.estado === 'aprobada' && ofertaSeleccionada != null
   const puedeSeleccionarOferta =
-    datos.estado === 'aprobada' && !ofertaSeleccionada && ofertaElegible != null
+    datos.estado === 'aprobada' &&
+    !ofertaSeleccionada &&
+    ofertaElegible != null &&
+    !ofertaElegible.expirada
   const plazoMaxOferta = Number(ofertaElegible?.plazo_ofrecido ?? 0)
   const plazoInvalido =
     plazoTomar !== '' &&
     (Number(plazoTomar) < 12 || Number(plazoTomar) > plazoMaxOferta)
 
+  // Datos del cliente capturados en la formalización (antes del OTP).
+  // Solo se muestran cuando efectivamente se guardaron.
+  const contacto = datos.contacto_vivienda
+  const laboral = datos.datos_laborales
+  const hayFormalizacion = [
+    contacto?.direccion,
+    contacto?.barrio,
+    contacto?.ciudad,
+    contacto?.estrato,
+    contacto?.tipo_vivienda,
+    contacto?.estado_civil,
+    contacto?.zona_rural,
+    contacto?.personas_a_cargo,
+    contacto?.num_hijos,
+    contacto?.es_cabeza_familia,
+    contacto?.cuenta_bienes_raices,
+    contacto?.cuenta_vehiculo,
+    contacto?.tiene_moto,
+    contacto?.tiene_carro,
+    contacto?.primera_moto,
+    contacto?.estoy_financiando,
+    laboral?.nombre_empresa,
+    laboral?.ciudad_empresa,
+    laboral?.fecha_ingreso,
+    laboral?.nivel_educativo,
+    laboral?.profesion,
+    laboral?.cargo,
+    laboral?.actividad_comercial,
+  ].some((v) => v != null && v !== '')
+
   const resultadoAuditoria = auditoria?.resultado ?? null
   const evidenciaFrontal = evidenciaPorTipo.get('cedula_frontal')
   const evidenciaReverso = evidenciaPorTipo.get('cedula_reverso')
   const evidenciaVideo = evidenciaPorTipo.get('video_prueba_vida')
-  const hayEvidencia = evidencias.length > 0
+  // Paquete de legalización: los doc_* se generan al verificar el OTP de firma.
+  const documentosFirmados = evidencias.filter((e) => e.tipo.startsWith('doc_'))
+  const hayEvidencia = evidencias.some((e) => !e.tipo.startsWith('doc_'))
 
   function mensajeError(err: unknown, fallback: string): string {
     if (err instanceof ApiError && typeof err.detalle === 'string') {
@@ -372,6 +425,21 @@ export default function DetalleSolicitud() {
         subtitle={`${datos.nombre_cliente} · ${datos.num_cedula}`}
         actions={
           <>
+            {/* La solicitud sigue abierta en originación (sin oferta
+                seleccionada ni desembolso): se retoma en el paso 5. */}
+            {ESTADOS_RETOMABLES.has(datos.estado) && !ofertaSeleccionada && (
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() =>
+                  navigate('/nueva-solicitud', {
+                    state: { retomarId: datos.id_solicitud },
+                  })
+                }
+              >
+                Continuar originación
+              </button>
+            )}
             <Link
               to={`/solicitudes/${datos.id_solicitud}/resultado`}
               className="btn-primary"
@@ -385,58 +453,57 @@ export default function DetalleSolicitud() {
         }
       />
       <div className="p-6 space-y-6 overflow-auto max-w-6xl mx-auto w-full">
-        <Tarjeta className="flex flex-wrap gap-4 items-center justify-between">
-          <div className="flex items-center gap-4">
-            <InsigniaEstado status={visual} />
-            <div>
-              <p className="text-xs uppercase text-slate-500">Resultado</p>
-              <p className="font-semibold text-slate-900 capitalize">
-                {esAsesor
-                  ? visual === 'APROBADO'
-                    ? 'Aprobado'
-                    : visual === 'RECHAZADO'
-                      ? 'Rechazado'
-                      : 'Pendiente de evaluación'
-                  : datos.decision
-                    ? (
-                        evaluacion?.decision_interna ?? datos.decision
-                      ).toLowerCase()
-                    : 'Pendiente de evaluación'}
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-8">
-            {!esAsesor && (
-              <div className="text-right">
-                <p className="text-xs uppercase text-slate-500">Score</p>
-                <p className="text-2xl font-bold text-slate-900">
-                  {evaluacion?.score != null ? Number(evaluacion.score) : '—'}
+        {/* Resumen único: estado + métricas en una sola tarjeta, sin
+            apilar tarjetas pequeñas que saturan la vista. */}
+        <Tarjeta className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <InsigniaEstado status={visual} />
+              <div>
+                <p className="text-xs uppercase text-slate-500">Resultado</p>
+                <p className="font-semibold text-slate-900 capitalize">
+                  {esAsesor
+                    ? visual === 'APROBADO'
+                      ? 'Aprobado'
+                      : visual === 'RECHAZADO'
+                        ? 'Rechazado'
+                        : 'Pendiente de evaluación'
+                    : datos.decision
+                      ? (
+                          evaluacion?.decision_interna ?? datos.decision
+                        ).toLowerCase()
+                      : 'Pendiente de evaluación'}
                 </p>
               </div>
-            )}
-            <div className="text-right">
-              <p className="text-xs uppercase text-slate-500">Fecha</p>
-              <p className="text-sm font-medium text-slate-900">
-                {dateShort(datos.fecha_hora)}
-              </p>
             </div>
+            <p className="text-sm text-slate-500">
+              Radicada el{' '}
+              <span className="font-medium text-slate-900">
+                {dateShort(datos.fecha_hora)}
+              </span>
+            </p>
           </div>
+          <dl className="flex flex-wrap gap-x-10 gap-y-4 border-t border-slate-100 pt-4">
+            {!esAsesor && (
+              <Campo
+                k="Score"
+                v={evaluacion?.score != null ? Number(evaluacion.score) : '—'}
+              />
+            )}
+            <Campo
+              k="Cupo sugerido"
+              v={cupo != null && visual === 'APROBADO' ? currency(cupo) : '—'}
+            />
+            <Campo
+              k="Capacidad de pago"
+              v={capacidad != null ? currency(capacidad) : '—'}
+            />
+            <Campo
+              k="Endeudamiento"
+              v={endeudamiento != null ? `${endeudamiento.toFixed(1)}%` : '—'}
+            />
+          </dl>
         </Tarjeta>
-
-        <div className="grid sm:grid-cols-3 gap-4">
-          <Metric
-            label="Cupo sugerido"
-            value={cupo != null && visual === 'APROBADO' ? currency(cupo) : '—'}
-          />
-          <Metric
-            label="Capacidad de pago"
-            value={capacidad != null ? currency(capacidad) : '—'}
-          />
-          <Metric
-            label="Endeudamiento"
-            value={endeudamiento != null ? `${endeudamiento.toFixed(1)}%` : '—'}
-          />
-        </div>
 
         {/* Secciones del detalle */}
         <div
@@ -473,10 +540,12 @@ export default function DetalleSolicitud() {
                 <h3 className="font-semibold mb-4 flex items-center gap-2">
                   <User size={18} /> Datos personales
                 </h3>
-                <dl className="space-y-1 text-sm">
-                  <Row k="Nombre" v={datos.nombre_cliente} />
-                  <Row k="Documento" v={datos.num_cedula} />
-                  <Row
+                <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
+                  <Campo k="Nombre" v={datos.nombre_cliente} />
+                  <Campo k="Documento" v={datos.num_cedula} />
+                  <Campo k="Teléfono" v={contacto?.telefono ?? '—'} />
+                  <Campo k="Correo" v={contacto?.correo ?? '—'} />
+                  <Campo
                     k="Ocupación"
                     v={
                       datos.ocupacion
@@ -484,9 +553,9 @@ export default function DetalleSolicitud() {
                         : '—'
                     }
                   />
-                  <Row k="Línea de crédito" v={datos.linea_credito ?? '—'} />
-                  <Row k="Destino" v={datos.destino_credito ?? '—'} />
-                  <Row
+                  <Campo k="Línea de crédito" v={datos.linea_credito ?? '—'} />
+                  <Campo k="Destino" v={datos.destino_credito ?? '—'} />
+                  <Campo
                     k="Plazo deseado"
                     v={
                       datos.plazo_deseado_meses != null
@@ -498,54 +567,165 @@ export default function DetalleSolicitud() {
               </Tarjeta>
               <Tarjeta>
                 <h3 className="font-semibold mb-4 flex items-center gap-2">
-                  <Briefcase size={18} /> Datos laborales
+                  <Briefcase size={18} /> Datos laborales declarados
                 </h3>
-                <dl className="space-y-1 text-sm">
-                  <Row
+                <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
+                  <Campo
                     k="Tipo de contrato"
                     v={
-                      datos.datos_laborales?.tipo_contrato
-                        ? (CONTRATO_LABELS[
-                            datos.datos_laborales.tipo_contrato
-                          ] ?? datos.datos_laborales.tipo_contrato)
+                      laboral?.tipo_contrato
+                        ? (CONTRATO_LABELS[laboral.tipo_contrato] ??
+                          laboral.tipo_contrato)
                         : '—'
                     }
                   />
-                  <Row
+                  <Campo
                     k="Continuidad"
                     v={
-                      datos.datos_laborales?.meses_continuidad != null
-                        ? `${datos.datos_laborales.meses_continuidad} meses`
+                      laboral?.meses_continuidad != null
+                        ? `${laboral.meses_continuidad} meses`
                         : '—'
                     }
                   />
-                  <Row
+                  <Campo
                     k="Ingreso declarado"
                     v={
-                      numero(datos.datos_laborales?.ingreso_mensual) != null
-                        ? currency(
-                            numero(datos.datos_laborales?.ingreso_mensual),
-                          )
+                      numero(laboral?.ingreso_mensual) != null
+                        ? currency(numero(laboral?.ingreso_mensual))
                         : '—'
                     }
                   />
-                  <Row
+                  <Campo
                     k="Otros ingresos"
                     v={
-                      numero(datos.datos_laborales?.otros_ingresos) != null
-                        ? currency(
-                            numero(datos.datos_laborales?.otros_ingresos),
-                          )
+                      numero(laboral?.otros_ingresos) != null
+                        ? currency(numero(laboral?.otros_ingresos))
                         : '—'
                     }
                   />
-                  <Row
+                  <Campo
                     k="Años Cámara de Comercio"
-                    v={datos.datos_laborales?.anios_camara_comercio ?? '—'}
+                    v={laboral?.anios_camara_comercio ?? '—'}
                   />
                 </dl>
               </Tarjeta>
             </div>
+
+            {/* Datos capturados antes de la firma OTP: alimentan el
+                paquete de legalización generado tras la firma. */}
+            {hayFormalizacion && (
+              <Tarjeta>
+                <h3 className="font-semibold mb-1 flex items-center gap-2">
+                  <Home size={18} /> Datos del cliente — formalización
+                </h3>
+                <p className="text-xs text-slate-500 mb-4">
+                  Capturados antes de la firma OTP; alimentan los documentos de
+                  legalización.
+                </p>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <SeccionAuditoria
+                    titulo="Residencia"
+                    columnas="lg:grid-cols-2"
+                  >
+                    <Campo k="Dirección" v={contacto?.direccion ?? '—'} />
+                    <Campo k="Barrio" v={contacto?.barrio ?? '—'} />
+                    <Campo k="Ciudad" v={contacto?.ciudad ?? '—'} />
+                    <Campo k="Estrato" v={contacto?.estrato ?? '—'} />
+                    <Campo
+                      k="Tipo de vivienda"
+                      v={contacto?.tipo_vivienda ?? '—'}
+                    />
+                    <Campo
+                      k="Zona rural"
+                      v={formatReadableValue(contacto?.zona_rural)}
+                    />
+                  </SeccionAuditoria>
+                  <SeccionAuditoria
+                    titulo="Personal y patrimonio"
+                    columnas="lg:grid-cols-2"
+                  >
+                    <Campo k="Estado civil" v={contacto?.estado_civil ?? '—'} />
+                    <Campo
+                      k="Personas a cargo"
+                      v={contacto?.personas_a_cargo ?? '—'}
+                    />
+                    <Campo k="Número de hijos" v={contacto?.num_hijos ?? '—'} />
+                    <Campo
+                      k="Cabeza de familia"
+                      v={formatReadableValue(contacto?.es_cabeza_familia)}
+                    />
+                    <Campo
+                      k="Bienes raíces"
+                      v={formatReadableValue(contacto?.cuenta_bienes_raices)}
+                    />
+                    <Campo
+                      k="Vehículo propio"
+                      v={formatReadableValue(contacto?.cuenta_vehiculo)}
+                    />
+                    <Campo
+                      k="Tiene moto / carro"
+                      v={
+                        contacto?.tiene_moto == null &&
+                        contacto?.tiene_carro == null
+                          ? '—'
+                          : [
+                              contacto?.tiene_moto ? 'Moto' : null,
+                              contacto?.tiene_carro ? 'Carro' : null,
+                            ]
+                              .filter(Boolean)
+                              .join(' y ') || 'No'
+                      }
+                    />
+                    <Campo
+                      k="Primera moto"
+                      v={formatReadableValue(contacto?.primera_moto)}
+                    />
+                    <Campo
+                      k="Financia"
+                      v={
+                        contacto?.estoy_financiando == null
+                          ? '—'
+                          : contacto.estoy_financiando
+                            ? 'Motocicleta'
+                            : 'Otro bien'
+                      }
+                    />
+                  </SeccionAuditoria>
+                  <SeccionAuditoria
+                    titulo="Laboral"
+                    columnas="lg:grid-cols-3"
+                    className="lg:col-span-2"
+                  >
+                    <Campo
+                      k="Empresa / entidad"
+                      v={laboral?.nombre_empresa ?? '—'}
+                    />
+                    <Campo
+                      k="Ciudad de la empresa"
+                      v={laboral?.ciudad_empresa ?? '—'}
+                    />
+                    <Campo
+                      k="Fecha de ingreso"
+                      v={
+                        laboral?.fecha_ingreso
+                          ? dateShort(laboral.fecha_ingreso)
+                          : '—'
+                      }
+                    />
+                    <Campo
+                      k="Nivel educativo"
+                      v={laboral?.nivel_educativo ?? '—'}
+                    />
+                    <Campo k="Profesión" v={laboral?.profesion ?? '—'} />
+                    <Campo k="Cargo" v={laboral?.cargo ?? '—'} />
+                    <Campo
+                      k="Actividad comercial"
+                      v={laboral?.actividad_comercial ?? '—'}
+                    />
+                  </SeccionAuditoria>
+                </div>
+              </Tarjeta>
+            )}
 
             <Tarjeta>
               <h3 className="font-semibold text-slate-900 mb-1 flex items-center gap-2">
@@ -604,6 +784,37 @@ export default function DetalleSolicitud() {
                 </p>
               )}
             </Tarjeta>
+
+            {documentosFirmados.length > 0 && (
+              <Tarjeta>
+                <h3 className="font-semibold text-slate-900 mb-1 flex items-center gap-2">
+                  <Download size={18} /> Documentos firmados (legalización)
+                </h3>
+                <p className="text-xs text-slate-500 mb-4">
+                  Generados al verificar la firma OTP del cliente. Sellados con
+                  la fecha y el UUID de firma de la solicitud.
+                </p>
+                <ul className="divide-y divide-slate-100">
+                  {documentosFirmados.map((doc) => (
+                    <li
+                      key={doc.id_evidencia}
+                      className="py-2.5 flex items-center justify-between gap-4"
+                    >
+                      <span className="text-sm text-slate-700 truncate">
+                        {doc.nombre_original ?? doc.tipo}
+                      </span>
+                      <a
+                        href={urlEvidenciaContenido(doc.id_evidencia)}
+                        download={doc.nombre_original ?? undefined}
+                        className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-800"
+                      >
+                        <Download size={14} /> Descargar
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </Tarjeta>
+            )}
           </>
         )}
 
@@ -614,14 +825,14 @@ export default function DetalleSolicitud() {
                 <h3 className="font-semibold mb-4 flex items-center gap-2">
                   <CreditCard size={18} /> Evaluación del motor
                 </h3>
-                <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm">
-                  <Row
+                <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
+                  <Campo
                     k="Score"
                     v={
                       evaluacion.score != null ? Number(evaluacion.score) : '—'
                     }
                   />
-                  <Row
+                  <Campo
                     k="Perfil score / ingreso"
                     v={
                       [evaluacion.perfil_score, evaluacion.perfil_ingreso]
@@ -629,11 +840,11 @@ export default function DetalleSolicitud() {
                         .join(' · ') || '—'
                     }
                   />
-                  <Row
+                  <Campo
                     k="Capacidad de pago"
                     v={capacidad != null ? currency(capacidad) : '—'}
                   />
-                  <Row
+                  <Campo
                     k="Endeudamiento"
                     v={
                       endeudamiento != null
@@ -641,11 +852,17 @@ export default function DetalleSolicitud() {
                         : '—'
                     }
                   />
-                  <Row k="Versión evaluación" v={evaluacion.version} />
-                  <Row
+                  <Campo k="Versión evaluación" v={evaluacion.version} />
+                  <Campo
                     k="Decisión interna"
                     v={evaluacion.decision_interna ?? '—'}
-                    highlight={visual === 'APROBADO'}
+                    tono={
+                      visual === 'APROBADO'
+                        ? 'emerald'
+                        : visual === 'RECHAZADO'
+                          ? 'red'
+                          : undefined
+                    }
                   />
                 </dl>
               </Tarjeta>
@@ -657,29 +874,29 @@ export default function DetalleSolicitud() {
                   <h3 className="font-semibold mb-4 flex items-center gap-2">
                     <CreditCard size={18} /> Capacidad de pago
                   </h3>
-                  <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm">
-                    <Row
+                  <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
+                    <Campo
                       k="Ingreso final"
                       v={currency(Number(resultadoAuditoria.ingreso_final))}
                     />
-                    <Row
+                    <Campo
                       k="Fuente del ingreso"
                       v={resultadoAuditoria.fuente_ingreso_final}
                     />
-                    <Row
+                    <Campo
                       k="Endeudamiento"
                       v={`${Number(resultadoAuditoria.endeudamiento).toFixed(1)}%`}
                     />
-                    <Row
+                    <Campo
                       k="Disponible"
                       v={currency(Number(resultadoAuditoria.disponible))}
-                      highlight
+                      tono="emerald"
                     />
-                    <Row
+                    <Campo
                       k="Capacidad de pago"
                       v={currency(Number(resultadoAuditoria.capacidad_pago))}
                     />
-                    <Row
+                    <Campo
                       k="Cuota sugerida"
                       v={currency(Number(resultadoAuditoria.cuota_sugerida))}
                     />
@@ -741,7 +958,7 @@ export default function DetalleSolicitud() {
                       aria-pressed={jsonTab === 'resultado'}
                       className={`px-3 py-1.5 rounded-full ${jsonTab === 'resultado' ? 'bg-white shadow font-medium' : 'text-slate-500'}`}
                     >
-                      Desición Final
+                      Decisión final
                     </button>
                     <button
                       type="button"
@@ -1201,8 +1418,8 @@ export default function DetalleSolicitud() {
                     ? 'Oferta seleccionada'
                     : 'Oferta elegible'}
                 </h3>
-                <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm">
-                  <Row
+                <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
+                  <Campo
                     k="Monto aprobado"
                     v={
                       ofertaElegible.monto_aprobado != null
@@ -1210,7 +1427,7 @@ export default function DetalleSolicitud() {
                         : '—'
                     }
                   />
-                  <Row
+                  <Campo
                     k="Tasa ofrecida"
                     v={
                       ofertaElegible.tasa_ofrecida != null
@@ -1218,7 +1435,7 @@ export default function DetalleSolicitud() {
                         : '—'
                     }
                   />
-                  <Row
+                  <Campo
                     k="Plazo"
                     v={
                       ofertaElegible.plazo_ofrecido != null
@@ -1226,7 +1443,7 @@ export default function DetalleSolicitud() {
                         : '—'
                     }
                   />
-                  <Row
+                  <Campo
                     k="Cuota mensual"
                     v={
                       ofertaElegible.cuota_mensual != null
@@ -1234,7 +1451,72 @@ export default function DetalleSolicitud() {
                         : '—'
                     }
                   />
+                  <Campo
+                    k="Vigencia"
+                    v={
+                      ofertaElegible.fecha_vigencia
+                        ? ofertaElegible.expirada
+                          ? `Expirada (${dateShort(ofertaElegible.fecha_vigencia)})`
+                          : `Válida hasta ${dateShort(ofertaElegible.fecha_vigencia)}`
+                        : '—'
+                    }
+                    tono={ofertaElegible.expirada ? 'red' : undefined}
+                  />
                 </dl>
+              </Tarjeta>
+            )}
+
+            {datos.estado === 'aprobada' &&
+              !ofertaSeleccionada &&
+              ofertaElegible?.expirada && (
+                <Tarjeta className="border-amber-200 bg-amber-50/40">
+                  <p className="text-sm text-amber-900">
+                    La oferta expiró el{' '}
+                    {dateShort(ofertaElegible.fecha_vigencia!)}. Genera una
+                    nueva evaluación para emitir una oferta con las condiciones
+                    vigentes.
+                  </p>
+                </Tarjeta>
+              )}
+
+            {!esAsesor && (datos.consentimientos?.length ?? 0) > 0 && (
+              <Tarjeta>
+                <h3 className="font-semibold mb-4 flex items-center gap-2">
+                  <ShieldCheck size={18} /> Consentimiento Habeas Data
+                </h3>
+                <ul className="space-y-3 text-sm">
+                  {datos.consentimientos!.map((c, i) => (
+                    <li
+                      key={i}
+                      className="border border-slate-200 rounded-lg px-4 py-3"
+                    >
+                      <div className="flex flex-wrap gap-x-6 gap-y-1">
+                        <span>
+                          <strong>Canal:</strong>{' '}
+                          {c.canal === 'otp_firma'
+                            ? 'Firma OTP'
+                            : 'Web (asesor)'}
+                        </span>
+                        <span>
+                          <strong>Versión:</strong> {c.version_texto}
+                        </span>
+                        <span>
+                          <strong>Fecha y hora:</strong>{' '}
+                          {dateTime(c.fecha_aceptacion)}
+                        </span>
+                        <span>
+                          <strong>IP:</strong> {c.ip ?? '—'}
+                        </span>
+                      </div>
+                      <p
+                        className="mt-1 text-xs text-slate-500 font-mono"
+                        title={c.hash_texto}
+                      >
+                        sha256: {c.hash_texto.slice(0, 24)}…
+                      </p>
+                    </li>
+                  ))}
+                </ul>
               </Tarjeta>
             )}
 
@@ -1244,24 +1526,34 @@ export default function DetalleSolicitud() {
                   <Landmark size={18} /> Desembolso{' '}
                   {datos.desembolso.num_desembolso ?? ''}
                 </h3>
-                <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-1 text-sm text-emerald-900">
-                  <Row k="Estado" v={datos.desembolso.estado} />
-                  <Row
+                <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
+                  <Campo
+                    k="Estado"
+                    v={datos.desembolso.estado}
+                    tono="emerald"
+                  />
+                  <Campo
                     k="Capital"
                     v={currency(Number(datos.desembolso.capital))}
+                    tono="emerald"
                   />
-                  <Row k="Cuota" v={currency(Number(datos.desembolso.cuota))} />
-                  <Row
+                  <Campo
+                    k="Cuota"
+                    v={currency(Number(datos.desembolso.cuota))}
+                    tono="emerald"
+                  />
+                  <Campo
                     k="Tasa / plazo"
                     v={`${Number(datos.desembolso.tasa)}% m.v. · ${datos.desembolso.plazo} meses`}
+                    tono="emerald"
                   />
-                  <Row k="Emisor" v={datos.desembolso.emisor} />
-                  <Row k="Receptor" v={datos.desembolso.receptor} />
-                  <Row
+                  <Campo k="Emisor" v={datos.desembolso.emisor} />
+                  <Campo k="Receptor" v={datos.desembolso.receptor} />
+                  <Campo
                     k="Referencia"
                     v={datos.desembolso.referencia_pago ?? '—'}
                   />
-                  <Row
+                  <Campo
                     k="Fecha"
                     v={
                       datos.desembolso.fecha_desembolso
@@ -1485,29 +1777,191 @@ export default function DetalleSolicitud() {
                 </button>
               </Tarjeta>
             )}
+
+            {datos.estado !== 'desembolsada' &&
+              datos.estado !== 'cancelada' && (
+                <Tarjeta className="border-red-200">
+                  <h3 className="font-semibold mb-1 flex items-center gap-2 text-red-900">
+                    <XCircle size={18} /> Cancelar solicitud
+                  </h3>
+                  <p className="text-xs text-slate-500 mb-3">
+                    Anula la solicitud y queda registrada en el historial de
+                    estados. Esta acción no se puede deshacer.
+                  </p>
+                  {confirmarCancelacion ? (
+                    <>
+                      <label className="block text-sm mb-3">
+                        <span className="text-xs uppercase text-slate-500">
+                          Motivo de la cancelación *
+                        </span>
+                        <textarea
+                          className="input-base mt-1 w-full"
+                          rows={2}
+                          value={motivoCancelar}
+                          onChange={(e) => setMotivoCancelar(e.target.value)}
+                          placeholder="Ej: el cliente desistió del crédito"
+                        />
+                      </label>
+                      {mutCancelar.error && (
+                        <p role="alert" className="mb-3 text-sm text-red-600">
+                          {mensajeError(
+                            mutCancelar.error,
+                            'No se pudo cancelar la solicitud',
+                          )}
+                        </p>
+                      )}
+                      <div className="flex gap-3">
+                        <button
+                          className="btn-primary !bg-red-600 hover:!bg-red-700"
+                          disabled={
+                            mutCancelar.isPending ||
+                            motivoCancelar.trim().length < 3
+                          }
+                          onClick={() =>
+                            mutCancelar.mutate(motivoCancelar.trim())
+                          }
+                        >
+                          {mutCancelar.isPending
+                            ? 'Cancelando…'
+                            : 'Sí, cancelar la solicitud'}
+                        </button>
+                        <button
+                          className="btn-ghost"
+                          onClick={() => setConfirmarCancelacion(false)}
+                        >
+                          Volver
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <button
+                      className="btn-ghost !text-red-700 !border-red-300 hover:!bg-red-50"
+                      onClick={() => setConfirmarCancelacion(true)}
+                    >
+                      Cancelar esta solicitud
+                    </button>
+                  )}
+                </Tarjeta>
+              )}
           </>
         )}
 
-        {/* Causales: dato sensible, solo visible para el administrador */}
-        {vista === 'evaluacion' && !esAsesor && datos.causales.length > 0 && (
-          <Tarjeta className="border-amber-200 bg-amber-50/40">
-            <h3 className="font-semibold text-amber-900 mb-3 flex items-center gap-2">
-              <AlertTriangle size={18} /> Causales de la evaluación
+        {/* Causales: dato sensible, solo visible para el administrador.
+            Las vigentes son las de la evaluación actual; las inactivas
+            quedaron registradas en evaluaciones anteriores (p. ej. un
+            rechazo que el administrador re-evaluó y logró aprobar). */}
+        {vista === 'evaluacion' &&
+          !esAsesor &&
+          datos.causales.some((c) => c.activa) && (
+            <Tarjeta className="border-amber-200 bg-amber-50/40">
+              <h3 className="font-semibold text-amber-900 mb-3 flex items-center gap-2">
+                <AlertTriangle size={18} /> Causales de la evaluación vigente
+              </h3>
+              <ul className="space-y-2">
+                {datos.causales
+                  .filter((c) => c.activa)
+                  .map((c, i) => (
+                    <li
+                      key={`${c.codigo}-${i}`}
+                      className="flex items-start gap-3 rounded-xl border border-amber-200 bg-white/70 px-4 py-3"
+                    >
+                      <span className="mt-0.5 shrink-0 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold tracking-wide text-amber-800">
+                        {c.codigo}
+                      </span>
+                      <span className="text-sm leading-snug text-amber-900">
+                        {c.descripcion}
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            </Tarjeta>
+          )}
+
+        {vista === 'evaluacion' &&
+          !esAsesor &&
+          datos.causales.some((c) => !c.activa) && (
+            <Tarjeta>
+              <h3 className="font-semibold mb-1 flex items-center gap-2">
+                <AlertTriangle size={18} /> Causales de evaluaciones anteriores
+              </h3>
+              <p className="text-xs text-slate-500 mb-3">
+                Quedan registradas aunque la evaluación vigente las haya
+                superado: son la trazabilidad del rechazo previo.
+              </p>
+              <ul className="space-y-2">
+                {datos.causales
+                  .filter((c) => !c.activa)
+                  .map((c, i) => (
+                    <li
+                      key={`hist-${c.codigo}-${i}`}
+                      className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                    >
+                      <span className="mt-0.5 shrink-0 rounded-md bg-slate-200 px-2 py-0.5 text-xs font-bold tracking-wide text-slate-600">
+                        {c.codigo}
+                      </span>
+                      <span className="text-sm leading-snug text-slate-600">
+                        {c.descripcion}
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            </Tarjeta>
+          )}
+
+        {/* Cada re-evaluación crea una versión nueva: el historial deja
+            constancia de cuántas hubo y con qué decisión terminaron. */}
+        {vista === 'evaluacion' && !esAsesor && auditorias.length > 1 && (
+          <Tarjeta>
+            <h3 className="font-semibold mb-1 flex items-center gap-2">
+              <History size={18} /> Historial de evaluaciones
             </h3>
-            <ul className="space-y-2">
-              {datos.causales.map((c) => (
-                <li
-                  key={c.codigo}
-                  className="flex items-start gap-3 rounded-xl border border-amber-200 bg-white/70 px-4 py-3"
-                >
-                  <span className="mt-0.5 shrink-0 rounded-md bg-amber-100 px-2 py-0.5 text-xs font-bold tracking-wide text-amber-800">
-                    {c.codigo}
-                  </span>
-                  <span className="text-sm leading-snug text-amber-900">
-                    {c.descripcion}
-                  </span>
-                </li>
-              ))}
+            <p className="text-xs text-slate-500 mb-3">
+              La evaluación vigente es la primera; las anteriores quedan
+              registradas como versiones previas.
+            </p>
+            <ul className="divide-y divide-slate-100">
+              {auditorias.map((a, i) => {
+                const tono = tonoDecision(a.decision)
+                return (
+                  <li
+                    key={a.evaluacion_id}
+                    className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5 text-sm"
+                  >
+                    <span className="font-medium text-slate-900">
+                      Evaluación {auditorias.length - i}
+                    </span>
+                    <span
+                      className={`text-xs font-semibold capitalize ${
+                        tono === 'emerald'
+                          ? 'text-emerald-700'
+                          : tono === 'red'
+                            ? 'text-red-700'
+                            : 'text-amber-700'
+                      }`}
+                    >
+                      {a.decision}
+                      {a.decision_interna && a.decision_interna !== a.decision
+                        ? ` · ${a.decision_interna}`
+                        : ''}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      {dateShort(a.fecha_evaluacion)} · {a.origen_datos}
+                    </span>
+                    {a.causales.length > 0 && (
+                      <span className="text-xs text-slate-500">
+                        {a.causales.length} causal
+                        {a.causales.length === 1 ? '' : 'es'} registrada
+                        {a.causales.length === 1 ? '' : 's'}
+                      </span>
+                    )}
+                    {i === 0 && (
+                      <span className="ml-auto text-[11px] font-semibold uppercase tracking-wide text-brand-700">
+                        Vigente
+                      </span>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           </Tarjeta>
         )}
@@ -1546,8 +2000,10 @@ export default function DetalleSolicitud() {
               <ListChecks size={18} /> Re-evaluar con otros parámetros
             </h3>
             <p className="text-xs text-slate-500 mb-4">
-              Corre una nueva evaluación del motor con otros valores para
-              comparar el resultado. Los campos vacíos usan los valores de la
+              En una solicitud rechazada sirve para asignar el monto y el plazo
+              con los que sí pasaría. Cada ejecución crea una versión nueva: las
+              evaluaciones y causales anteriores quedan registradas en la
+              pestaña Evaluación. Los campos vacíos usan los valores de la
               evaluación vigente.
             </p>
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
@@ -1580,13 +2036,12 @@ export default function DetalleSolicitud() {
                 <span className="text-xs uppercase text-slate-500">
                   Tasa mensual (% m.v.)
                 </span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                <CampoNumerico
+                  decimales
+                  minimo={0}
                   className="input-base mt-1 w-full"
-                  value={reTasa}
-                  onChange={(e) => setReTasa(e.target.value)}
+                  value={reTasa === '' ? null : Number(reTasa)}
+                  onValor={(n) => setReTasa(n == null ? '' : String(n))}
                   placeholder={String(reTasaDef)}
                 />
               </label>
@@ -1753,15 +2208,6 @@ function TabDetalle({
   )
 }
 
-function Metric({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <Tarjeta>
-      <p className="text-xs uppercase text-slate-500">{label}</p>
-      <p className="mt-2 text-xl font-bold">{value}</p>
-    </Tarjeta>
-  )
-}
-
 function EvidenciaImagen({ titulo, url }: { titulo: string; url: string }) {
   return (
     <div className="space-y-2">
@@ -1777,27 +2223,6 @@ function EvidenciaImagen({ titulo, url }: { titulo: string; url: string }) {
           <Eye size={16} /> Ver ampliado
         </a>
       </div>
-    </div>
-  )
-}
-
-function Row({
-  k,
-  v,
-  highlight = false,
-}: {
-  k: string
-  v: ReactNode
-  highlight?: boolean
-}) {
-  return (
-    <div className="flex justify-between border-b border-slate-100 py-2.5 text-sm">
-      <dt className="text-slate-500">{k}</dt>
-      <dd
-        className={`font-medium ${highlight ? 'text-emerald-700 font-bold' : 'text-slate-900'}`}
-      >
-        {v}
-      </dd>
     </div>
   )
 }

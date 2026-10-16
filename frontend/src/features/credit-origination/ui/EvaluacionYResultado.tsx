@@ -26,6 +26,7 @@ import {
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import ResultadoCredito, { type OfertaSeleccionada } from './ResultadoCredito'
 import type { DatosSolicitud } from './CrearSolicitud'
+import type { SimulacionPrevia } from '../model/borrador'
 import './EvaluacionYResultado.css'
 
 export interface DatosEvaluacion {
@@ -40,14 +41,14 @@ interface EvaluacionYResultadoProps {
   validacion?: { multasPendientes?: boolean }
   /** Resultado ya emitido (borrador retomado): se muestra sin re-evaluar. */
   resultadoInicial?: ResultadoEvaluacionCredito | null
+  /** Simulación con la que se abrió la solicitud: precarga la formalización. */
+  simulacion?: SimulacionPrevia
   onBack?: () => void
   onModificar: () => void
   /** Avisa al flujo que el motor ya entregó un resultado persistido. */
   onResultado?: (resultado: ResultadoEvaluacionCredito) => void
   /** Avisa al flujo que el proceso se cerró (oferta formalizada). */
   onFormalizar?: (oferta: OfertaSeleccionada) => void
-  /** Avisa al flujo que la consulta quedó cerrada para el asesor. */
-  onEnviadaEstudio?: () => void
 }
 
 const ESCENARIOS_POR_DEFECTO: Record<string, string> = {
@@ -61,11 +62,11 @@ export default function EvaluacionYResultado({
   identidad,
   validacion,
   resultadoInicial = null,
+  simulacion,
   onBack,
   onModificar,
   onResultado,
   onFormalizar,
-  onEnviadaEstudio,
 }: EvaluacionYResultadoProps) {
   // Un borrador retomado con resultado previo muestra esa consulta tal
   // como quedó: la evaluación ya está persistida y no se puede volver a
@@ -137,7 +138,7 @@ export default function EvaluacionYResultado({
     if (!idSolicitud || !solicitud) {
       window.setTimeout(() => {
         const demo = crearResultadoDemo({
-          decision: origen.origen === 'demo' ? 'APROBADO' : 'REVISION_MANUAL',
+          decision: origen.origen === 'demo' ? 'APROBADO' : 'RECHAZADO',
           ingresosMensuales: solicitud?.ingresosMensuales ?? 4_500_000,
           plazoMeses: solicitud?.plazoMeses ?? 24,
         })
@@ -344,13 +345,14 @@ export default function EvaluacionYResultado({
           compacto
           resultado={resultado}
           idSolicitud={idSolicitud}
+          simulacion={simulacion}
+          solicitud={solicitud}
           formalizacionIniciada={formalizacionIniciada}
           onModificar={onModificar}
           onFormalizar={(oferta) => {
             setFormalizacionIniciada(true)
             onFormalizar?.(oferta)
           }}
-          onEnviadaEstudio={onEnviadaEstudio}
         />
       )}
 

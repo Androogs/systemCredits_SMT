@@ -18,6 +18,11 @@ class ClienteInput(BaseModel):
     fecha_nacimiento: date
     ocupacion: Ocupacion
     nacionalidad: str = "Colombia"
+    # Datos de la cédula confirmados en la revisión: los usan los
+    # documentos de legalización ("expedida en…", fecha de expedición).
+    fecha_expedicion: date | None = None
+    ciudad_expedicion: str | None = Field(default=None, max_length=200)
+    ciudad_nacimiento: str | None = Field(default=None, max_length=200)
 
 
 class DatosLaboralesInput(BaseModel):
@@ -26,12 +31,26 @@ class DatosLaboralesInput(BaseModel):
     ingreso_mensual: Decimal | None = Field(default=None, ge=0)
     otros_ingresos: Decimal = Field(default=Decimal(0), ge=0)
     anios_camara_comercio: Decimal | None = Field(default=None, ge=0)
+    # Empleador o entidad pagadora capturado en originación: precarga el
+    # nombre de empresa del formulario de formalización.
+    nombre_empresa: str | None = Field(default=None, max_length=200)
 
 
 class ContactoViviendaInput(BaseModel):
     estrato: int | None = Field(default=None, ge=0, le=6)
     personas_a_cargo: int | None = Field(default=None, ge=0)
     tipo_vivienda: str | None = None
+    # Canales de contacto del cliente: notificaciones (email) y OTP.
+    correo: str | None = Field(default=None, max_length=320)
+    telefono: str | None = Field(default=None, max_length=40)
+
+
+class ConsentimientoInput(BaseModel):
+    """Aceptación del consentimiento Habeas Data en el paso 2. El
+    backend sella la versión del texto vigente y su hash; aquí solo
+    viaja el hecho de la aceptación."""
+
+    aceptado: bool = False
 
 
 class CrearSolicitudRequest(BaseModel):
@@ -39,6 +58,7 @@ class CrearSolicitudRequest(BaseModel):
     datos_laborales: DatosLaboralesInput
     contacto_vivienda: ContactoViviendaInput = ContactoViviendaInput()
     moneda: str = "COP"
+    consentimiento: ConsentimientoInput | None = None
     # Producto capturado en el paso "Crear solicitud" de originación.
     linea_credito: str | None = Field(default=None, max_length=60)
     destino_credito: str | None = Field(default=None, max_length=80)
@@ -66,6 +86,8 @@ class OfertaResponse(BaseModel):
     plazo_ofrecido: int | None = None
     cuota_mensual: Decimal | None = None
     monto_aprobado: Decimal | None = None
+    fecha_vigencia: datetime | None = None
+    expirada: bool = False
 
 
 class VehiculoFinanciadoRequest(BaseModel):
@@ -86,6 +108,50 @@ class VehiculoFinanciadoRequest(BaseModel):
     aval_pct: Decimal | None = Field(default=None, ge=0, le=100)
 
 
+class DatosFormalizacionRequest(BaseModel):
+    """Información adicional del cliente capturada en la formalización:
+    se pide después de los datos del vehículo y antes de enviar el OTP.
+
+    La dirección llega descompuesta (vía + números + letras + sector) y el
+    servicio la compone en una sola cadena para `direccion`."""
+
+    # Residencia — dirección descompuesta
+    via_principal: str | None = Field(default=None, max_length=30)
+    numero_via: str | None = Field(default=None, max_length=10)
+    letra_via: str | None = Field(default=None, max_length=10)
+    sector: str | None = Field(default=None, max_length=30)
+    numero_cruce: str | None = Field(default=None, max_length=10)
+    letra_cruce: str | None = Field(default=None, max_length=10)
+    numero_final: str | None = Field(default=None, max_length=10)
+    otras_caracteristicas: str | None = Field(default=None, max_length=120)
+    barrio: str | None = Field(default=None, max_length=120)
+    ciudad: str | None = Field(default=None, max_length=200)
+    estrato: int | None = Field(default=None, ge=0, le=6)
+    tipo_vivienda: str | None = Field(default=None, max_length=50)
+    zona_rural: bool | None = None
+    # Información personal
+    estado_civil: str | None = Field(default=None, max_length=40)
+    personas_a_cargo: int | None = Field(default=None, ge=0)
+    num_hijos: int | None = Field(default=None, ge=0)
+    es_cabeza_familia: bool | None = None
+    # Información financiera (bienes del cliente)
+    cuenta_bienes_raices: bool | None = None
+    cuenta_vehiculo: bool | None = None
+    tiene_moto: bool | None = None
+    tiene_carro: bool | None = None
+    primera_moto: bool | None = None
+    # "¿Qué está financiando?" — TRUE cuando financia la moto con el crédito.
+    estoy_financiando: bool | None = None
+    # Información laboral
+    nombre_empresa: str | None = Field(default=None, max_length=200)
+    ciudad_empresa: str | None = Field(default=None, max_length=200)
+    fecha_ingreso: date | None = None
+    nivel_educativo: str | None = Field(default=None, max_length=100)
+    profesion: str | None = Field(default=None, max_length=120)
+    cargo: str | None = Field(default=None, max_length=120)
+    actividad_comercial: str | None = Field(default=None, max_length=180)
+
+
 class SeleccionarOfertaRequest(BaseModel):
     id_oferta: int
     """Monto que el cliente decide tomar; <= monto_aprobado de la oferta.
@@ -96,34 +162,6 @@ class SeleccionarOfertaRequest(BaseModel):
     plazo: int | None = Field(default=None, gt=0)
     """Datos del vehículo a financiar, capturados en la formalización."""
     vehiculo: VehiculoFinanciadoRequest | None = None
-
-
-class EnviarEstudioRequest(BaseModel):
-    """El asesor escala una solicitud rechazada a estudio manual.
-
-    La solicitud pasa a `en_revision` y el comité la resuelve con
-    /resolver. El comentario queda en `descripcion_estado`.
-    """
-
-    comentario: str | None = Field(default=None, max_length=500)
-
-
-class ResolverSolicitudRequest(BaseModel):
-    """Decisión del comité sobre una solicitud en revisión (causales E/RC).
-
-    El motor deja la solicitud en `en_revision`; el comité la cierra
-    aprobando o rechazando manualmente. El comentario queda en
-    `descripcion_estado` para trazabilidad.
-    """
-
-    decision: Literal["aprobado", "rechazado"]
-    comentario: str | None = Field(default=None, max_length=500)
-    """Monto que el comité decide aprobar; si se omite se usa el cupo
-    calculado por el motor en la evaluación vigente."""
-    monto_aprobado: Decimal | None = Field(default=None, gt=0)
-    """Plazo en meses de la oferta generada por el comité; si se omite
-    se usa el plazo del cupo o el deseado en la solicitud."""
-    plazo_meses: int | None = Field(default=None, ge=1)
 
 
 class EvaluacionResumenSolicitud(BaseModel):
@@ -146,6 +184,7 @@ class SolicitudResumenResponse(BaseModel):
     num_solicitud: int | None
     fecha_hora: datetime
     estado: str
+    descripcion_estado: str | None = None
     decision: str | None
     nombre_cliente: str
     num_cedula: str
@@ -178,12 +217,23 @@ class DesembolsoResponse(BaseModel):
     fecha_desembolso: datetime | None
 
 
+class ConsentimientoResponse(BaseModel):
+    """Registro de una aceptación Habeas Data (Ley 1581)."""
+
+    version_texto: str
+    hash_texto: str
+    canal: str
+    ip: str | None
+    fecha_aceptacion: datetime
+
+
 class SolicitudDetalleResponse(SolicitudResumenResponse):
     datos_laborales: dict | None
     contacto_vivienda: dict | None
     causales: list[CausalSolicitudResponse]
     ofertas: list[OfertaResponse]
     desembolso: DesembolsoResponse | None = None
+    consentimientos: list[ConsentimientoResponse] = []
 
 
 class VehiculoDesembolsoRequest(BaseModel):
@@ -208,3 +258,43 @@ class RegistrarDesembolsoRequest(BaseModel):
     titular_cuenta: str | None = Field(default=None, max_length=180)
     referencia_pago: str | None = Field(default=None, max_length=80)
     vehiculo: VehiculoDesembolsoRequest | None = None
+
+
+class CancelarSolicitudRequest(BaseModel):
+    """Anulación de la solicitud: el motivo queda en el historial de
+    estados (el trigger de Postgres lo persiste como `motivo`)."""
+
+    motivo: str = Field(min_length=3, max_length=500)
+
+
+class GenerarOtpRequest(BaseModel):
+    """Emisión de un OTP para la acción indicada (firma del pagaré).
+
+    canal='whatsapp' envía por plantilla WATI al celular del cliente;
+    sin teléfono válido o si el envío falla se cae a email."""
+
+    accion: str = Field(default="firma_pagare", max_length=100)
+    canal: Literal["email", "whatsapp"] = "whatsapp"
+
+
+class GenerarOtpResponse(BaseModel):
+    id_otp: int
+    expira_en_segundos: int
+    # Canal por el que realmente salió el código (whatsapp cayó a email
+    # cuando el teléfono no era válido o WATI falló).
+    canal: Literal["email", "whatsapp"]
+    destino: str | None
+    estado_envio: str
+    # Solo en environment='demo': el código viaja en la respuesta para
+    # mostrarlo en pantalla, sin dependencia de un proveedor externo.
+    codigo_demo: str | None = None
+
+
+class VerificarOtpRequest(BaseModel):
+    accion: str = Field(default="firma_pagare", max_length=100)
+    codigo: str = Field(min_length=6, max_length=6)
+
+
+class VerificarOtpResponse(BaseModel):
+    verificado: bool
+    uuid_firma: UUID | None = None

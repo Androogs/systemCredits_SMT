@@ -38,6 +38,10 @@ class SolicitudNoEncontradaError(MotorError):
     """La solicitud (u oferta) pedida no existe. HTTP 404."""
 
 
+class ConflictoEstadoError(MotorError):
+    """La operación no es válida en el estado actual del recurso. HTTP 409."""
+
+
 class DataCreditoError(MotorError):
     """Error al consumir un servicio de DataCrédito Experian. HTTP 502."""
 

@@ -196,10 +196,6 @@ function CapturaCedula({
                 </dd>
               </div>
             </dl>
-            <span className="captura__server">
-              <span aria-hidden="true" />
-              Captura remota activa
-            </span>
           </aside>
         </header>
       )}

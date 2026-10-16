@@ -83,29 +83,6 @@
   text-align: right;
 }
 
-.autorizacion__server {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.7rem;
-  border: 1px solid #d8eaf4;
-  border-radius: 0.55rem;
-  background: #f3fbff;
-  color: #11648a;
-  font-size: 0.7rem;
-  font-weight: 600;
-  line-height: 1.35;
-}
-
-.autorizacion__server span {
-  width: 0.42rem;
-  height: 0.42rem;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: #18a873;
-  box-shadow: 0 0 0 3px rgb(24 168 115 / 14%);
-}
-
 /* ---------- Formulario ---------- */
 
 .autorizacion__form {
@@ -337,6 +314,83 @@
   font-weight: 600;
 }
 
+/* ---------- Contacto del cliente ---------- */
+
+.autorizacion__contacto {
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid #eef1f6;
+  border-radius: 0.75rem;
+  background: #fbfcfe;
+}
+
+.autorizacion__contacto legend {
+  padding: 0 0.35rem;
+  color: #344054;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.autorizacion__contacto-nota {
+  margin: 0 0 0.85rem;
+  color: #667085;
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.autorizacion__contacto-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.autorizacion__contacto-field {
+  display: grid;
+  gap: 0.4rem;
+  align-content: start;
+}
+
+.autorizacion__contacto-field > label {
+  color: #344054;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.autorizacion__contacto-field > label span {
+  color: #d92d20;
+}
+
+.autorizacion__contacto-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: 0 0.9rem;
+  border: 1px solid #dde3ec;
+  border-radius: 0.55rem;
+  background: #fff;
+  color: #1d2939;
+  font: inherit;
+  font-size: 0.88rem;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.autorizacion__contacto-field input:hover {
+  border-color: #c3d3e3;
+}
+
+.autorizacion__contacto-field input:focus {
+  border-color: #099dd7;
+  box-shadow: 0 0 0 3px rgb(9 157 215 / 14%);
+  outline: none;
+}
+
+.autorizacion__contacto-field.has-error input {
+  border-color: #f0a9a2;
+  background: #fffbfa;
+}
+
 /* ---------- Auditoría ---------- */
 
 .autorizacion__audit {
@@ -445,6 +499,10 @@
 @media (max-width: 680px) {
   .autorizacion__form-head {
     flex-direction: column;
+  }
+
+  .autorizacion__contacto-grid {
+    grid-template-columns: 1fr;
   }
 
   .autorizacion__actions {

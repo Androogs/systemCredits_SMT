@@ -282,10 +282,6 @@ function CrearSolicitud({
               <dd>Palmira - Centro Interno</dd>
             </div>
           </dl>
-          <span className="solicitud__server">
-            <span aria-hidden="true" />
-            Servidor de Validación Activo v2.4.12-Prod (SSL)
-          </span>
         </aside>
       </header>
 
@@ -334,8 +330,8 @@ function CrearSolicitud({
             <div>
               <h2 id="solicitud-sec-1">Configuración de Producto Financiero</h2>
               <p>
-                Línea y destino. El plazo es fijo a {PLAZO_FIJO_MESES} meses y
-                el monto lo sugiere el motor tras la evaluación.
+                Línea y destino. El monto lo sugiere el motor tras la
+                evaluación.
               </p>
             </div>
           </header>
@@ -411,21 +407,6 @@ function CrearSolicitud({
                   {errores.destinoCredito}
                 </p>
               )}
-            </div>
-
-            <div className="solicitud__field solicitud__field--readonly">
-              <label>Plazo fijo</label>
-              <div className="solicitud__input-wrap">
-                <input
-                  type="text"
-                  readOnly
-                  value={`${PLAZO_FIJO_MESES} meses`}
-                  aria-readonly="true"
-                />
-              </div>
-              <p className="solicitud__hint">
-                Plazo estándar definido por política del motor.
-              </p>
             </div>
           </div>
         </section>

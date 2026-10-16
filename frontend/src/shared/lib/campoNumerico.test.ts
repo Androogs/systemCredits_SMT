@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   acotar,
+  formatearMiles,
   limpiarDecimal,
+  limpiarDecimalMiles,
   limpiarEntero,
   parsearNumerico,
+  posicionTrasDigitos,
 } from './campoNumerico'
 
 describe('limpiarEntero', () => {
@@ -56,6 +59,52 @@ describe('limpiarDecimal', () => {
     expect(limpiarDecimal('abc')).toBe('')
     expect(limpiarDecimal('1e5')).toBe('15')
     expect(limpiarDecimal('-3')).toBe('3')
+  })
+})
+
+describe('formatearMiles', () => {
+  it('agrupa de a tres con punto es-CO mientras se digita', () => {
+    expect(formatearMiles('1')).toBe('1')
+    expect(formatearMiles('1234')).toBe('1.234')
+    expect(formatearMiles('1234567')).toBe('1.234.567')
+    expect(formatearMiles('12781665')).toBe('12.781.665')
+  })
+
+  it('vacío queda vacío', () => {
+    expect(formatearMiles('')).toBe('')
+  })
+
+  it('con decimal interno usa coma es-CO', () => {
+    expect(formatearMiles('1234.5')).toBe('1.234,5')
+    expect(formatearMiles('1234567.')).toBe('1.234.567,')
+  })
+})
+
+describe('limpiarDecimalMiles', () => {
+  it('el punto es separador de miles y la coma el decimal', () => {
+    expect(limpiarDecimalMiles('1.234,5')).toBe('1234.5')
+    expect(limpiarDecimalMiles('12.345.678')).toBe('12345678')
+  })
+
+  it('sin coma devuelve solo la parte entera', () => {
+    expect(limpiarDecimalMiles('1.234')).toBe('1234')
+  })
+
+  it('conserva coma intermedia para seguir digitando', () => {
+    expect(limpiarDecimalMiles('1.234,')).toBe('1234.')
+  })
+})
+
+describe('posicionTrasDigitos', () => {
+  it('encuentra el índice tras n dígitos ignorando separadores', () => {
+    expect(posicionTrasDigitos('1.234.567', 4)).toBe(5)
+    expect(posicionTrasDigitos('1.234.567', 1)).toBe(1)
+    expect(posicionTrasDigitos('1.234.567', 7)).toBe(9)
+  })
+
+  it('cero dígitos → inicio; más dígitos que los que hay → final', () => {
+    expect(posicionTrasDigitos('1.234', 0)).toBe(0)
+    expect(posicionTrasDigitos('1.234', 99)).toBe(5)
   })
 })
 
