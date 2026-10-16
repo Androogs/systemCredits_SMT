@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
 import {
+  ApiError,
   evaluarSolicitud,
   listarAuditoriaSolicitud,
   listarEscenariosMock,
@@ -168,11 +169,30 @@ export default function EvaluacionYResultado({
         setResultado(evaluado)
         onResultado?.(evaluado)
       })
-      .catch(() =>
-        setError(
-          'La evaluación no respondió. Revisa la conexión e intenta de nuevo.',
-        ),
-      )
+      .catch((err: unknown) => {
+        // 502 tiene dos orígenes: proxy sin backend vs backend con
+        // DataCreditoError (Experian sin credenciales). Mostrar el detalle
+        // evita el genérico "La evaluación no respondió".
+        if (err instanceof ApiError) {
+          const detalle =
+            typeof err.detalle === 'string'
+              ? err.detalle
+              : JSON.stringify(err.detalle ?? '')
+          if (err.status === 0) {
+            setError(
+              'La evaluación no respondió. Revisa la conexión e intenta de nuevo.',
+            )
+          } else if (err.status === 502) {
+            setError(`Error 502 al evaluar: ${detalle}`)
+          } else {
+            setError(`Error ${err.status} al evaluar: ${detalle}`)
+          }
+        } else {
+          setError(
+            'La evaluación no respondió. Revisa la conexión e intenta de nuevo.',
+          )
+        }
+      })
       .finally(() => setFase('resultado'))
   }
 

@@ -155,12 +155,21 @@ async function request<T>(ruta: string, init?: OpcionesRequest): Promise<T> {
       })
       const cuerpo = await respuesta.json().catch(() => null)
       if (respuesta.ok) return cuerpo as T
-      const detalle =
+      const detalleBase =
         cuerpo && typeof cuerpo === 'object'
           ? ((cuerpo as Record<string, unknown>).detail ??
             (cuerpo as Record<string, unknown>).error ??
             cuerpo)
-          : `Error HTTP ${respuesta.status}`
+          : null
+      // 502 del proxy de Vite (backend apagado o puerto distinto): el cuerpo
+      // no es JSON y el genérico "Error HTTP 502" no dice qué hacer.
+      const detalle =
+        detalleBase ??
+        (respuesta.status === 502
+          ? 'El proxy de desarrollo devolvió 502: el backend no respondió. ' +
+            'Verifica que uvicorn esté corriendo en http://127.0.0.1:8000 y que ' +
+            'API_PROXY_TARGET apunte a ese puerto.'
+          : `Error HTTP ${respuesta.status}`)
       if (respuesta.status >= 500 && intento < intentos) {
         await esperar(ESPERA_REINTENTO_MS * intento)
         continue
@@ -479,6 +488,50 @@ export interface SesionCapturaApi {
   expira_en: string
 }
 
+/** Datos del paso 1 contra los que se compara el OCR de la cédula. */
+export interface DatosEsperadosOCR {
+  nombres?: string
+  apellidos?: string
+  numero_documento?: string
+  fecha_nacimiento?: string
+}
+
+/** De dónde salió un campo: MRZ del reverso blanco, anverso, reverso o línea al pie de la amarilla. */
+export type FuenteOCR = 'mrz' | 'anverso' | 'reverso' | 'codigo_reverso' | ''
+
+/** Un campo extraído por el OCR, con su confianza (0-100). */
+export interface CampoOCRApi {
+  valor: string
+  confianza: number
+  fuente?: FuenteOCR
+}
+
+/** Resultado del OCR de la cédula, fusionado de anverso + reverso (paso 3). */
+export interface ResultadoOCRApi {
+  disponible: boolean
+  texto_crudo: string
+  /** Diseño detectado: blanca (digital, con MRZ) o amarilla (hologramas). */
+  tipo_cedula?: 'blanca' | 'amarilla' | ''
+  numero_documento: CampoOCRApi
+  nombres: CampoOCRApi
+  apellidos: CampoOCRApi
+  fecha_nacimiento: CampoOCRApi
+  fecha_expedicion: CampoOCRApi
+  /** Solo la cédula blanca la trae. */
+  fecha_expiracion?: CampoOCRApi
+  sexo?: CampoOCRApi
+  lugar_nacimiento?: CampoOCRApi
+  ciudad_expedicion?: CampoOCRApi
+  /** Diferencias a revisar (vs. paso 1, entre caras, cédula vencida). */
+  advertencias: string[]
+  /** Notas de calidad de la captura; no afectan `coincide`. */
+  observaciones?: string[]
+  /** true cuando no hay advertencias. */
+  coincide: boolean
+  /** Lectura cruda por foto (diagnóstico). */
+  lecturas?: Record<string, unknown>
+}
+
 export interface EvidenciaApi {
   id_evidencia: number
   tipo: TipoEvidencia
@@ -488,20 +541,34 @@ export interface EvidenciaApi {
   creado_en: string
 }
 
+/**
+ * Estado para la página móvil pública. No trae el OCR (datos personales):
+ * solo si la cédula se reconoció en cada foto, para pedir repetirla.
+ */
 export interface EstadoCapturaApi {
   estado: string
   pendientes: TipoEvidencia[]
   evidencias: EvidenciaApi[]
+  cedula_legible?: Partial<Record<'cedula_frontal' | 'cedula_reverso', boolean>>
 }
 
-export interface EstadoSesionApi extends EstadoCapturaApi {
+/** Estado para el asesor (polling): incluye el OCR fusionado. */
+export interface EstadoSesionApi {
   id_sesion: string
+  estado: string
   expira_en: string
+  pendientes: TipoEvidencia[]
+  evidencias: EvidenciaApi[]
+  /** Resultado del OCR de la cédula; null hasta que se sube una cara. */
+  ocr?: ResultadoOCRApi | null
 }
 
 /** El asesor crea la sesión; el token va en el link/QR del celular. */
-export function crearSesionCaptura() {
-  return request<SesionCapturaApi>('/api/sesiones-captura', { method: 'POST' })
+export function crearSesionCaptura(datosEsperados?: DatosEsperadosOCR) {
+  return request<SesionCapturaApi>('/api/sesiones-captura', {
+    method: 'POST',
+    body: JSON.stringify(datosEsperados ?? {}),
+  })
 }
 
 /** Polling del asesor: evidencias recibidas en la sesión. */
@@ -534,9 +601,11 @@ export function subirEvidencia(
   form.append('tipo', tipo)
   form.append('archivo', archivo, nombre)
   // multipart: el boundary lo pone el navegador; no fijar Content-Type.
+  // El OCR corre en la subida (3-10 s por foto): timeout holgado.
   return request<EvidenciaApi>(`/api/captura/${token}/evidencias`, {
     method: 'POST',
     headers: {},
     body: form,
+    timeoutMs: 90_000,
   })
 }

@@ -1062,7 +1062,11 @@ CREATE TABLE sesion_captura (
     estado       VARCHAR(20)  NOT NULL DEFAULT 'pendiente',
     id_solicitud UUID         REFERENCES solicitud_credito (id_solicitud),
     expira_en    TIMESTAMPTZ  NOT NULL,
-    creado_en    TIMESTAMPTZ  NOT NULL DEFAULT now()
+    creado_en    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    -- Datos capturados por el asesor (paso 1) y resultado del OCR de la
+    -- cédula frontal: se comparan para advertir sobre no coincidencias.
+    datos_esperados JSONB,
+    resultado_ocr   JSONB
 );
 
 CREATE TABLE documento_evidencia (

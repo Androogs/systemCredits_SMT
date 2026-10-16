@@ -4,6 +4,7 @@ import Boton from '../../../shared/ui/Boton'
 import { emitirToast } from '../../../shared/lib/toastBus'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import { datosPersonalesSchema } from '../schemas/persona'
+import type { CampoOCRApi, ResultadoOCRApi } from '../api/originacionApi'
 import './RevisionDatos.css'
 
 export interface DatosRevisados {
@@ -24,10 +25,13 @@ interface RevisionDatosProps {
   inicial?: Partial<DatosRevisados>
   /** Si es true, no renderiza header ni seguimiento (para usar dentro de otro paso). */
   compacto?: boolean
+  /** Resultado del OCR de la cédula; si trae advertencias, se muestran aquí. */
+  ocr?: ResultadoOCRApi | null
 }
 
-const CONFIANZA_BASE = 98.4
 const CONFIANZA_MAXIMA = 100
+/** Por debajo de esta confianza del OCR, el campo pide confirmación manual. */
+const CONFIANZA_DUDOSA = 75
 
 type CampoId =
   | 'nombres'
@@ -51,7 +55,19 @@ interface DefinicionCampo {
   placeholder?: string
 }
 
-const campos: DefinicionCampo[] = [
+/** Campo del formulario → campo del OCR (para su confianza). */
+const CAMPO_OCR: Record<CampoId, keyof ResultadoOCRApi> = {
+  nombres: 'nombres',
+  apellidos: 'apellidos',
+  numeroIdentificacion: 'numero_documento',
+  sexo: 'sexo',
+  fechaNacimiento: 'fecha_nacimiento',
+  lugarNacimiento: 'lugar_nacimiento',
+  fechaExpedicion: 'fecha_expedicion',
+  ciudadExpedicion: 'ciudad_expedicion',
+}
+
+const camposBase: DefinicionCampo[] = [
   { id: 'nombres', label: 'Nombres', tipo: 'text' },
   { id: 'apellidos', label: 'Apellidos', tipo: 'text' },
   {
@@ -88,40 +104,94 @@ const campos: DefinicionCampo[] = [
   },
 ]
 
-// Precarga de demostración solo en dev (import.meta.env.DEV); en el
-// build de producción todos los campos arrancan vacíos.
-const valoresIniciales: DatosRevisados = import.meta.env.DEV
-  ? {
-      nombres: 'CARLOS MARIO',
-      apellidos: 'RESTREPO ALVAREZ',
-      numeroIdentificacion: '',
-      sexo: 'Masculino (M)',
-      fechaNacimiento: '1991-03-14',
-      lugarNacimiento: 'Palmira, Valle del Cauca',
-      fechaExpedicion: '2010-04-20',
-      ciudadExpedicion: 'Palmira, Valle del Cauca',
+function campoOCR(
+  ocr: ResultadoOCRApi | null | undefined,
+  id: CampoId,
+): CampoOCRApi | undefined {
+  const valor = ocr?.[CAMPO_OCR[id]]
+  return valor && typeof valor === 'object' && 'confianza' in valor
+    ? (valor as CampoOCRApi)
+    : undefined
+}
+
+/**
+ * Marca como dudoso, además de los fijos, todo campo que el OCR leyó con
+ * baja confianza. Un campo que el OCR no leyó no se marca: el asesor lo
+ * digita y la validación del formulario exige el valor.
+ */
+function construirCampos(ocr: ResultadoOCRApi | null | undefined): DefinicionCampo[] {
+  return camposBase.map((campo) => {
+    if (campo.dudoso || campo.soloLectura || !ocr?.disponible) return campo
+    const leido = campoOCR(ocr, campo.id)
+    if (leido?.valor && leido.confianza > 0 && leido.confianza < CONFIANZA_DUDOSA) {
+      return {
+        ...campo,
+        dudoso: true,
+        ayudaDudoso: `El OCR leyó este dato con baja confianza (${Math.round(
+          leido.confianza,
+        )} %). Confírmalo con el físico de la cédula.`,
+      }
     }
-  : {
-      nombres: '',
-      apellidos: '',
-      numeroIdentificacion: '',
-      sexo: '',
-      fechaNacimiento: '',
-      lugarNacimiento: '',
-      fechaExpedicion: '',
-      ciudadExpedicion: '',
-    }
+    return campo
+  })
+}
+
+// Precarga vacía: los valores llegan por `inicial` (paso 1) y por `ocr`
+// (cédula escaneada). Nada de datos quemados: enmascaraban fallos del OCR.
+const valoresIniciales: DatosRevisados = {
+  nombres: '',
+  apellidos: '',
+  numeroIdentificacion: '',
+  sexo: '',
+  fechaNacimiento: '',
+  lugarNacimiento: '',
+  fechaExpedicion: '',
+  ciudadExpedicion: '',
+}
+
+/** Normaliza el sexo del OCR al vocabulario del select. */
+function normalizarSexo(valor: string): string {
+  const plano = valor.trim().toUpperCase()
+  if (!plano) return ''
+  if (plano.startsWith('F')) return 'Femenino (F)'
+  if (plano.startsWith('M')) return 'Masculino (M)'
+  return valor
+}
+
+/** Traduce el ResultadoOCRApi (snake_case) a los campos del formulario. */
+function mapearOCR(ocr: ResultadoOCRApi | null | undefined): Partial<DatosRevisados> {
+  if (!ocr) return {}
+  const salida: Partial<DatosRevisados> = {}
+  const doc = ocr.numero_documento?.valor?.replace(/\D/g, '') ?? ''
+  if (doc) salida.numeroIdentificacion = doc
+  if (ocr.nombres?.valor) salida.nombres = ocr.nombres.valor
+  if (ocr.apellidos?.valor) salida.apellidos = ocr.apellidos.valor
+  if (ocr.fecha_nacimiento?.valor) salida.fechaNacimiento = ocr.fecha_nacimiento.valor
+  if (ocr.fecha_expedicion?.valor) salida.fechaExpedicion = ocr.fecha_expedicion.valor
+  const sexo = normalizarSexo(ocr.sexo?.valor ?? '')
+  if (sexo) salida.sexo = sexo
+  if (ocr.lugar_nacimiento?.valor) salida.lugarNacimiento = ocr.lugar_nacimiento.valor
+  if (ocr.ciudad_expedicion?.valor) salida.ciudadExpedicion = ocr.ciudad_expedicion.valor
+  return salida
+}
+
+const ETIQUETA_TIPO: Record<string, string> = {
+  blanca: 'Cédula digital (blanca)',
+  amarilla: 'Cédula amarilla con hologramas',
+}
 
 function RevisionDatos({
   onContinue,
   onBack,
   inicial,
   compacto = false,
+  ocr = null,
 }: RevisionDatosProps) {
   const [datos, setDatos] = useState<DatosRevisados>(() => ({
     ...valoresIniciales,
+    ...mapearOCR(ocr),
     ...Object.fromEntries(
-      Object.entries(inicial ?? {}).filter(([, v]) => v !== undefined),
+      Object.entries(inicial ?? {}).filter(([, v]) => v !== undefined && v !== ''),
     ),
   }))
   const [dudososConfirmados, setDudososConfirmados] = useState<
@@ -130,6 +200,16 @@ function RevisionDatos({
   const [tocados, setTocados] = useState<Partial<Record<CampoId, boolean>>>({})
   const [intentado, setIntentado] = useState(false)
   const [registrado, setRegistrado] = useState(false)
+
+  const campos = useMemo(() => construirCampos(ocr), [ocr])
+
+  // Advertencias del OCR: la cédula leída no concuerda con lo capturado en el
+  // paso 1 o el anverso no concuerda con el reverso. No bloquea — el asesor
+  // decide si corrige o continúa.
+  const advertenciasOCR = ocr?.advertencias ?? []
+  const observacionesOCR = ocr?.observaciones ?? []
+  const [advertenciasVistas, setAdvertenciasVistas] = useState(false)
+  const tipoCedula = ocr?.tipo_cedula ? ETIQUETA_TIPO[ocr.tipo_cedula] : null
 
   const errores = useMemo(() => {
     const resultado = datosPersonalesSchema.safeParse(datos)
@@ -143,7 +223,18 @@ function RevisionDatos({
   }, [datos])
 
   // ---------- Cálculo dinámico de confianza ----------
-  const camposDudosos = useMemo(() => campos.filter((c) => c.dudoso), [])
+  // Parte de la confianza real del OCR (promedio de los campos leídos);
+  // sin OCR, base neutra del 50 %. Confirmar dudosos suma hasta 100.
+  const confianzaOCR = useMemo(() => {
+    const confianzas = camposBase
+      .map((c) => campoOCR(ocr, c.id))
+      .filter((c): c is CampoOCRApi => Boolean(c?.valor))
+      .map((c) => c.confianza)
+      .filter((c) => c > 0)
+    if (confianzas.length === 0) return 50
+    return confianzas.reduce((a, b) => a + b, 0) / confianzas.length
+  }, [ocr])
+  const camposDudosos = useMemo(() => campos.filter((c) => c.dudoso), [campos])
 
   const dudososConfirmadosCount = camposDudosos.filter(
     (c) => dudososConfirmados[c.id],
@@ -151,12 +242,12 @@ function RevisionDatos({
 
   const bonusPorConfirmacion =
     camposDudosos.length > 0
-      ? (CONFIANZA_MAXIMA - CONFIANZA_BASE) / camposDudosos.length
+      ? (CONFIANZA_MAXIMA - confianzaOCR) / camposDudosos.length
       : 0
 
   const confianzaActual = Math.min(
     CONFIANZA_MAXIMA,
-    CONFIANZA_BASE + dudososConfirmadosCount * bonusPorConfirmacion,
+    confianzaOCR + dudososConfirmadosCount * bonusPorConfirmacion,
   )
 
   const confianzaCompleta = confianzaActual >= CONFIANZA_MAXIMA
@@ -254,6 +345,11 @@ function RevisionDatos({
           <div>
             <h2>Datos extraídos de la cédula</h2>
             <p>
+              {tipoCedula && (
+                <>
+                  Documento detectado: <strong>{tipoCedula}</strong>.{' '}
+                </>
+              )}
               Los campos marcados con <span aria-hidden="true">*</span> son
               obligatorios.
             </p>
@@ -300,6 +396,81 @@ function RevisionDatos({
             </strong>
           </div>
         </div>
+
+        {advertenciasOCR.length > 0 && !advertenciasVistas && (
+          <div className="revision__banner revision__banner--warn" role="alert">
+            <span className="revision__banner-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <path
+                  d="M12 3.5 21 19H3L12 3.5Z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M12 10v4"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+                <circle cx="12" cy="16.6" r="1" fill="currentColor" />
+              </svg>
+            </span>
+            <div className="revision__banner-body">
+              <strong>Los datos no coinciden.</strong>
+              <span className="revision__banner-sub">
+                Verifica con la cédula física antes de continuar.
+              </span>
+              <ul className="revision__ocr-lista">
+                {advertenciasOCR.map((aviso) => (
+                  <li key={aviso}>{aviso}</li>
+                ))}
+              </ul>
+            </div>
+            <Boton
+              variante="terciario"
+              tamano="compacto"
+              type="button"
+              className="revision__banner-action"
+              onClick={() => setAdvertenciasVistas(true)}
+            >
+              Entendido
+            </Boton>
+          </div>
+        )}
+
+        {observacionesOCR.length > 0 && (
+          <div className="revision__banner revision__banner--warn" role="note">
+            <span className="revision__banner-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="9"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                />
+                <path
+                  d="M12 8v4"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+                <circle cx="12" cy="15.6" r="1" fill="currentColor" />
+              </svg>
+            </span>
+            <div className="revision__banner-body">
+              <strong>Revisa la captura.</strong>
+              <ul className="revision__ocr-lista">
+                {observacionesOCR.map((nota) => (
+                  <li key={nota}>{nota}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
 
         {registrado && (
           <div className="revision__banner revision__banner--ok" role="status">

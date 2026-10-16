@@ -259,8 +259,7 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
             }`}
           >
             <span className="validacion__label" id="multas-label">
-              ¿Tiene multas de tránsito o sanciones del Estado colombiano
-              pendientes de pago?{' '}
+              ¿Tiene multas pendientes de pago?{' '}
               <span className="validacion__required" aria-hidden="true">
                 *
               </span>

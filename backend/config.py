@@ -106,6 +106,11 @@ class Settings(BaseSettings):
     evidencias_dir: str = "uploads/evidencias"  # storage local del MVP; S3 en producción
     captura_ttl_minutos: int = 30  # vigencia del link con token
     evidencia_max_mb: int = 25  # límite por archivo (videos)
+    # --- OCR de la cédula (Tesseract) ---
+    # Ruta al binario si no está en el PATH (ej. Windows sin PATH configurado).
+    tesseract_cmd: str = ""
+    # Idioma(s) del OCR; debe incluir 'spa' (paquete de idioma instalado).
+    tesseract_lang: str = "spa"
     # --- Resiliencia Experian ---
     experian_reintentos: int = 2  # reintentos extra tras el primer intento
     experian_espera_reintento_seg: float = 1.0  # backoff base (x2 por intento)

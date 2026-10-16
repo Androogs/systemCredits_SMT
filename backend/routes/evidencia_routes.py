@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.db_models.session import get_db
-from backend.services.evidencia_service import EvidenciaService, TIPOS_EVIDENCIA
+from backend.services.evidencia_service import TIPOS_CEDULA, EvidenciaService, TIPOS_EVIDENCIA
 from backend.services.motor_exceptions import SolicitudNoEncontradaError
 
 router = APIRouter(tags=["evidencias"])
@@ -20,6 +20,15 @@ class SesionCapturaResponse(BaseModel):
     token: str
     estado: str
     expira_en: str
+
+
+class DatosEsperadosPayload(BaseModel):
+    """Datos del paso 1 contra los que se compara el OCR de la cédula."""
+
+    nombres: str | None = None
+    apellidos: str | None = None
+    numero_documento: str | None = None
+    fecha_nacimiento: str | None = None
 
 
 def _sesion_response(s) -> SesionCapturaResponse:
@@ -47,15 +56,24 @@ def _evidencia_dict(e) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 @router.post("/sesiones-captura", response_model=SesionCapturaResponse, status_code=201)
-def crear_sesion(db: Session = Depends(get_db)) -> SesionCapturaResponse:
+def crear_sesion(
+    payload: DatosEsperadosPayload | None = None,
+    db: Session = Depends(get_db),
+) -> SesionCapturaResponse:
     """Genera el link/QR de captura. La sesión nace sin solicitud: se enlaza
-    cuando la solicitud se crea con `sesion_captura` en el payload."""
-    return _sesion_response(EvidenciaService(db).crear_sesion())
+    cuando la solicitud se crea con `sesion_captura` en el payload.
+
+    Los `datos_esperados` (paso 1) se guardan para comparar contra el OCR de
+    la cédula y advertir sobre no coincidencias.
+    """
+    esperados = payload.model_dump(exclude_none=True) if payload else None
+    return _sesion_response(EvidenciaService(db).crear_sesion(esperados))
 
 
 @router.get("/sesiones-captura/{id_sesion}", response_model=dict)
 def estado_sesion(id_sesion: uuid.UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Polling del asesor: estado de la sesión y evidencias recibidas."""
+    """Polling del asesor: estado de la sesión, evidencias recibidas y OCR
+    fusionado de anverso + reverso."""
     servicio = EvidenciaService(db)
     sesion = servicio.estado_sesion(id_sesion)
     evidencias = servicio.evidencias_de_sesion(sesion.id_sesion)
@@ -65,6 +83,7 @@ def estado_sesion(id_sesion: uuid.UUID, db: Session = Depends(get_db)) -> dict[s
         "expira_en": sesion.expira_en.isoformat(),
         "pendientes": sorted(set(TIPOS_EVIDENCIA) - {e.tipo for e in evidencias}),
         "evidencias": [_evidencia_dict(e) for e in evidencias],
+        "ocr": sesion.resultado_ocr,
     }
 
 
@@ -91,14 +110,27 @@ def contenido_evidencia(id_evidencia: int, db: Session = Depends(get_db)) -> Fil
 
 @router.get("/captura/{token}", response_model=dict)
 def estado_captura(token: str, db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Estado para la página móvil: qué evidencias faltan por subir."""
+    """Estado para la página móvil: qué evidencias faltan por subir.
+
+    No expone el resultado del OCR: es un endpoint público (solo token) y el
+    resultado incluye datos personales y lo que digitó el asesor. El celular
+    solo necesita saber si la cédula se pudo leer para pedir repetir la foto.
+    """
     servicio = EvidenciaService(db)
     sesion = servicio.sesion_por_token(token)
     evidencias = servicio.evidencias_de_sesion(sesion.id_sesion)
+    ocr = sesion.resultado_ocr or {}
+    lecturas = ocr.get("lecturas") or {}
     return {
         "estado": sesion.estado,
         "pendientes": sorted(set(TIPOS_EVIDENCIA) - {e.tipo for e in evidencias}),
         "evidencias": [_evidencia_dict(e) for e in evidencias],
+        # Por cara: True si se reconoció la cédula en la foto (sugerir repetirla si False).
+        "cedula_legible": {
+            tipo: bool((lecturas.get(tipo) or {}).get("tipo_cedula"))
+            for tipo in TIPOS_CEDULA
+            if tipo in lecturas
+        },
     }
 
 

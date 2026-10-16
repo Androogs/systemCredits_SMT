@@ -9,7 +9,7 @@ enlaza a la solicitud cuando esta se crea.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Uuid
+from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.db_models.base import Base
@@ -27,6 +27,16 @@ class SesionCaptura(Base):
     )
     expira_en: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora_utc)
+    # Datos que el asesor capturó en el paso 1 (nombres, apellidos, cédula,
+    # fecha de nacimiento). El OCR de la cédula se compara contra ellos para
+    # advertir al asesor cuando algo no coincide. JSON para no migrar el
+    # esquema cada vez que cambie el set de campos comparados.
+    datos_esperados: Mapped[dict | None] = mapped_column(JSON)
+    # Resultado del OCR de la cédula: campos fusionados de anverso + reverso,
+    # advertencias/observaciones y, en ``lecturas``, lo leído de cada foto
+    # (permite fusionar sin importar el orden de subida). Sin cambio de
+    # esquema: sigue siendo la misma columna JSON/JSONB de la migración 0006.
+    resultado_ocr: Mapped[dict | None] = mapped_column(JSON)
 
     evidencias: Mapped[list["DocumentoEvidencia"]] = relationship(
         back_populates="sesion", cascade="all, delete-orphan"

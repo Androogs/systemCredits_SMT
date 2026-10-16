@@ -11,7 +11,7 @@ import {
   Mail,
   ShieldCheck,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { FormEvent } from 'react'
 import {
@@ -26,7 +26,6 @@ const CONTRASENA_DEMO = 'demo1234'
 
 export default function IniciarSesion() {
   const navigate = useNavigate()
-  const headingRef = useRef<HTMLHeadingElement>(null)
   const [email, setEmail] = useState(USUARIO_DEMO)
   const [password, setPassword] = useState(CONTRASENA_DEMO)
   const [showPassword, setShowPassword] = useState(false)
@@ -37,7 +36,6 @@ export default function IniciarSesion() {
 
   useEffect(() => {
     document.title = 'Iniciar sesión | Inversiones Pacífico'
-    headingRef.current?.focus({ preventScroll: true })
   }, [])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -86,7 +84,7 @@ export default function IniciarSesion() {
           </div>
 
           <div className="access-showcase-content">
-            <h1 ref={headingRef} tabIndex={-1} className="access-title">
+            <h1 className="access-title">
               Bienvenido
             </h1>
             <p className="access-description">
@@ -208,7 +206,7 @@ export default function IniciarSesion() {
             </div>
 
             <header className="access-form-header">
-              <p className="access-welcome">Qué bueno tenerte de vuelta</p>
+              <p className="access-welcome">¡Qué bueno tenerte de vuelta!</p>
               <h2 id="login-heading" className="access-form-title">
                 Inicia sesión
               </h2>

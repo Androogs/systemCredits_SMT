@@ -210,6 +210,38 @@ defecto) y solo autoriza esa sesión. Las evidencias se guardan en
 de `EvidenciaService`) y se enlazan a la solicitud cuando esta se crea
 con el token (`sesion_captura` en `POST /api/solicitudes`).
 
+#### OCR de la cédula (Tesseract)
+
+Al subir la foto frontal de la cédula, el backend corre **Tesseract OCR**
+(`backend/services/ocr_service.py`) sobre la imagen, extrae número de
+documento, nombres, apellidos y fechas, y los compara contra los datos que
+el asesor capturó en el paso 1 (que se envían al crear la sesión). Si algo
+no coincide, el paso de **Revisión de Datos** muestra una **advertencia no
+bloqueante**: el asesor decide si corrige o continúa. El resultado queda
+expuesto en `GET /api/captura/{token}` y `GET /api/sesiones-captura/{id}`.
+
+Se soportan las **dos versiones** de la cédula de ciudadanía colombiana:
+
+- **Amarilla (antigua):** rótulo y valor en la misma línea.
+- **Blanca (nueva, ~2020):** rótulos y valores en columnas separadas; el
+  parser los empareja por posición. También tolera palabras que el OCR pega
+  (`CARLOSMARIO`) y descarta fechas corruptas (`1091`).
+
+El OCR es *best-effort*: si Tesseract no está disponible o la imagen es
+ilegible, la subida de la evidencia **no falla**; simplemente no se emiten
+advertencias.
+
+Requisito: instalar el binario de **Tesseract** y tenerlo en el PATH, con el
+paquete de idioma `spa`. En Windows:
+
+```powershell
+winget install UB-Mannheim.TesseractOCR   # marca "Spanish" al instalar
+```
+
+Las dependencias Python (`pytesseract`, `Pillow`) ya vienen en
+`backend/requirements.txt`. Si Tesseract no está instalado, el backend
+arranca igual y el OCR degrada sin advertencias.
+
 Para probar desde un celular real, el navegador **exige HTTPS** para la
 cámara (`getUserMedia` solo funciona en contexto seguro). La forma
 recomendada es un túnel gratuito — no requiere cuenta:

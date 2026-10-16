@@ -9,6 +9,14 @@ httpx>=0.27
 pypdf>=4.0            # lectura de reportes Experian en PDF (CLI)
 python-dotenv>=1.0
 
+# OCR de cédula (paso 3 del wizard). Requiere el binario de Tesseract 4.1+
+# (recomendado 5.x) en el PATH, con los paquetes de idioma 'spa' y 'osd'.
+pytesseract>=0.3.13
+Pillow>=10.0
+opencv-python-headless>=4.9  # localización de la tarjeta (sin GUI: apto para servidor)
+numpy>=1.26
+pillow-heif>=0.16  # opcional: fotos HEIC/HEIF de iPhone (sin esto, el OCR de HEIC se omite)
+
 # Driver PostgreSQL (esquema SUMOTO). Con SQLite no se necesita.
 psycopg[binary]>=3.1
 alembic>=1.13

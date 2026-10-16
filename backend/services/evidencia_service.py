@@ -22,6 +22,7 @@ from backend.config import get_settings
 from backend.db_models.evidencia_models import DocumentoEvidencia, SesionCaptura
 from backend.repositories.evidencia_repository import EvidenciaRepository
 from backend.services.motor_exceptions import SolicitudNoEncontradaError, ValidacionError
+from backend.services.ocr_service import procesar_foto_cedula
 
 # Tipos de evidencia aceptados y MIME permitidos por cada uno.
 # Imágenes: jpeg/png/webp + los formatos que generan los celulares
@@ -52,6 +53,8 @@ TIPOS_EVIDENCIA: dict[str, frozenset[str]] = {
     "video_prueba_vida": _MIMES_VIDEO,
 }
 
+TIPOS_CEDULA = ("cedula_frontal", "cedula_reverso")
+
 _EXTENSIONES = {
     "image/jpeg": ".jpg",
     "image/jpg": ".jpg",
@@ -77,11 +80,12 @@ class EvidenciaService:
     # ------------------------------------------------------------------
     # Sesiones (lado del asesor)
     # ------------------------------------------------------------------
-    def crear_sesion(self) -> SesionCaptura:
+    def crear_sesion(self, datos_esperados: dict | None = None) -> SesionCaptura:
         sesion = SesionCaptura(
             token=secrets.token_urlsafe(32),
             expira_en=datetime.now(timezone.utc)
             + timedelta(minutes=self.settings.captura_ttl_minutos),
+            datos_esperados=datos_esperados or None,
         )
         return self.repo.crear_sesion(sesion)
 
@@ -158,8 +162,23 @@ class EvidenciaService:
         subidos = {e.tipo for e in self.repo.listar_evidencias(sesion.id_sesion)}
         if subidos >= set(TIPOS_EVIDENCIA):
             sesion.estado = "completada"
+        # OCR de cada cara de la cédula. El resultado de anverso y reverso se
+        # fusiona en la sesión (sin importar el orden de subida) y se compara
+        # contra lo digitado en el paso 1 para advertir al asesor.
+        if tipo in TIPOS_CEDULA:
+            self._procesar_ocr(sesion, destino, tipo)
         self.repo.db.flush()
         return evidencia
+
+    def _procesar_ocr(self, sesion: SesionCaptura, ruta: Path, tipo: str) -> None:
+        """Lee la foto, la fusiona con la otra cara y guarda el resultado.
+
+        Se asigna un dict nuevo: SQLAlchemy no detecta mutaciones internas de
+        una columna JSON.
+        """
+        sesion.resultado_ocr = procesar_foto_cedula(
+            sesion.resultado_ocr, tipo, ruta, sesion.datos_esperados or {}
+        )
 
     def evidencias_de_sesion(self, sesion_id: uuid.UUID) -> list[DocumentoEvidencia]:
         return self.repo.listar_evidencias(sesion_id)

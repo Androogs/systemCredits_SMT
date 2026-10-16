@@ -7,7 +7,9 @@ import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginac
 import {
   crearSesionCaptura,
   estadoSesionCaptura,
+  type DatosEsperadosOCR,
   type EstadoSesionApi,
+  type ResultadoOCRApi,
   type TipoEvidencia,
 } from '../api/originacionApi'
 import { env } from '../../../env'
@@ -38,6 +40,8 @@ export interface ResultadoBiometrico {
   matchRegistraduria: boolean | null
   liveness: boolean | null
   finalizadoEn: string
+  /** Resultado del OCR de la cédula (null si no se procesó). */
+  ocr?: ResultadoOCRApi | null
 }
 
 type Modo = 'tablet' | 'handoff'
@@ -70,17 +74,27 @@ interface CapturaCedulaProps {
   onBack?: () => void
   /** Si es true, no renderiza header ni seguimiento (para usar dentro de otro paso). */
   compacto?: boolean
+  /** Datos del paso 1 contra los que el OCR compara la cédula. */
+  datosEsperados?: DatosEsperadosOCR
 }
 
 function CapturaCedula({
   onContinue,
   onBack,
   compacto = false,
+  datosEsperados,
 }: CapturaCedulaProps) {
   const [modo, setModo] = useState<Modo>('handoff')
   const qrRef = useRef<HTMLCanvasElement>(null)
 
-  const sesionMut = useMutation({ mutationFn: crearSesionCaptura })
+  // Los datos esperados no cambian durante el paso; congelarlos evita
+  // recrear la mutación en cada render.
+  const datosRef = useRef(datosEsperados)
+  datosRef.current = datosEsperados
+
+  const sesionMut = useMutation({
+    mutationFn: () => crearSesionCaptura(datosRef.current),
+  })
   const sesion = sesionMut.data ?? null
 
   // La sesión se crea al entrar al paso para que el QR esté listo de
@@ -147,6 +161,7 @@ function CapturaCedula({
           matchRegistraduria: null,
           liveness: null,
           finalizadoEn: new Date().toISOString(),
+          ocr: estado.data?.ocr ?? null,
         }
       : null
 

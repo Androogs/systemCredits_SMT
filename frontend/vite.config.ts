@@ -7,7 +7,11 @@ export default defineConfig(({ mode }) => {
   // Destino del proxy /api en dev (independiente de VITE_API_URL, que puede
   // quedar vacío para llamadas relativas del mismo origen — p. ej. cuando el
   // celular entra por un túnel HTTPS hacia este dev server).
-  const apiUrl = fileEnv.API_PROXY_TARGET || 'http://localhost:8001'
+  // Debe coincidir con el puerto del backend (README: uvicorn en 8000;
+  // frontend/.env → API_PROXY_TARGET=http://127.0.0.1:8000). El fallback
+  // anterior apuntaba a 8001 y cualquier dev sin .env terminaba con
+  // "Error HTTP 502" del proxy (ECONNREFUSED) + toast "Sin respuesta".
+  const apiUrl = fileEnv.API_PROXY_TARGET || 'http://127.0.0.1:8000'
 
   return {
     plugins: [react()],
@@ -21,7 +25,10 @@ export default defineConfig(({ mode }) => {
         '.ngrok.io',
       ],
       proxy: {
-        '/api': apiUrl,
+        '/api': {
+          target: apiUrl,
+          changeOrigin: true,
+        },
       },
     },
     test: {
