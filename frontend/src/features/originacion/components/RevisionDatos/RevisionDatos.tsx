@@ -8,7 +8,7 @@ import './RevisionDatos.css'
 const Boton = ({ children, onClick, type, variante, iconoInicio, iconoFin, ...props }: {
   children?: React.ReactNode
   onClick?: () => void
-  type?: string
+  type?: 'button' | 'submit' | 'reset'
   variante?: string
   iconoInicio?: React.ReactNode
   iconoFin?: React.ReactNode
@@ -23,8 +23,18 @@ const SeguimientoOriginacion = ({ pasoActual }: { pasoActual: number }) => (
   <div style={{padding:'8px', background:'#f0f0f0', borderRadius:'8px', margin:'12px 0'}}>Paso {pasoActual} de 5</div>
 )
 // Schema dummy - acepta todo para que no bloquee el formulario
+type SchemaIssue = { path: (string | number)[]; message: string }
+type SchemaResult<T = unknown> = {
+  success: true
+  data: T
+  error: { issues: SchemaIssue[] }
+}
 const datosPersonalesSchema = {
-  safeParse: (datos: unknown) => ({ success: true, data: datos, error: { issues: [] } } as const )
+  safeParse: (datos: unknown): SchemaResult => ({
+    success: true,
+    data: datos,
+    error: { issues: [] },
+  }),
 } as const
 
 // Tipos que antes venían de originacionApi
