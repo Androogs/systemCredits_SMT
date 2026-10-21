@@ -1,3 +1,9 @@
+import { MODO_DEMO } from '../../../env'
+import {
+  obtenerConcesionario,
+  obtenerUsuario,
+} from '../../../shared/lib/sesion'
+
 interface CabeceraEtapaOriginacionProps {
   paso: number
   titulo: string
@@ -9,6 +15,9 @@ function CabeceraEtapaOriginacion({
   titulo,
   descripcion,
 }: CabeceraEtapaOriginacionProps) {
+  const asesor = obtenerUsuario()?.nombre ?? 'Asesor'
+  const sede = obtenerConcesionario()
+
   return (
     <header className="cabecera-etapa">
       <div className="cabecera-etapa__texto">
@@ -20,17 +29,19 @@ function CabeceraEtapaOriginacion({
         <dl>
           <div>
             <dt>Asesor</dt>
-            <dd>Carlos Mendoza</dd>
+            <dd>{asesor}</dd>
           </div>
           <div>
             <dt>Sede</dt>
-            <dd>Palmira - Centro Interno</dd>
+            <dd>{sede}</dd>
           </div>
         </dl>
-        <span className="cabecera-etapa__servidor">
-          <span aria-hidden="true" />
-          Modo de demostración
-        </span>
+        {MODO_DEMO && (
+          <span className="cabecera-etapa__servidor">
+            <span aria-hidden="true" />
+            Modo de demostración
+          </span>
+        )}
       </aside>
     </header>
   )

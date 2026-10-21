@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
 import { emitirToast } from '../../../shared/lib/toastBus'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
+import { contextoRadicacion } from '../../../shared/lib/sesion'
 import { datosPersonalesSchema } from '../schemas/persona'
 import type { CampoOCRApi, ResultadoOCRApi } from '../api/originacionApi'
 import './RevisionDatos.css'
@@ -213,6 +214,7 @@ function RevisionDatos({
   compacto = false,
   ocr = null,
 }: RevisionDatosProps) {
+  const { asesor, sede } = contextoRadicacion()
   const [datos, setDatos] = useState<DatosRevisados>(() => ({
     ...valoresIniciales,
     ...mapearOCR(ocr),
@@ -311,11 +313,11 @@ function RevisionDatos({
             <dl className="revision__meta">
               <div>
                 <dt>Asesor</dt>
-                <dd>Carlos Mendoza</dd>
+                <dd>{asesor}</dd>
               </div>
               <div>
                 <dt>Sede</dt>
-                <dd>Palmira - Centro Interno</dd>
+                <dd>{sede}</dd>
               </div>
             </dl>
           </aside>

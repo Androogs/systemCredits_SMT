@@ -3,6 +3,7 @@ import { Suspense, useEffect, useRef, useState } from 'react'
 import { Menu } from 'lucide-react'
 import BarraLateral from './BarraLateral'
 import CargandoPagina from '../../shared/ui/CargandoPagina'
+import { limpiarUsuario } from '../../shared/lib/sesion'
 
 export default function ContenedorPanel() {
   const navigate = useNavigate()
@@ -31,6 +32,7 @@ export default function ContenedorPanel() {
         botonMenuRef={botonMenuRef}
         onLogout={() => {
           localStorage.removeItem('uw_auth')
+          limpiarUsuario()
           navigate('/login')
         }}
       />

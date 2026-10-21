@@ -49,6 +49,61 @@ export function useRol(): RolSesion {
   return useSyncExternalStore(suscribir, obtenerRol)
 }
 
+/* ---------- Usuario autenticado ---------- */
+
+const CLAVE_USUARIO = 'uw_usuario'
+
+export interface UsuarioSesion {
+  nombre: string
+  correo: string
+  rol: string
+}
+
+/** Persiste el usuario devuelto por POST /api/auth/login para que las
+ * cabeceras muestren al asesor real en vez de datos quemados. */
+export function guardarUsuario(usuario: UsuarioSesion): void {
+  try {
+    localStorage.setItem(CLAVE_USUARIO, JSON.stringify(usuario))
+  } catch {
+    // localStorage bloqueado: la sesión sigue funcionando en memoria.
+  }
+}
+
+export function obtenerUsuario(): UsuarioSesion | null {
+  try {
+    const crudo = localStorage.getItem(CLAVE_USUARIO)
+    if (!crudo) return null
+    const datos: unknown = JSON.parse(crudo)
+    if (
+      !datos ||
+      typeof datos !== 'object' ||
+      !('nombre' in datos) ||
+      typeof datos.nombre !== 'string'
+    )
+      return null
+    return datos as UsuarioSesion
+  } catch {
+    return null
+  }
+}
+
+export function limpiarUsuario(): void {
+  try {
+    localStorage.removeItem(CLAVE_USUARIO)
+  } catch {
+    // Sin persistencia que limpiar.
+  }
+}
+
+/** Contexto visible en las cabeceras de radicación: asesor autenticado
+ * y concesionario donde opera. */
+export function contextoRadicacion(): { asesor: string; sede: string } {
+  return {
+    asesor: obtenerUsuario()?.nombre ?? 'Asesor',
+    sede: obtenerConcesionario(),
+  }
+}
+
 /* ---------- Concesionario del asesor ---------- */
 
 const CLAVE_CONCESIONARIO = 'uw_concesionario'

@@ -50,19 +50,42 @@
   --error-border: #e8b4b0;
   --error-bg: #fff5f4;
 
-  /* --- Canales RGB para transparencias --- */
+  /* --- Canales RGB para transparencias ---
+     Cada canal replica el literal de arriba (mismo tono, otra sintaxis). */
   --brand-rgb: 9 157 215;
   --brand-light-rgb: 28 182 234;
-  --success-rgb: 24 168 115;
-  --success-bright-rgb: 92 224 153;
-  --error-rgb: 217 45 32;
-  --warning-rgb: 233 195 107;
+  --brand-deep-rgb: 8 126 173;
+  --brand-press-rgb: 6 95 131;
+  --brand-ink-rgb: 17 100 138;
+  --brand-50-rgb: 237 250 255;
+  --brand-100-rgb: 213 243 255;
   --navy-rgb: 0 0 51;
   --navy-panel-rgb: 0 28 72;
   --navy-soft-rgb: 29 53 87;
+  --ink-rgb: 29 41 57;
+  --slate-strong-rgb: 52 64 84;
+  --slate-rgb: 71 84 103;
+  --slate-soft-rgb: 102 112 133;
+  --slate-faint-rgb: 152 162 179;
+  --border-rgb: 213 221 229;
+  --border-soft-rgb: 238 241 246;
+  --surface-neutral-rgb: 245 247 249;
+  --white-rgb: 255 255 255;
   --surface-tint-rgb: 243 251 255;
+  --success-rgb: 15 122 77;
+  --success-ink-rgb: 23 107 70;
+  --success-bright-rgb: 92 224 153;
+  --success-border-rgb: 184 223 202;
+  --success-bg-rgb: 242 250 245;
+  --warning-rgb: 233 195 107;
+  --warning-ink-rgb: 155 100 18;
+  --warning-bg-rgb: 255 250 240;
+  --warning-bg-deep-rgb: 254 243 199;
+  --error-rgb: 217 45 32;
+  --error-ink-rgb: 164 35 26;
+  --error-strong-rgb: 180 35 24;
+  --error-border-rgb: 232 180 176;
+  --error-bg-rgb: 255 245 244;
   --shadow-rgb: 25 46 76;
   --shadow-ink-rgb: 15 23 42;
-  --white-rgb: 255 255 255;
-  --border-rgb: 213 221 229;
 }

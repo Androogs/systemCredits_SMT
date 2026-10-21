@@ -3,6 +3,8 @@ import { ArrowLeft, ArrowRight } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import { correoSchema, telefonoSchema } from '../schemas/persona'
+import { contextoRadicacion } from '../../../shared/lib/sesion'
+import { MODO_DEMO } from '../../../env'
 import './AutorizacionDatos.css'
 
 export interface DatosAutorizacion {
@@ -43,13 +45,12 @@ const finalidades = [
 ] as const
 
 function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
+  const { asesor, sede } = contextoRadicacion()
   const [marcaRegistro] = useState(marcaTiempoActual)
   const [autoriza, setAutoriza] = useState(false)
-  const [telefono, setTelefono] = useState(
-    import.meta.env.DEV ? '3001234567' : '',
-  )
+  const [telefono, setTelefono] = useState(MODO_DEMO ? '3001234567' : '')
   const [correo, setCorreo] = useState(
-    import.meta.env.DEV ? 'carlos.restrepo@correo.com' : '',
+    MODO_DEMO ? 'carlos.restrepo@correo.com' : '',
   )
   const [intentado, setIntentado] = useState(false)
   const [registrado, setRegistrado] = useState(false)
@@ -84,7 +85,7 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
       // En dev se muestra una IP de ejemplo para completar la demo; en
       // producción queda como no capturada hasta que el backend registre
       // la IP real del asesor.
-      ipAsesor: import.meta.env.DEV ? '186.154.43.12' : IP_NO_CAPTURADA,
+      ipAsesor: MODO_DEMO ? '186.154.43.12' : IP_NO_CAPTURADA,
     })
   }
 
@@ -113,11 +114,11 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
           <dl className="autorizacion__meta">
             <div>
               <dt>Asesor</dt>
-              <dd>Carlos Mendoza</dd>
+              <dd>{asesor}</dd>
             </div>
             <div>
               <dt>Sede</dt>
-              <dd>Palmira - Centro Interno</dd>
+              <dd>{sede}</dd>
             </div>
           </dl>
         </aside>

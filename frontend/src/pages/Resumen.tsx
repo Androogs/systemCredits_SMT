@@ -1117,7 +1117,7 @@ function PanelRanking({
                   aria-hidden="true"
                 >
                   <span
-                    className="block h-full rounded-full bg-brand-400"
+                    className="block h-full rounded-full bg-brand-500"
                     style={{ width: `${(i.valor / max) * 100}%` }}
                   />
                 </span>

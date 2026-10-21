@@ -2,6 +2,8 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { ArrowRight } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
+import { contextoRadicacion } from '../../../shared/lib/sesion'
+import { MODO_DEMO } from '../../../env'
 import {
   validacionInicialSchema,
   EDAD_MINIMA,
@@ -26,9 +28,10 @@ type Campo = 'numeroDocumento' | 'fechaNacimiento' | 'multas'
 
 // Precarga de demostración: solo en dev (import.meta.env.DEV), nunca en
 // el build de producción.
-const DEMO = import.meta.env.DEV
+const DEMO = MODO_DEMO
 
 function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
+  const { asesor, sede } = contextoRadicacion()
   const [numeroDocumento, setNumeroDocumento] = useState(
     DEMO ? '1032448900' : '',
   )
@@ -102,11 +105,11 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
           <dl className="validacion__meta">
             <div>
               <dt>Asesor</dt>
-              <dd>Carlos Mendoza</dd>
+              <dd>{asesor}</dd>
             </div>
             <div>
               <dt>Sede</dt>
-              <dd>Palmira - Centro Interno</dd>
+              <dd>{sede}</dd>
             </div>
           </dl>
         </aside>

@@ -21,6 +21,7 @@ import {
   useRol,
 } from '../../../shared/lib/sesion'
 import { emitirToast } from '../../../shared/lib/toastBus'
+import { MODO_DEMO } from '../../../env'
 import Alerta from '../../../shared/ui/Alerta'
 import CampoNumerico from '../../../shared/ui/CampoNumerico'
 import type { ResultadoEvaluacionCredito } from '../model/resultado-evaluacion'
@@ -627,7 +628,7 @@ function ResultadoCredito({
                     )}
                     . Digítalo para firmar el pagaré y formalizar la solicitud.
                   </p>
-                  {otpDemo && (
+                  {MODO_DEMO && otpDemo && (
                     <p className="resultado-credito__otp-demo" role="note">
                       Demo — código: <strong>{otpDemo}</strong>
                     </p>
