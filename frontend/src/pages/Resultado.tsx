@@ -61,8 +61,7 @@ const CONFIG: Record<
     Icon: AlertTriangle,
     tono: 'slate',
     titulo: 'Pendiente de evaluación',
-    subtitulo:
-      'La solicitud está radicada pero aún no ha sido evaluada por el motor.',
+    subtitulo: 'La solicitud está radicada pero aún no ha sido evaluada.',
   },
 }
 
@@ -204,7 +203,7 @@ export default function Resultado() {
             <p className="mt-2 text-sm text-slate-600 max-w-md mx-auto">
               {evaluacion
                 ? cfg.subtitulo
-                : 'La solicitud aún no ha sido evaluada por el motor.'}
+                : 'La solicitud aún no ha sido evaluada.'}
             </p>
           </Tarjeta>
 
@@ -345,8 +344,7 @@ export default function Resultado() {
                 <Clock size={18} /> Pendiente de evaluación
               </h3>
               <p className="text-sm text-slate-700">
-                La solicitud fue radicada y está pendiente de evaluación por el
-                motor de decisión.
+                La solicitud fue radicada y está pendiente de evaluación.
               </p>
             </Tarjeta>
           )}

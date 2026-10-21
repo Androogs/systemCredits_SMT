@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
+import TarjetaColapsable from '../shared/ui/TarjetaColapsable'
 import Skeleton from '../shared/ui/Skeleton'
 import CampoNumerico from '../shared/ui/CampoNumerico'
 import InsigniaEstado from '../entities/credit/ui/InsigniaEstado'
@@ -11,7 +12,6 @@ import {
   evaluarSolicitud,
   listarAuditoriaSolicitud,
   listarBancos,
-  listarEscenariosMock,
   obtenerAuditoria,
   obtenerSolicitud,
   cancelarSolicitud,
@@ -19,6 +19,7 @@ import {
   seleccionarOferta,
   listarEvidenciasSolicitud,
   urlEvidenciaContenido,
+  urlPaqueteLegalizacion,
   type EvaluarSolicitudPayload,
   type EvidenciaApi,
   type RegistrarDesembolsoPayload,
@@ -26,6 +27,8 @@ import {
 } from '../features/credit-origination/api/originacionApi'
 import {
   calcularCupoSugerido,
+  CUPO_MAXIMO,
+  PRIMA_SEGURO_VIDA_PCT,
   TASA_MENSUAL_REFERENCIA,
 } from '../features/credit-origination/model/resultado-evaluacion'
 import {
@@ -38,6 +41,7 @@ import {
 import { currency, dateShort, dateTime } from '../shared/lib/formatters'
 import { cuotaAnualidad } from '../shared/lib/finanzas'
 import { useRol } from '../shared/lib/sesion'
+import VisorDocumento from '../features/credit-origination/ui/VisorDocumento'
 import {
   ArrowLeft,
   AlertTriangle,
@@ -133,11 +137,10 @@ export default function DetalleSolicitud() {
   const [reSaldo, setReSaldo] = useState<number | null>(null)
   const [rePlazo, setRePlazo] = useState<number | null>(null)
   const [reTasa, setReTasa] = useState('')
-  const [reOrigen, setReOrigen] = useState<'demo' | 'experian'>('demo')
-  const [reEscenario, setReEscenario] = useState('aprobado')
   const [confirmarCancelacion, setConfirmarCancelacion] = useState(false)
   const [motivoCancelar, setMotivoCancelar] = useState('')
   const [jsonTab, setJsonTab] = useState<'resultado' | 'payload'>('resultado')
+  const [docPrevia, setDocPrevia] = useState<EvidenciaApi | null>(null)
   const [vista, setVista] = useState<'solicitud' | 'evaluacion' | 'gestion'>(
     'solicitud',
   )
@@ -180,13 +183,6 @@ export default function DetalleSolicitud() {
     queryFn: () => listarEvidenciasSolicitud(datos!.id_solicitud),
   })
 
-  const { data: escenarios = {} } = useQuery({
-    queryKey: ['escenarios-mock'],
-    queryFn: listarEscenariosMock,
-    enabled: !esAsesor,
-    staleTime: Infinity,
-    retry: 0,
-  })
   const evidenciaPorTipo = new Map(evidencias.map((e) => [e.tipo, e]))
 
   const idEvaluacion = datos?.evaluacion?.id_evaluacion
@@ -397,15 +393,60 @@ export default function DetalleSolicitud() {
       : TASA_MENSUAL_REFERENCIA
   })()
 
-  /** Re-corre el motor con los parámetros editados por el administrador. */
+  /* Vista previa de la retoma: con los valores vigentes (o los que el
+     administrador digita) se estima la cuota con seguro, si cabe en la
+     capacidad de pago de la evaluación y el cupo que sí pasaría con ese
+     plazo y esa tasa — la misma matemática de la calculadora manual. */
+  const reMontoPrev = reSaldo ?? Math.round(reSaldoDef)
+  const rePlazoPrev = rePlazo ?? rePlazoDef
+  const reTasaPrev = reTasa !== '' ? Number(reTasa) : reTasaDef
+  const reCapacidadPrev =
+    numero(resultadoAuditoria?.capacidad_pago) ?? capacidad
+  const reCuotaPrev =
+    reMontoPrev > 0 && rePlazoPrev > 0 && reTasaPrev > 0
+      ? Math.round(
+          cuotaAnualidad(reMontoPrev, reTasaPrev, rePlazoPrev) +
+            (reMontoPrev * PRIMA_SEGURO_VIDA_PCT) / 100,
+        )
+      : null
+  // Cupo que sí cabe con este plazo y tasa: cuota = monto·(anualidad + seguro)
+  // ⇒ monto máx = capacidad / (anualidad + seguro).
+  const reSeguroPct = PRIMA_SEGURO_VIDA_PCT / 100
+  const reFactorCuota =
+    rePlazoPrev > 0
+      ? reTasaPrev > 0
+        ? reTasaPrev /
+            100 /
+            (1 - Math.pow(1 + reTasaPrev / 100, -rePlazoPrev)) +
+          reSeguroPct
+        : 1 / rePlazoPrev + reSeguroPct
+      : null
+  // Capacidad pura puede dar números muy por encima del producto: el
+  // cupo que de verdad cabe también queda topado por el máximo comercial.
+  const reCupoPosible =
+    reCapacidadPrev != null && reCapacidadPrev > 0 && reFactorCuota
+      ? Math.min(CUPO_MAXIMO, Math.round(reCapacidadPrev / reFactorCuota))
+      : null
+  const reCupoTopadoPorCapacidad =
+    reCapacidadPrev != null &&
+    reFactorCuota != null &&
+    reCapacidadPrev / reFactorCuota > CUPO_MAXIMO
+
+  /** Re-corre el motor con los parámetros editados por el administrador,
+      reusando el origen de datos de buró de la evaluación vigente
+      (mismo escenario mock, o Experian en línea si así fue consultada). */
   function reevaluar() {
     if (!datos) return
+    const origen = auditoria?.origen_datos ?? ''
+    const escenarioMock = origen.startsWith('mock:')
+      ? origen.slice(5).split('+')[0] || null
+      : null
     mutEvaluar.mutate({
       saldo_financiar: reSaldo ?? reSaldoDef,
       plazo: rePlazo ?? rePlazoDef,
       tasa: reTasa !== '' ? Number(reTasa) : reTasaDef,
-      consultar_experian: reOrigen === 'experian',
-      escenario_mock: reOrigen === 'demo' ? reEscenario : null,
+      consultar_experian: origen.startsWith('experian'),
+      escenario_mock: escenarioMock,
     })
   }
 
@@ -426,7 +467,8 @@ export default function DetalleSolicitud() {
         actions={
           <>
             {/* La solicitud sigue abierta en originación (sin oferta
-                seleccionada ni desembolso): se retoma en el paso 5. */}
+                seleccionada ni desembolso): se retoma en el primer
+                paso que quedó pendiente. */}
             {ESTADOS_RETOMABLES.has(datos.estado) && !ofertaSeleccionada && (
               <button
                 type="button"
@@ -612,12 +654,17 @@ export default function DetalleSolicitud() {
             </div>
 
             {/* Datos capturados antes de la firma OTP: alimentan el
-                paquete de legalización generado tras la firma. */}
+                paquete de legalización generado tras la firma. Son ~24
+                campos de consulta ocasional: cerrada por defecto. */}
             {hayFormalizacion && (
-              <Tarjeta>
-                <h3 className="font-semibold mb-1 flex items-center gap-2">
-                  <Home size={18} /> Datos del cliente — formalización
-                </h3>
+              <TarjetaColapsable
+                titulo={
+                  <>
+                    <Home size={18} /> Datos del cliente — formalización
+                  </>
+                }
+                resumen="Residencia · personal · laboral"
+              >
                 <p className="text-xs text-slate-500 mb-4">
                   Capturados antes de la firma OTP; alimentan los documentos de
                   legalización.
@@ -724,13 +771,28 @@ export default function DetalleSolicitud() {
                     />
                   </SeccionAuditoria>
                 </div>
-              </Tarjeta>
+              </TarjetaColapsable>
             )}
 
-            <Tarjeta>
-              <h3 className="font-semibold text-slate-900 mb-1 flex items-center gap-2">
-                <FileImage size={18} /> Documentos del solicitante
-              </h3>
+            <TarjetaColapsable
+              titulo={
+                <>
+                  <FileImage size={18} /> Documentos del solicitante
+                </>
+              }
+              resumen={
+                hayEvidencia
+                  ? [
+                      evidenciaFrontal || evidenciaReverso
+                        ? `${[evidenciaFrontal, evidenciaReverso].filter(Boolean).length} imágenes`
+                        : null,
+                      evidenciaVideo ? '1 video' : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')
+                  : 'Sin evidencias'
+              }
+            >
               {hayEvidencia ? (
                 <>
                   <p className="text-xs text-slate-500 mb-4">
@@ -783,13 +845,28 @@ export default function DetalleSolicitud() {
                   con su celular.
                 </p>
               )}
-            </Tarjeta>
+            </TarjetaColapsable>
 
             {documentosFirmados.length > 0 && (
-              <Tarjeta>
-                <h3 className="font-semibold text-slate-900 mb-1 flex items-center gap-2">
-                  <Download size={18} /> Documentos firmados (legalización)
-                </h3>
+              <TarjetaColapsable
+                titulo={
+                  <>
+                    <Download size={18} /> Documentos firmados (legalización)
+                  </>
+                }
+                resumen={`${documentosFirmados.length} documentos`}
+                acciones={
+                  datos?.id_solicitud ? (
+                    <a
+                      href={urlPaqueteLegalizacion(datos.id_solicitud)}
+                      download
+                      className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                    >
+                      <Download size={14} /> Descargar todo (.zip)
+                    </a>
+                  ) : null
+                }
+              >
                 <p className="text-xs text-slate-500 mb-4">
                   Generados al verificar la firma OTP del cliente. Sellados con
                   la fecha y el UUID de firma de la solicitud.
@@ -803,17 +880,26 @@ export default function DetalleSolicitud() {
                       <span className="text-sm text-slate-700 truncate">
                         {doc.nombre_original ?? doc.tipo}
                       </span>
-                      <a
-                        href={urlEvidenciaContenido(doc.id_evidencia)}
-                        download={doc.nombre_original ?? undefined}
-                        className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-800"
-                      >
-                        <Download size={14} /> Descargar
-                      </a>
+                      <span className="shrink-0 inline-flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setDocPrevia(doc)}
+                          className="inline-flex items-center gap-1.5 text-xs font-medium text-sky-700 hover:text-sky-800"
+                        >
+                          <Eye size={14} /> Ver
+                        </button>
+                        <a
+                          href={urlEvidenciaContenido(doc.id_evidencia)}
+                          download={doc.nombre_original ?? undefined}
+                          className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-800"
+                        >
+                          <Download size={14} /> Descargar
+                        </a>
+                      </span>
                     </li>
                   ))}
                 </ul>
-              </Tarjeta>
+              </TarjetaColapsable>
             )}
           </>
         )}
@@ -942,13 +1028,17 @@ export default function DetalleSolicitud() {
             )}
 
             {auditoria && (
-              <Tarjeta>
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="font-semibold flex items-center gap-2">
+              <TarjetaColapsable
+                titulo={
+                  <>
                     <Database size={18} /> Detalle de evaluación
-                  </h3>
+                  </>
+                }
+                resumen="Decisión · buró · parámetros del motor"
+              >
+                <div className="mb-4">
                   <div
-                    className="flex max-w-full flex-wrap bg-slate-100 rounded-full p-1 text-xs"
+                    className="inline-flex max-w-full flex-wrap bg-slate-100 rounded-full p-1 text-xs"
                     role="group"
                     aria-label="Información de la evaluación"
                   >
@@ -1403,7 +1493,7 @@ export default function DetalleSolicitud() {
                 >
                   <Download size={14} /> Descargar datos técnicos
                 </button>
-              </Tarjeta>
+              </TarjetaColapsable>
             )}
           </>
         )}
@@ -1480,10 +1570,16 @@ export default function DetalleSolicitud() {
               )}
 
             {!esAsesor && (datos.consentimientos?.length ?? 0) > 0 && (
-              <Tarjeta>
-                <h3 className="font-semibold mb-4 flex items-center gap-2">
-                  <ShieldCheck size={18} /> Consentimiento Habeas Data
-                </h3>
+              <TarjetaColapsable
+                titulo={
+                  <>
+                    <ShieldCheck size={18} /> Consentimiento Habeas Data
+                  </>
+                }
+                resumen={`${datos.consentimientos!.length} registro${
+                  datos.consentimientos!.length === 1 ? '' : 's'
+                }`}
+              >
                 <ul className="space-y-3 text-sm">
                   {datos.consentimientos!.map((c, i) => (
                     <li
@@ -1517,7 +1613,7 @@ export default function DetalleSolicitud() {
                     </li>
                   ))}
                 </ul>
-              </Tarjeta>
+              </TarjetaColapsable>
             )}
 
             {datos.desembolso && (
@@ -1777,72 +1873,6 @@ export default function DetalleSolicitud() {
                 </button>
               </Tarjeta>
             )}
-
-            {datos.estado !== 'desembolsada' &&
-              datos.estado !== 'cancelada' && (
-                <Tarjeta className="border-red-200">
-                  <h3 className="font-semibold mb-1 flex items-center gap-2 text-red-900">
-                    <XCircle size={18} /> Cancelar solicitud
-                  </h3>
-                  <p className="text-xs text-slate-500 mb-3">
-                    Anula la solicitud y queda registrada en el historial de
-                    estados. Esta acción no se puede deshacer.
-                  </p>
-                  {confirmarCancelacion ? (
-                    <>
-                      <label className="block text-sm mb-3">
-                        <span className="text-xs uppercase text-slate-500">
-                          Motivo de la cancelación *
-                        </span>
-                        <textarea
-                          className="input-base mt-1 w-full"
-                          rows={2}
-                          value={motivoCancelar}
-                          onChange={(e) => setMotivoCancelar(e.target.value)}
-                          placeholder="Ej: el cliente desistió del crédito"
-                        />
-                      </label>
-                      {mutCancelar.error && (
-                        <p role="alert" className="mb-3 text-sm text-red-600">
-                          {mensajeError(
-                            mutCancelar.error,
-                            'No se pudo cancelar la solicitud',
-                          )}
-                        </p>
-                      )}
-                      <div className="flex gap-3">
-                        <button
-                          className="btn-primary !bg-red-600 hover:!bg-red-700"
-                          disabled={
-                            mutCancelar.isPending ||
-                            motivoCancelar.trim().length < 3
-                          }
-                          onClick={() =>
-                            mutCancelar.mutate(motivoCancelar.trim())
-                          }
-                        >
-                          {mutCancelar.isPending
-                            ? 'Cancelando…'
-                            : 'Sí, cancelar la solicitud'}
-                        </button>
-                        <button
-                          className="btn-ghost"
-                          onClick={() => setConfirmarCancelacion(false)}
-                        >
-                          Volver
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <button
-                      className="btn-ghost !text-red-700 !border-red-300 hover:!bg-red-50"
-                      onClick={() => setConfirmarCancelacion(true)}
-                    >
-                      Cancelar esta solicitud
-                    </button>
-                  )}
-                </Tarjeta>
-              )}
           </>
         )}
 
@@ -1880,10 +1910,17 @@ export default function DetalleSolicitud() {
         {vista === 'evaluacion' &&
           !esAsesor &&
           datos.causales.some((c) => !c.activa) && (
-            <Tarjeta>
-              <h3 className="font-semibold mb-1 flex items-center gap-2">
-                <AlertTriangle size={18} /> Causales de evaluaciones anteriores
-              </h3>
+            <TarjetaColapsable
+              titulo={
+                <>
+                  <AlertTriangle size={18} /> Causales de evaluaciones
+                  anteriores
+                </>
+              }
+              resumen={`${datos.causales.filter((c) => !c.activa).length} causal${
+                datos.causales.filter((c) => !c.activa).length === 1 ? '' : 'es'
+              }`}
+            >
               <p className="text-xs text-slate-500 mb-3">
                 Quedan registradas aunque la evaluación vigente las haya
                 superado: son la trazabilidad del rechazo previo.
@@ -1905,16 +1942,20 @@ export default function DetalleSolicitud() {
                     </li>
                   ))}
               </ul>
-            </Tarjeta>
+            </TarjetaColapsable>
           )}
 
         {/* Cada re-evaluación crea una versión nueva: el historial deja
             constancia de cuántas hubo y con qué decisión terminaron. */}
         {vista === 'evaluacion' && !esAsesor && auditorias.length > 1 && (
-          <Tarjeta>
-            <h3 className="font-semibold mb-1 flex items-center gap-2">
-              <History size={18} /> Historial de evaluaciones
-            </h3>
+          <TarjetaColapsable
+            titulo={
+              <>
+                <History size={18} /> Historial de evaluaciones
+              </>
+            }
+            resumen={`${auditorias.length} versiones`}
+          >
             <p className="text-xs text-slate-500 mb-3">
               La evaluación vigente es la primera; las anteriores quedan
               registradas como versiones previas.
@@ -1963,7 +2004,7 @@ export default function DetalleSolicitud() {
                 )
               })}
             </ul>
-          </Tarjeta>
+          </TarjetaColapsable>
         )}
 
         {vista === 'gestion' && !evaluacion && (
@@ -1971,16 +2012,16 @@ export default function DetalleSolicitud() {
             <div className="flex flex-wrap items-center gap-3">
               <ListChecks size={18} className="text-slate-400" />
               <span className="flex-1">
-                Esta solicitud aún no ha sido evaluada por el motor. Puedes
-                lanzar la evaluación contra Experian desde aquí — usa la
-                capacidad referencial calculada con el ingreso declarado.
+                Esta solicitud aún no ha sido evaluada. Puedes lanzar la
+                evaluación desde aquí — usa la capacidad referencial calculada
+                con el ingreso declarado.
               </span>
               <button
                 className="btn-primary"
                 onClick={evaluarPendiente}
                 disabled={mutEvaluar.isPending}
               >
-                {mutEvaluar.isPending ? 'Evaluando…' : 'Evaluar con Experian'}
+                {mutEvaluar.isPending ? 'Evaluando…' : 'Evaluar solicitud'}
               </button>
             </div>
             {mutEvaluar.error && (
@@ -1991,123 +2032,267 @@ export default function DetalleSolicitud() {
           </Tarjeta>
         )}
 
-        {/* Re-evaluar con parámetros editables: solo administrador, cuando
-            ya existe una evaluación. Sirve para probar con qué parámetros
-            pasaría la solicitud en un futuro. */}
-        {vista === 'gestion' && !esAsesor && evaluacion && (
-          <Tarjeta>
-            <h3 className="font-semibold mb-1 flex items-center gap-2">
-              <ListChecks size={18} /> Re-evaluar con otros parámetros
-            </h3>
-            <p className="text-xs text-slate-500 mb-4">
-              En una solicitud rechazada sirve para asignar el monto y el plazo
-              con los que sí pasaría. Cada ejecución crea una versión nueva: las
-              evaluaciones y causales anteriores quedan registradas en la
-              pestaña Evaluación. Los campos vacíos usan los valores de la
-              evaluación vigente.
-            </p>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
-              <label className="block">
-                <span className="text-xs uppercase text-slate-500">
-                  Saldo a financiar
-                </span>
-                <CampoNumerico
-                  className="input-base mt-1 w-full"
-                  formatoMiles
-                  minimo={1}
-                  value={reSaldo}
-                  onValor={(n) => setReSaldo(n)}
-                  placeholder={String(Math.round(reSaldoDef))}
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs uppercase text-slate-500">
-                  Plazo (meses)
-                </span>
-                <CampoNumerico
-                  className="input-base mt-1 w-full"
-                  minimo={1}
-                  value={rePlazo}
-                  onValor={(n) => setRePlazo(n)}
-                  placeholder={String(rePlazoDef)}
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs uppercase text-slate-500">
-                  Tasa mensual (% m.v.)
-                </span>
-                <CampoNumerico
-                  decimales
-                  minimo={0}
-                  className="input-base mt-1 w-full"
-                  value={reTasa === '' ? null : Number(reTasa)}
-                  onValor={(n) => setReTasa(n == null ? '' : String(n))}
-                  placeholder={String(reTasaDef)}
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs uppercase text-slate-500">
-                  Origen de la consulta
-                </span>
-                <select
-                  className="input-base mt-1 w-full"
-                  value={reOrigen}
-                  onChange={(e) =>
-                    setReOrigen(e.target.value as 'demo' | 'experian')
-                  }
-                >
-                  <option value="demo">Escenario de demostración</option>
-                  <option value="experian">Experian en línea</option>
-                </select>
-              </label>
-              {reOrigen === 'demo' && (
-                <label className="block sm:col-span-2">
+        {/* Re-evaluar con parámetros editables: solo administrador y solo
+            en solicitudes rechazadas — sirve para encontrar con qué
+            monto, plazo y tasa sí pasaría. */}
+        {vista === 'gestion' &&
+          !esAsesor &&
+          evaluacion &&
+          /* Retomables: rechazadas por el motor. Cubre también las
+             'en_revision' legadas (decisión vieja que quedaba pendiente
+             de comité); canceladas y desembolsadas son estados finales. */
+          datos.decision === 'rechazado' &&
+          datos.estado !== 'cancelada' &&
+          datos.estado !== 'desembolsada' && (
+            <Tarjeta>
+              <h3 className="font-semibold mb-1 flex items-center gap-2">
+                <ListChecks size={18} /> Re-evaluar con otros parámetros
+              </h3>
+              <p className="text-xs text-slate-500 mb-4">
+                En una solicitud rechazada sirve para asignar el monto, el plazo
+                y la tasa con los que sí pasaría. Reusa los datos de buró de la
+                evaluación vigente; cada ejecución crea una versión nueva que
+                queda registrada en la pestaña Evaluación. Los campos vacíos
+                usan los valores vigentes.
+              </p>
+              {/* Insumos de la evaluación vigente: los mismos valores que
+                la calculadora manual de retoma (score, ingreso, gastos →
+                capacidad) para que el administrador haga cuentas sin salir
+                de la pantalla. */}
+              <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Valores de la evaluación vigente
+                </p>
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 xl:grid-cols-6">
+                  <Campo
+                    k="Score"
+                    v={
+                      resultadoAuditoria?.score_consultado ??
+                      evaluacion?.score ??
+                      '—'
+                    }
+                  />
+                  <Campo
+                    k="Ingreso final"
+                    v={(() => {
+                      const n = numero(resultadoAuditoria?.ingreso_final)
+                      return n != null ? currency(n) : '—'
+                    })()}
+                  />
+                  <Campo
+                    k="Endeudamiento"
+                    v={(() => {
+                      const n =
+                        numero(resultadoAuditoria?.endeudamiento) ??
+                        endeudamiento
+                      return n != null ? `${n.toFixed(1)}%` : '—'
+                    })()}
+                  />
+                  <Campo
+                    k="Disponible"
+                    v={(() => {
+                      const n = numero(resultadoAuditoria?.disponible)
+                      return n != null ? currency(n) : '—'
+                    })()}
+                  />
+                  <Campo
+                    k="Capacidad de pago"
+                    tono="emerald"
+                    v={
+                      reCapacidadPrev != null ? currency(reCapacidadPrev) : '—'
+                    }
+                  />
+                  <Campo
+                    k="Cupo vigente"
+                    v={currency(Math.round(reSaldoDef))}
+                  />
+                </dl>
+              </div>
+              <div className="grid sm:grid-cols-3 gap-3 text-sm">
+                <label className="block">
                   <span className="text-xs uppercase text-slate-500">
-                    Escenario simulado
+                    Saldo a financiar
                   </span>
-                  <select
+                  <CampoNumerico
                     className="input-base mt-1 w-full"
-                    value={reEscenario}
-                    onChange={(e) => setReEscenario(e.target.value)}
-                  >
-                    {Object.entries(escenarios).map(([codigo, desc]) => (
-                      <option key={codigo} value={codigo}>
-                        {desc || codigo}
-                      </option>
-                    ))}
-                    {Object.keys(escenarios).length === 0 && (
-                      <option value={reEscenario}>{reEscenario}</option>
-                    )}
-                  </select>
+                    formatoMiles
+                    minimo={1}
+                    value={reSaldo}
+                    onValor={(n) => setReSaldo(n)}
+                    placeholder={String(Math.round(reSaldoDef))}
+                  />
                 </label>
+                <label className="block">
+                  <span className="text-xs uppercase text-slate-500">
+                    Plazo (meses)
+                  </span>
+                  <CampoNumerico
+                    className="input-base mt-1 w-full"
+                    minimo={1}
+                    value={rePlazo}
+                    onValor={(n) => setRePlazo(n)}
+                    placeholder={String(rePlazoDef)}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs uppercase text-slate-500">
+                    Tasa mensual (% m.v.)
+                  </span>
+                  <CampoNumerico
+                    decimales
+                    minimo={0}
+                    className="input-base mt-1 w-full"
+                    value={reTasa === '' ? null : Number(reTasa)}
+                    onValor={(n) => setReTasa(n == null ? '' : String(n))}
+                    placeholder={String(reTasaDef)}
+                  />
+                </label>
+              </div>
+              {reCuotaPrev != null && (
+                <div
+                  className={`mt-4 flex flex-wrap items-center gap-x-8 gap-y-2 rounded-lg border px-4 py-3 ${
+                    reCapacidadPrev != null && reCuotaPrev > reCapacidadPrev
+                      ? 'border-amber-200 bg-amber-50/50'
+                      : 'border-slate-200 bg-slate-50'
+                  }`}
+                >
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                      Cuota estimada (con seguro)
+                    </p>
+                    <p className="text-lg font-bold text-slate-900">
+                      {currency(reCuotaPrev)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                      Cupo que cabe con este plazo y tasa
+                    </p>
+                    <p className="text-lg font-bold text-slate-900">
+                      {reCupoPosible != null ? currency(reCupoPosible) : '—'}
+                    </p>
+                    {reCupoTopadoPorCapacidad && (
+                      <p className="text-[10px] text-slate-400">
+                        la capacidad alcanza más; topa el máximo del producto (
+                        {currency(CUPO_MAXIMO)})
+                      </p>
+                    )}
+                  </div>
+                  {reCapacidadPrev != null && (
+                    <p
+                      className={`ml-auto max-w-52 text-xs font-medium leading-snug ${
+                        reCuotaPrev <= reCapacidadPrev
+                          ? 'text-emerald-700'
+                          : 'text-amber-700'
+                      }`}
+                    >
+                      {reCuotaPrev <= reCapacidadPrev
+                        ? `Cabe en la capacidad de pago vigente (${currency(reCapacidadPrev)})`
+                        : `Supera la capacidad de pago (${currency(reCapacidadPrev)}): bajar el monto o ampliar el plazo`}
+                    </p>
+                  )}
+                </div>
               )}
-            </div>
-            {mutEvaluar.error && (
-              <p role="alert" className="mt-3 text-sm text-red-600">
-                {mensajeError(
-                  mutEvaluar.error,
-                  'Error re-evaluando la solicitud',
-                )}
+              {mutEvaluar.error && (
+                <p role="alert" className="mt-3 text-sm text-red-600">
+                  {mensajeError(
+                    mutEvaluar.error,
+                    'Error re-evaluando la solicitud',
+                  )}
+                </p>
+              )}
+              {mutEvaluar.isSuccess && (
+                <p role="status" className="mt-3 text-sm text-emerald-700">
+                  Nueva evaluación registrada — la pestaña Evaluación ya muestra
+                  la versión vigente.
+                </p>
+              )}
+              <button
+                className="btn-primary mt-4"
+                disabled={mutEvaluar.isPending}
+                onClick={reevaluar}
+              >
+                {mutEvaluar.isPending
+                  ? 'Evaluando…'
+                  : 'Ejecutar nueva evaluación'}
+              </button>
+            </Tarjeta>
+          )}
+
+        {/* Cancelar queda de último: es la acción destructiva del ciclo
+            y no debería competir con las gestiones operativas. */}
+        {vista === 'gestion' &&
+          datos.estado !== 'desembolsada' &&
+          datos.estado !== 'cancelada' && (
+            <Tarjeta className="border-red-200">
+              <h3 className="font-semibold mb-1 flex items-center gap-2 text-red-900">
+                <XCircle size={18} /> Cancelar solicitud
+              </h3>
+              <p className="text-xs text-slate-500 mb-3">
+                Anula la solicitud y queda registrada en el historial de
+                estados. Esta acción no se puede deshacer.
               </p>
-            )}
-            {mutEvaluar.isSuccess && (
-              <p role="status" className="mt-3 text-sm text-emerald-700">
-                Nueva evaluación registrada — la pestaña Evaluación ya muestra
-                la versión vigente.
-              </p>
-            )}
-            <button
-              className="btn-primary mt-4"
-              disabled={mutEvaluar.isPending}
-              onClick={reevaluar}
-            >
-              {mutEvaluar.isPending
-                ? 'Evaluando…'
-                : 'Ejecutar nueva evaluación'}
-            </button>
-          </Tarjeta>
-        )}
+              {confirmarCancelacion ? (
+                <>
+                  <label className="block text-sm mb-3">
+                    <span className="text-xs uppercase text-slate-500">
+                      Motivo de la cancelación *
+                    </span>
+                    <textarea
+                      className="input-base mt-1 w-full"
+                      rows={2}
+                      value={motivoCancelar}
+                      onChange={(e) => setMotivoCancelar(e.target.value)}
+                      placeholder="Ej: el cliente desistió del crédito"
+                    />
+                  </label>
+                  {mutCancelar.error && (
+                    <p role="alert" className="mb-3 text-sm text-red-600">
+                      {mensajeError(
+                        mutCancelar.error,
+                        'No se pudo cancelar la solicitud',
+                      )}
+                    </p>
+                  )}
+                  <div className="flex gap-3">
+                    <button
+                      className="btn-primary !bg-red-600 hover:!bg-red-700"
+                      disabled={
+                        mutCancelar.isPending ||
+                        motivoCancelar.trim().length < 3
+                      }
+                      onClick={() => mutCancelar.mutate(motivoCancelar.trim())}
+                    >
+                      {mutCancelar.isPending
+                        ? 'Cancelando…'
+                        : 'Sí, cancelar la solicitud'}
+                    </button>
+                    <button
+                      className="btn-ghost"
+                      onClick={() => setConfirmarCancelacion(false)}
+                    >
+                      Volver
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <button
+                  className="btn-ghost !text-red-700 !border-red-300 hover:!bg-red-50"
+                  onClick={() => setConfirmarCancelacion(true)}
+                >
+                  Cancelar esta solicitud
+                </button>
+              )}
+            </Tarjeta>
+          )}
       </div>
+      {docPrevia && (
+        <VisorDocumento
+          url={urlEvidenciaContenido(docPrevia.id_evidencia)}
+          nombre={docPrevia.nombre_original ?? docPrevia.tipo}
+          onCerrar={() => setDocPrevia(null)}
+        />
+      )}
     </>
   )
 }
@@ -2173,7 +2358,7 @@ function Campo({
         {k}
       </dt>
       <dd
-        className={`mt-0.5 text-sm font-semibold ${color}`}
+        className={`mt-0.5 text-sm font-semibold tabular-nums ${color}`}
         title={typeof v === 'string' ? v : undefined}
       >
         {v}

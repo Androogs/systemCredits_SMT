@@ -216,6 +216,18 @@ export function crearSolicitud(payload: CrearSolicitudPayload) {
   })
 }
 
+/** Re-diligencia la radicación al retomar pasos pendientes (upsert; el
+ * backend responde 409 si la solicitud ya tiene decisión). */
+export function actualizarSolicitud(
+  idSolicitud: string,
+  payload: CrearSolicitudPayload,
+) {
+  return request<CrearSolicitudResponse>(`/api/solicitudes/${idSolicitud}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
 export function evaluarSolicitud(
   idSolicitud: string,
   payload: EvaluarSolicitudPayload,
@@ -246,6 +258,8 @@ export interface VehiculoFinanciado {
   accesorios?: number | null
   matricula?: number | null
   soat?: number | null
+  /** Impuesto por cilindraje de la motocicleta (impuesto de registro). */
+  impuestos?: number | null
   aval_pct?: number | null
 }
 
@@ -417,6 +431,7 @@ export interface SolicitudResumenApi {
   linea_credito: string | null
   destino_credito: string | null
   plazo_deseado_meses: number | null
+  fecha_hora_firma?: string | null
   evaluacion: EvaluacionResumenApi | null
 }
 
@@ -427,6 +442,8 @@ export interface CausalSolicitudApi {
 }
 
 export interface SolicitudDetalleApi extends SolicitudResumenApi {
+  /** Requerida por el payload de re-diligencia al retomar la solicitud. */
+  fecha_nacimiento?: string | null
   datos_laborales: {
     tipo_contrato: string | null
     meses_continuidad: number | null
@@ -499,6 +516,48 @@ export function obtenerSolicitud(idSolicitud: string) {
   return request<SolicitudDetalleApi>(`/api/solicitudes/${idSolicitud}`)
 }
 
+// ---------- Métricas del embudo ----------
+
+export interface EtapaEmbudoApi {
+  clave: string
+  etiqueta: string
+  total: number
+  pct: number
+}
+
+export interface EmbudoAliadoApi {
+  aliado: string
+  con_oferta: number
+  formalizadas: number
+  desembolsadas: number
+  valor_desembolsado: string
+}
+
+export interface MetricasEmbudoApi {
+  generado_en: string
+  radicadas: number
+  canceladas: number
+  etapas: EtapaEmbudoApi[]
+  por_estado: Record<string, number>
+  por_aliado: EmbudoAliadoApi[]
+}
+
+/** Conversión del embudo originación → desembolso (agregados en el
+    servidor; no depende del límite de la lista). `rango` acota por
+    fecha de radicación — lo usa el filtro de mes del panel. */
+export function obtenerMetricasEmbudo(rango?: {
+  desde?: string
+  hasta?: string
+}) {
+  const params = new URLSearchParams()
+  if (rango?.desde) params.set('desde', rango.desde)
+  if (rango?.hasta) params.set('hasta', rango.hasta)
+  const qs = params.toString()
+  return request<MetricasEmbudoApi>(
+    `/api/solicitudes/metricas/embudo${qs ? `?${qs}` : ''}`,
+  )
+}
+
 /** Anula la solicitud con motivo; 409 si ya está desembolsada/cancelada. */
 export function cancelarSolicitud(idSolicitud: string, motivo: string) {
   return request<SolicitudResumenApi>(
@@ -536,6 +595,31 @@ export interface BancoApi {
 
 export function listarBancos() {
   return request<BancoApi[]>('/api/bancos')
+}
+
+// ---------- Tasa de mercado (TIBC SFC) ----------
+
+export interface TasaModalidadApi {
+  modalidad: string
+  tasa_ea: number
+  tasa_mv: number
+  usura_ea: number
+  usura_mv: number
+  vigencia_desde: string
+  vigencia_hasta: string
+  resolucion: string
+}
+
+export interface TasaMercadoApi {
+  /** Tope de "consumo bajo monto" en COP (6 SMMLV). */
+  umbral_bajo_monto: number
+  fuente: string
+  bajo_monto: TasaModalidadApi
+  ordinario: TasaModalidadApi
+}
+
+export function tasaMercado() {
+  return request<TasaMercadoApi>('/api/tasa-mercado')
 }
 
 export interface RegistrarDesembolsoPayload {
@@ -690,9 +774,30 @@ export function urlEvidenciaContenido(idEvidencia: number) {
   return `${API}/api/evidencias/${idEvidencia}/contenido`
 }
 
+/** URL del paquete completo de legalización (.zip con los doc_*). */
+export function urlPaqueteLegalizacion(idSolicitud: string) {
+  return `${API}/api/solicitudes/${idSolicitud}/legalizacion.zip`
+}
+
 /** Estado para la página móvil pública (autoriza el token del link). */
 export function estadoCaptura(token: string) {
   return request<EstadoCapturaApi>(`/api/captura/${token}`)
+}
+
+/** Verificación pública de la firma electrónica — destino del QR que se
+ * estampa en los documentos de legalización. */
+export interface VerificacionFirmaApi {
+  uuid_firma: string
+  num_solicitud: number | null
+  firmante: string
+  documento_identidad: string
+  fecha_hora_firma: string | null
+  autenticacion: string | null
+  documentos: number
+}
+
+export function verificarFirma(uuidFirma: string) {
+  return request<VerificacionFirmaApi>(`/api/firmas/${uuidFirma}`)
 }
 
 export function subirEvidencia(

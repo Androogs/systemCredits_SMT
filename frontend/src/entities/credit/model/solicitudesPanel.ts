@@ -98,10 +98,14 @@ export function numero(valor: string | null | undefined): number | null {
  * consulta sin golpear la API cada vez, y las mutaciones del detalle
  * la invalidan para que la lista vuelva fresca.
  */
-export function useSolicitudes(filtros?: FiltrosSolicitudes) {
+export function useSolicitudes(
+  filtros?: FiltrosSolicitudes,
+  opciones?: { refetchIntervalMs?: number },
+) {
   const consulta = useQuery({
     queryKey: ['solicitudes', filtros ?? null],
     queryFn: () => listarSolicitudes(filtros),
+    refetchInterval: opciones?.refetchIntervalMs,
   })
   return {
     datos: consulta.data ?? ([] as SolicitudResumenApi[]),
@@ -113,5 +117,9 @@ export function useSolicitudes(filtros?: FiltrosSolicitudes) {
           ? 'Error consultando solicitudes'
           : null,
     recargar: consulta.refetch,
+    /** Timestamp de la última respuesta exitosa (indicador de frescura). */
+    actualizadoEn: consulta.dataUpdatedAt || null,
+    /** true durante cualquier fetch — inicial o refresco en segundo plano. */
+    sincronizando: consulta.isFetching,
   }
 }

@@ -18,8 +18,11 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
+      // La BD SQLite es efímera: se borra antes del seed para que
+      // `create_all` la recree con el esquema vigente (un archivo viejo
+      // no recibe columnas nuevas del modelo).
       command:
-        '.\\.venv\\Scripts\\python.exe -m backend.database.seed_demo && .\\.venv\\Scripts\\python.exe -m uvicorn backend.main:app --port 8010',
+        ".\\.venv\\Scripts\\python.exe -c \"import os; os.path.exists('e2e_playwright.db') and os.remove('e2e_playwright.db')\" && .\\.venv\\Scripts\\python.exe -m backend.database.seed_demo && .\\.venv\\Scripts\\python.exe -m uvicorn backend.main:app --port 8010",
       cwd: '..',
       url: 'http://localhost:8010/api/health',
       timeout: 60_000,

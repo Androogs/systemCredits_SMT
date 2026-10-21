@@ -7,7 +7,7 @@
 
 .cabecera-etapa__texto > p {
   margin: 0 0 0.55rem;
-  color: #087ead;
+  color: var(--brand-deep);
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -15,7 +15,7 @@
 
 .cabecera-etapa__texto h1 {
   margin: 0;
-  color: #1d2939;
+  color: var(--ink);
   font-size: 1.65rem;
   font-weight: 650;
   line-height: 1.2;
@@ -25,7 +25,7 @@
   display: block;
   max-width: 46rem;
   margin-top: 0.5rem;
-  color: #667085;
+  color: var(--slate-soft);
   font-size: 0.86rem;
   line-height: 1.55;
 }
@@ -34,9 +34,9 @@
   display: grid;
   gap: 0.7rem;
   padding: 0.9rem 1rem;
-  border: 1px solid #e4eaf0;
+  border: 1px solid var(--border-soft);
   border-radius: 0.7rem;
-  background: #fff;
+  background: var(--white);
 }
 
 .cabecera-etapa__contexto dl {
@@ -52,14 +52,14 @@
 }
 
 .cabecera-etapa__contexto dt {
-  color: #7b8794;
+  color: var(--slate-soft);
   font-size: 0.68rem;
   font-weight: 600;
 }
 
 .cabecera-etapa__contexto dd {
   margin: 0;
-  color: #1d2939;
+  color: var(--ink);
   font-size: 0.72rem;
   font-weight: 600;
   text-align: right;
@@ -69,7 +69,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  color: #566575;
+  color: var(--slate);
   font-size: 0.68rem;
   font-weight: 600;
 }
@@ -78,7 +78,7 @@
   width: 0.42rem;
   height: 0.42rem;
   border-radius: 50%;
-  background: #d69b27;
+  background: var(--warning);
 }
 
 @media (max-width: 900px) {

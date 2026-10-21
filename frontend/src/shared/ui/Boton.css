@@ -34,44 +34,44 @@
 }
 
 .boton--primario {
-  background: #087ead;
-  color: #fff;
+  background: var(--brand-deep);
+  color: var(--white);
 }
 
 .boton--primario:hover:not(:disabled) {
-  background: #06678f;
+  background: var(--brand-press);
 }
 
 .boton--secundario {
-  border-color: #d5dde5;
-  background: #fff;
-  color: #344054;
+  border-color: var(--border);
+  background: var(--white);
+  color: var(--slate-strong);
 }
 
 .boton--secundario:hover:not(:disabled) {
-  background: #f5f7f9;
+  background: var(--surface-neutral);
 }
 
 .boton--terciario {
   background: transparent;
-  color: #087ead;
+  color: var(--brand-deep);
 }
 
 .boton--terciario:hover:not(:disabled) {
-  background: #edf8fc;
+  background: var(--surface-tint);
 }
 
 .boton--peligro {
-  background: #b42318;
-  color: #fff;
+  background: var(--error-strong);
+  color: var(--white);
 }
 
 .boton--peligro:hover:not(:disabled) {
-  background: #912018;
+  background: var(--error-press);
 }
 
 .boton:focus-visible {
-  outline: 3px solid #9ddcf0;
+  outline: 3px solid var(--brand-light);
   outline-offset: 2px;
 }
 
@@ -87,6 +87,12 @@
 @keyframes boton-girar {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (pointer: coarse) {
+  .boton--compacto {
+    min-height: 2.75rem;
   }
 }
 

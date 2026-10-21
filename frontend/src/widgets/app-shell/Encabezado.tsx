@@ -12,12 +12,16 @@ export default function Encabezado({
   actions,
 }: EncabezadoProps) {
   return (
-    <header className="h-16 flex items-center justify-between border-b border-slate-200 bg-white px-6">
-      <div>
-        <h1 className="text-lg font-semibold text-slate-900">{title}</h1>
-        {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
+    <header className="flex min-h-16 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2 sm:px-6">
+      <div className="min-w-0">
+        <h1 className="truncate text-lg font-semibold text-slate-900">
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="truncate text-xs text-slate-500">{subtitle}</p>
+        )}
       </div>
-      <div className="flex items-center gap-3">{actions}</div>
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">{actions}</div>
     </header>
   )
 }

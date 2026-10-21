@@ -12,6 +12,7 @@ import './ValidacionInicial.css'
 export interface DatosValidacion {
   tipoDocumento: string
   numeroDocumento: string
+  /** ISO 'YYYY-MM-DD': la captura el asesor y el OCR la coteja. */
   fechaNacimiento: string
   nacionalidad: string
   multasPendientes: boolean
@@ -32,7 +33,7 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
     DEMO ? '1032448900' : '',
   )
   const [fechaNacimiento, setFechaNacimiento] = useState(
-    DEMO ? '1990-05-15' : '',
+    DEMO ? '1991-08-15' : '',
   )
   const [multas, setMultas] = useState<'si' | 'no' | ''>(DEMO ? 'no' : '')
   const [tocados, setTocados] = useState<Partial<Record<Campo, boolean>>>({})
@@ -211,6 +212,7 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
                 id="fecha-nacimiento"
                 type="date"
                 value={fechaNacimiento}
+                max={new Date().toISOString().slice(0, 10)}
                 aria-invalid={mostrarError('fechaNacimiento')}
                 onChange={(event) => {
                   setFechaNacimiento(event.target.value)
@@ -225,7 +227,8 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
               </p>
             ) : (
               <p className="validacion__hint">
-                Debe tener entre {EDAD_MINIMA} y {EDAD_MAXIMA} años.
+                Debe tener entre {EDAD_MINIMA} y {EDAD_MAXIMA} años para
+                radicación de crédito. El OCR de la cédula coteja esta fecha.
               </p>
             )}
           </div>

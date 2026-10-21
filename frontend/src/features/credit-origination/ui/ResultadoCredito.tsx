@@ -110,9 +110,9 @@ function ResultadoCredito({
   const [errorOfertas, setErrorOfertas] = useState<string | null>(null)
   const [confirmando, setConfirmando] = useState(false)
 
-  // Firma del pagaré: vehículo → datos del cliente → OTP al WhatsApp del
-  // cliente (cae a correo si el envío falla); la verificación firma la
-  // solicitud (uuid_firma).
+  // Firma del pagaré: vehículo → datos del cliente → OTP al WhatsApp
+  // (cae a correo si el envío falla); la verificación firma la
+  // solicitud (uuid_firma) y genera el paquete legal.
   const [pasoFirma, setPasoFirma] = useState<'vehiculo' | 'datos' | 'otp'>(
     'vehiculo',
   )
@@ -123,6 +123,7 @@ function ResultadoCredito({
   const [enviandoOtp, setEnviandoOtp] = useState(false)
   const [errorOtp, setErrorOtp] = useState<string | null>(null)
   const [errorDatos, setErrorDatos] = useState<string | null>(null)
+
   // Precarga del formulario de datos del cliente: lo ya capturado en el
   // paso 4 (empresa/entidad pagadora) más lo ya persistido (retomar).
   const [inicialDatos, setInicialDatos] = useState<Partial<DatosForm> | null>(
@@ -236,16 +237,25 @@ function ResultadoCredito({
   const [accesorios, setAccesorios] = useState<number | null>(0)
   const [matricula, setMatricula] = useState<number | null>(0)
   const [soat, setSoat] = useState<number | null>(0)
+  const [impuestos, setImpuestos] = useState<number | null>(0)
   const [avalPct, setAvalPct] = useState<number | null>(0)
 
+  // El plazo que el cliente puede tomar nunca supera al ofertado: el
+  // motor evaluó ese término (capacidad.plazo_cupo) y el backend lo
+  // rechaza con 422. Si el simulador traía más, se topa aquí.
   useEffect(() => {
-    if (ofertaElegible?.plazo_ofrecido && !simulacion?.plazoMeses) {
-      setPlazo(ofertaElegible.plazo_ofrecido)
+    if (ofertaElegible?.plazo_ofrecido) {
+      setPlazo((p) =>
+        p
+          ? Math.min(p, ofertaElegible.plazo_ofrecido!)
+          : ofertaElegible.plazo_ofrecido!,
+      )
     }
-  }, [ofertaElegible?.plazo_ofrecido, simulacion?.plazoMeses])
+  }, [ofertaElegible?.plazo_ofrecido])
 
   // Saldo a financiar = valor neto de la moto tras descuentos, más los
-  // adicionales financiados (accesorios, matrícula, SOAT) y el aval.
+  // adicionales financiados (accesorios, matrícula, SOAT, impuestos) y el
+  // aval.
   const descuentoAplicado =
     tipoDescuento === 'valor'
       ? (descuento ?? 0)
@@ -253,12 +263,20 @@ function ResultadoCredito({
   const valorNeto = Math.max(0, (valorMoto ?? 0) - descuentoAplicado)
   const avalValor = (valorNeto * (avalPct ?? 0)) / 100
   const saldoFinanciar = Math.round(
-    valorNeto + (accesorios ?? 0) + (matricula ?? 0) + (soat ?? 0) + avalValor,
+    valorNeto +
+      (accesorios ?? 0) +
+      (matricula ?? 0) +
+      (soat ?? 0) +
+      (impuestos ?? 0) +
+      avalValor,
   )
   const saldoInvalido = saldoFinanciar <= 0
   const superaCupo = cupoMaximo > 0 && saldoFinanciar > cupoMaximo
 
-  const plazoInvalido = plazo < 12 || plazo > 48
+  // El máximo de plazo no es un rango comercial quemado: es el plazo
+  // que el motor evaluó y la oferta fijó (el cliente solo puede bajar).
+  const plazoMaximo = ofertaElegible?.plazo_ofrecido ?? 48
+  const plazoInvalido = plazo < 12 || plazo > plazoMaximo
   const cuotaMensual = useMemo(
     // La cuota del pagaré/carta es la total: anualidad + prima de
     // seguro de vida (% mensual sobre el saldo financiado).
@@ -282,19 +300,20 @@ function ResultadoCredito({
     setMarca(marcaDeConcesionario(nombre))
   }
 
-  const confirmarOferta = () => {
-    if (!idSolicitud || !ofertaElegible) return
+  // Congela los términos elegidos en la oferta: debe correr ANTES del
+  // OTP, porque al verificar el código el backend sella la firma y
+  // genera el paquete legal con la oferta seleccionada.
+  const confirmarOferta = (): Promise<OfertaSeleccionada> => {
     const oferta: OfertaSeleccionada = {
       monto: saldoFinanciar,
       plazoMeses: plazo,
       cuotaMensual,
       desembolsoEstimado,
-      idOferta: ofertaElegible.id_oferta,
+      idOferta: ofertaElegible!.id_oferta,
     }
-    setConfirmando(true)
-    seleccionarOferta(
-      idSolicitud,
-      ofertaElegible.id_oferta,
+    return seleccionarOferta(
+      idSolicitud!,
+      ofertaElegible!.id_oferta,
       saldoFinanciar,
       plazo,
       {
@@ -308,23 +327,10 @@ function ResultadoCredito({
         accesorios,
         matricula,
         soat,
+        impuestos,
         aval_pct: avalPct,
       },
-    )
-      .then(() => {
-        emitirToast({
-          tipo: 'exito',
-          titulo: 'Pagaré firmado',
-          mensaje: 'La oferta y el vehículo quedaron formalizados.',
-        })
-        onFormalizar(oferta)
-      })
-      .catch(() =>
-        setErrorOfertas(
-          'La oferta no pudo confirmarse en el backend; intenta de nuevo.',
-        ),
-      )
-      .finally(() => setConfirmando(false))
+    ).then(() => oferta)
   }
 
   // Firma del pagaré con OTP: se envía el código al correo del cliente
@@ -384,11 +390,24 @@ function ResultadoCredito({
   }
 
   const verificarFirma = () => {
-    if (!idSolicitud || otpCodigo.length !== 6) return
+    if (!idSolicitud || !ofertaElegible || otpCodigo.length !== 6) return
     setErrorOtp(null)
     setConfirmando(true)
-    verificarOtp(idSolicitud, otpCodigo)
-      .then(() => confirmarOferta())
+    // Orden: seleccionar la oferta (congela monto/plazo/vehículo) y
+    // recién entonces verificar el OTP: la firma y el paquete legal se
+    // generan sobre los términos finales, y si la selección falla el
+    // código sigue vigente para reintentar tras corregir.
+    confirmarOferta()
+      .then((oferta) =>
+        verificarOtp(idSolicitud, otpCodigo).then(() => {
+          emitirToast({
+            tipo: 'exito',
+            titulo: 'Pagaré firmado',
+            mensaje: 'La oferta y el vehículo quedaron formalizados.',
+          })
+          onFormalizar(oferta)
+        }),
+      )
       .catch((error: unknown) => {
         setConfirmando(false)
         setErrorOtp(
@@ -402,7 +421,7 @@ function ResultadoCredito({
   const titulo = aprobado ? 'Oferta de crédito generada' : 'Solicitud rechazada'
   const descripcion = aprobado
     ? 'Confirma los datos del vehículo y la financiación para continuar.'
-    : 'La solicitud no cumple las políticas vigentes del motor de decisión.'
+    : 'La solicitud no cumple las políticas de crédito vigentes.'
 
   return (
     <div className="resultado-credito">
@@ -485,7 +504,7 @@ function ResultadoCredito({
               )}
             </span>
             <span className="resultado-credito__veredicto-eyebrow">
-              {aprobado ? '¡Buenas noticias!' : 'Decisión del motor'}
+              {aprobado ? '¡Buenas noticias!' : 'Resultado de la evaluación'}
             </span>
             <strong className="resultado-credito__veredicto-titulo">
               {aprobado ? '¡Crédito aprobado!' : 'Crédito no aprobado'}
@@ -550,7 +569,7 @@ function ResultadoCredito({
               <p>
                 Cuota de referencia {currency(resultado.cuotaSugerida)} a{' '}
                 {resultado.plazoMeses} meses, según la capacidad de pago
-                evaluada por el motor.
+                evaluada.
               </p>
             </div>
 
@@ -569,7 +588,7 @@ function ResultadoCredito({
                   Precargado desde el simulador: moto{' '}
                   {currency(simulacion.valorMoto)}, adicionales{' '}
                   {currency(simulacion.adicionales)} (repartirlos entre
-                  accesorios, matrícula y SOAT) y cuota estimada{' '}
+                  accesorios, matrícula, SOAT e impuestos) y cuota estimada{' '}
                   {currency(simulacion.cuotaMensual)} a {simulacion.plazoMeses}{' '}
                   meses.
                 </p>
@@ -863,6 +882,18 @@ function ResultadoCredito({
                     />
                   </label>
                   <label>
+                    Impuesto por cilindraje
+                    <CampoNumerico
+                      className="input-base"
+                      formatoMiles
+                      minimo={0}
+                      value={impuestos}
+                      disabled={formalizacionIniciada || confirmando}
+                      placeholder="135.000"
+                      onValor={(n) => setImpuestos(n)}
+                    />
+                  </label>
+                  <label>
                     Aval %
                     <CampoNumerico
                       className="input-base"
@@ -885,13 +916,16 @@ function ResultadoCredito({
                       aria-invalid={plazoInvalido}
                       aria-describedby="rc-plazo-ayuda"
                     />
-                    <small id="rc-plazo-ayuda">meses · 12–48</small>
+                    <small id="rc-plazo-ayuda">
+                      meses · 12–{plazoMaximo} (máximo evaluado)
+                    </small>
                   </div>
                 </div>
               )}
               {pasoFirma === 'vehiculo' && plazoInvalido && (
                 <p className="resultado-credito__plazo-error" role="alert">
-                  El plazo debe estar entre 12 y 48 meses.
+                  El plazo debe estar entre 12 y {plazoMaximo} meses, el término
+                  que la evaluación aprobó.
                 </p>
               )}
               {pasoFirma === 'vehiculo' && saldoInvalido && (

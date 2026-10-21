@@ -7,7 +7,11 @@ import {
   construirCrearSolicitudPayload,
   type IdentidadSolicitante,
 } from '../model/mapeos-api'
-import { ApiError, crearSolicitud } from '../api/originacionApi'
+import {
+  ApiError,
+  actualizarSolicitud,
+  crearSolicitud,
+} from '../api/originacionApi'
 import { erroresSolicitud } from '../model/solicitud-schema'
 import {
   OCUPACIONES,
@@ -52,6 +56,9 @@ interface CrearSolicitudProps {
   identidad?: IdentidadSolicitante
   /** Token de la sesión de captura del paso 3: enlaza las evidencias. */
   sesionCapturaToken?: string
+  /** Solicitud ya radicada que se retoma: el guardado actualiza (PUT)
+   * en vez de duplicar la radicación. */
+  idSolicitud?: string
 }
 
 const lineasCredito = [
@@ -176,6 +183,7 @@ function CrearSolicitud({
   inicial,
   identidad,
   sesionCapturaToken,
+  idSolicitud,
 }: CrearSolicitudProps) {
   const [datos, setDatos] = useState<DatosSolicitud>({
     ...valoresIniciales,
@@ -234,9 +242,17 @@ function CrearSolicitud({
 
     setEnviando(true)
     setErrorApi(null)
-    crearSolicitud(
-      construirCrearSolicitudPayload(identidad, datos, sesionCapturaToken),
+    const payload = construirCrearSolicitudPayload(
+      identidad,
+      datos,
+      sesionCapturaToken,
     )
+    // Solicitud retomada: actualiza el registro persistido; una nueva
+    // radicación la crearía duplicada.
+    const persistir = idSolicitud
+      ? actualizarSolicitud(idSolicitud, payload)
+      : crearSolicitud(payload)
+    persistir
       .then((respuesta) => {
         setEnviando(false)
         setRegistrado(true)
@@ -263,7 +279,7 @@ function CrearSolicitud({
           <p className="solicitud__subtitle">Producto, ocupación y capacidad</p>
           <p className="solicitud__lede">
             Registra el producto y la información económica del solicitante. Con
-            estos datos el motor evaluará la solicitud y sugerirá el cupo máximo
+            estos datos se evaluará la solicitud y se sugerirá el cupo máximo
             que el cliente podrá tomar.
           </p>
         </div>
@@ -329,10 +345,7 @@ function CrearSolicitud({
             </span>
             <div>
               <h2 id="solicitud-sec-1">Configuración de Producto Financiero</h2>
-              <p>
-                Línea y destino. El monto lo sugiere el motor tras la
-                evaluación.
-              </p>
+              <p>Línea y destino. El monto se sugiere tras la evaluación.</p>
             </div>
           </header>
 
@@ -774,7 +787,7 @@ function CrearSolicitud({
             <div className="solicitud__analisis-head">
               <h3>Capacidad de pago estimada</h3>
               <span className="solicitud__analisis-hint">
-                Fórmula del motor · no vinculante
+                Cálculo estimado · no vinculante
               </span>
             </div>
 
@@ -786,7 +799,7 @@ function CrearSolicitud({
                 <strong className="solicitud__analisis-valor">
                   {formatoCOPCompacto(capacidad.monto)}
                 </strong>
-                <small>Tope $20M · define el motor tras la consulta</small>
+                <small>Tope $20M · se define tras la evaluación</small>
               </div>
 
               <div className="solicitud__analisis-card solicitud__analisis-card--primary">
@@ -839,7 +852,7 @@ function CrearSolicitud({
               <span className="solicitud__dot" aria-hidden="true" />
               {registrado
                 ? 'Solicitud lista para evaluación.'
-                : 'Verifica los datos antes de consultar al motor.'}
+                : 'Verifica los datos antes de enviar a evaluación.'}
             </p>
           </div>
           <Boton

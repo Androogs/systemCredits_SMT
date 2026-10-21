@@ -167,11 +167,11 @@ export default function Solicitudes() {
                     Fecha de solicitud
                   </th>
                   {!esAsesor && (
-                    <th scope="col" className="px-5 py-3">
+                    <th scope="col" className="px-5 py-3 text-right">
                       Score
                     </th>
                   )}
-                  <th scope="col" className="px-5 py-3">
+                  <th scope="col" className="px-5 py-3 text-right">
                     Cupo sugerido
                   </th>
                   <th scope="col" className="px-5 py-3">
@@ -213,13 +213,13 @@ export default function Solicitudes() {
                         {dateShort(s.fecha_hora)}
                       </td>
                       {!esAsesor && (
-                        <td className="px-5 py-3 font-medium">
+                        <td className="px-5 py-3 text-right font-medium tabular-nums">
                           {s.evaluacion?.score != null
                             ? Number(s.evaluacion.score)
                             : '—'}
                         </td>
                       )}
-                      <td className="px-5 py-3">
+                      <td className="px-5 py-3 text-right tabular-nums">
                         {mostrarCupo ? currency(cupo) : '—'}
                       </td>
                       <td className="px-5 py-3">

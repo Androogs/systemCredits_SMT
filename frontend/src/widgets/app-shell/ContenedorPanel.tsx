@@ -1,7 +1,8 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { Menu } from 'lucide-react'
 import BarraLateral from './BarraLateral'
+import CargandoPagina from '../../shared/ui/CargandoPagina'
 
 export default function ContenedorPanel() {
   const navigate = useNavigate()
@@ -59,7 +60,9 @@ export default function ContenedorPanel() {
           tabIndex={-1}
           inert={mobileMenuOpen}
         >
-          <Outlet />
+          <Suspense fallback={<CargandoPagina />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
     </div>

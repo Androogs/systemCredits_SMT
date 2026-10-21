@@ -210,7 +210,7 @@ export default function EvaluacionYResultado({
           </p>
           <h1>Resultado y oferta</h1>
           <p className="evaluacion-resultado__subtitle">
-            Consulta a centrales y decisión del motor
+            Consulta a centrales y evaluación de la solicitud
           </p>
         </div>
       </header>
@@ -334,8 +334,8 @@ export default function EvaluacionYResultado({
           />
           <h2>Consultando centrales de riesgo</h2>
           <p>
-            El motor está aplicando las políticas de riesgo. Esto puede tomar
-            unos segundos.
+            Estamos aplicando las políticas de riesgo. Esto puede tomar unos
+            segundos.
           </p>
         </section>
       )}

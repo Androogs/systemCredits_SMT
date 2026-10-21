@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import Encabezado from '../widgets/app-shell/Encabezado'
@@ -10,14 +10,12 @@ import { cuotaAnualidad, tablaAmortizacion } from '../shared/lib/finanzas'
 import { useCuentaAscendente } from '../shared/lib/useCuentaAscendente'
 import {
   listarProductos,
+  tasaMercado,
   type ProductoApi,
 } from '../features/credit-origination/api/originacionApi'
-import {
-  PRIMA_SEGURO_VIDA_PCT,
-  TASA_MENSUAL_REFERENCIA,
-} from '../features/credit-origination/model/resultado-evaluacion'
+import { PRIMA_SEGURO_VIDA_PCT } from '../features/credit-origination/model/resultado-evaluacion'
 import type { SimulacionPrevia } from '../features/credit-origination/model/borrador'
-import { Calculator, ArrowRight, AlertTriangle } from 'lucide-react'
+import { Calculator, ArrowRight, AlertTriangle, Landmark } from 'lucide-react'
 
 // Rangos de referencia si el catálogo no está disponible (coinciden
 // con el producto propio sembrado en la BD).
@@ -36,12 +34,17 @@ function plazosDel(min: number, max: number): number[] {
   return lista
 }
 
+// Tasa comercial del producto: la usura de consumo y ordinario vigente
+// (28,59% EA → (1+TEA)^(1/12)−1 = 2,1176% m.v. exacto) truncada a 4
+// decimales, para quedar siempre un pelo por debajo del límite legal.
+// Si la consulta SFC responde, la tasa operativa se recalcula en vivo.
+const TASA_PRODUCTO = 2.1176
+
 const initial = {
   valorVehiculo: 10_000_000,
   cuotaInicial: 1_000_000,
   adicionales: 1_150_000,
-  // Misma tasa con la que el motor evalúa capacidad de pago.
-  tasaMensual: TASA_MENSUAL_REFERENCIA,
+  tasaMensual: TASA_PRODUCTO,
   plazoMeses: 48,
 }
 
@@ -57,6 +60,16 @@ export default function Simulador() {
   })
   const producto: ProductoApi | null = consultaCatalogo.data?.[0] ?? null
   const catalogoError = consultaCatalogo.isError
+
+  // Tasas oficiales SFC (datos.gov.co): referencia de usura y tope
+  // legal del campo. El dataset es mensual; la lectura se cachea 6h
+  // en el backend.
+  const consultaTasa = useQuery({
+    queryKey: ['tasa-mercado'],
+    queryFn: tasaMercado,
+    staleTime: 6 * 60 * 60_000,
+    retry: 1,
+  })
 
   const rangos = useMemo(
     () => ({
@@ -133,6 +146,33 @@ export default function Simulador() {
     }
   }, [form])
 
+  // Tasa operativa: usura de consumo y ordinario en m.v. truncada a 4
+  // decimales — siempre por debajo del límite legal (la conversión da
+  // 2,11760008…%, el floor deja 2,1176%). Se aplica a todo monto: la
+  // tasa del producto es una sola, referenciada a la usura ordinaria.
+  const usuraOperativa = useMemo(() => {
+    const usuraEa = consultaTasa.data?.ordinario.usura_ea
+    if (!usuraEa) return null
+    const mv = ((1 + usuraEa / 100) ** (1 / 12) - 1) * 100
+    return Math.floor(mv * 1e4) / 1e4
+  }, [consultaTasa.data])
+
+  // Tope editable: nunca sobre la usura operativa; el rango comercial
+  // del producto puede acotar más por debajo.
+  const tasaMaxEfectiva =
+    usuraOperativa != null
+      ? Math.min(rangos.tasaMax, usuraOperativa)
+      : rangos.tasaMax
+
+  // Precarga la tasa operativa apenas llega la referencia oficial;
+  // respeta la edición manual del asesor.
+  const tasaEditadaRef = useRef(false)
+  useEffect(() => {
+    if (usuraOperativa != null && !tasaEditadaRef.current) {
+      setForm((prev) => ({ ...prev, tasaMensual: usuraOperativa }))
+    }
+  }, [usuraOperativa])
+
   const alertaMonto =
     resultado.montoFinanciar > rangos.montoMax
       ? `El monto a financiar supera el máximo del producto (${currency(rangos.montoMax)}).`
@@ -142,8 +182,12 @@ export default function Simulador() {
         : null
 
   const alertaTasa =
-    form.tasaMensual < rangos.tasaMin || form.tasaMensual > rangos.tasaMax
-      ? `La tasa del producto está entre ${rangos.tasaMin}% y ${rangos.tasaMax}% m.v.`
+    form.tasaMensual < rangos.tasaMin || form.tasaMensual > tasaMaxEfectiva
+      ? `La tasa del producto está entre ${rangos.tasaMin}% y ${tasaMaxEfectiva}% m.v.${
+          tasaMaxEfectiva < rangos.tasaMax
+            ? ` — la usura vigente topa la tasa para este monto`
+            : ''
+        }`
       : null
 
   const alertaPlazo =
@@ -169,7 +213,10 @@ export default function Simulador() {
               visible; en desktop quedan a la derecha */}
           <div className="space-y-5 lg:order-2 lg:col-span-3">
             {(alertaMonto || alertaTasa || alertaPlazo) && (
-              <Tarjeta className="border-amber-200 bg-amber-50/40 text-sm text-amber-800 space-y-1.5">
+              <Tarjeta
+                role="alert"
+                className="border-amber-200 bg-amber-50/40 text-sm text-amber-800 space-y-1.5"
+              >
                 {[alertaMonto, alertaTasa, alertaPlazo]
                   .filter(Boolean)
                   .map((alerta) => (
@@ -183,35 +230,35 @@ export default function Simulador() {
 
             <section
               aria-label="Resultado de la simulación"
-              className="rounded-2xl bg-[#0d1b3e] p-5 text-white shadow-lg ring-1 ring-white/10"
+              className="relative overflow-hidden rounded-2xl bg-[var(--navy-panel)] p-5 text-white shadow-lg sm:p-6"
             >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-300">
-                  Resultado de tu simulación
-                </p>
-                <span className="rounded-full bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-200 ring-1 ring-cyan-400/30">
+              {/* Acento de marca: un solo brillo cyan en la esquina */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-[radial-gradient(closest-side,rgb(var(--brand-rgb)/30%),transparent)]"
+              />
+
+              <div className="relative flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-medium text-cyan-100/75">
+                    Cuota mensual estimada
+                  </h2>
+                  <p className="mt-1 text-5xl font-bold tabular-nums tracking-tight text-[var(--brand-light)] sm:text-6xl">
+                    {currency(Math.round(cuotaAnim))}
+                  </p>
+                  <p className="mt-2.5 inline-flex items-baseline gap-1.5 rounded-full bg-[rgb(var(--brand-rgb)/25%)] px-3.5 py-1 text-sm font-semibold tabular-nums text-white ring-1 ring-[rgb(var(--brand-rgb)/40%)]">
+                    ≈ {currency(Math.round(resultado.cuotaDiaria))}
+                    <span className="text-xs font-normal text-cyan-100/75">
+                      por día
+                    </span>
+                  </p>
+                </div>
+                <span className="rounded-full bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-cyan-100 ring-1 ring-white/15">
                   {form.plazoMeses} meses
                 </span>
               </div>
 
-              <div className="mt-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-1">
-                <div>
-                  <p className="text-xs text-slate-300">
-                    Cuota mensual estimada
-                  </p>
-                  <p className="mt-0.5 text-4xl font-bold tracking-tight text-cyan-300">
-                    {currency(Math.round(cuotaAnim))}
-                  </p>
-                </div>
-                <p className="pb-1 text-xs text-slate-300">
-                  Cuota diaria aprox.:{' '}
-                  <strong className="text-white">
-                    {currency(Math.round(resultado.cuotaDiaria))}
-                  </strong>
-                </p>
-              </div>
-
-              <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <dl className="relative mt-6 grid grid-cols-2 gap-x-4 gap-y-4 border-t border-white/10 pt-5 sm:grid-cols-4 sm:divide-x sm:divide-white/10">
                 {(
                   [
                     [
@@ -231,80 +278,83 @@ export default function Simulador() {
                     ['Plazo', `${form.plazoMeses} meses`],
                   ] as const
                 ).map(([dt, dd, extra]) => (
-                  <div
-                    key={dt}
-                    className="rounded-lg bg-white/5 px-3 py-2.5 ring-1 ring-white/10"
-                  >
-                    <dt className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
-                      {dt}
-                    </dt>
-                    <dd className="mt-0.5 text-sm font-semibold">{dd}</dd>
+                  <div key={dt} className="sm:px-4 sm:first:pl-0 sm:last:pr-0">
+                    <dt className="text-xs text-cyan-100/70">{dt}</dt>
+                    <dd className="mt-0.5 text-base font-semibold tabular-nums">
+                      {dd}
+                    </dd>
                     {extra && (
-                      <dd className="text-[10px] text-slate-400">{extra}</dd>
+                      <dd className="mt-0.5 text-xs text-cyan-100/55">
+                        {extra}
+                      </dd>
                     )}
                   </div>
                 ))}
               </dl>
 
-              <dl className="mt-3 space-y-1.5 rounded-lg bg-white/5 px-3.5 py-3 text-[13px] ring-1 ring-white/10">
-                <div className="flex items-baseline justify-between gap-3">
-                  <dt className="text-slate-300">Valor moto</dt>
-                  <dd className="font-semibold">
+              <dl className="relative mt-6 divide-y divide-white/10 border-y border-white/10 text-sm">
+                <div className="flex items-baseline justify-between gap-3 py-2">
+                  <dt className="text-cyan-100/70">Valor moto</dt>
+                  <dd className="font-medium tabular-nums">
                     {currency(form.valorVehiculo)}
                   </dd>
                 </div>
-                <div className="flex items-baseline justify-between gap-3">
-                  <dt className="text-slate-300">
+                <div className="flex items-baseline justify-between gap-3 py-2">
+                  <dt className="text-cyan-100/70">
                     Adicionales (matrícula, SOAT, impuestos)
                   </dt>
-                  <dd className="font-semibold">
+                  <dd className="font-medium tabular-nums">
                     {currency(form.adicionales)}
                   </dd>
                 </div>
-                <div className="flex items-baseline justify-between gap-3">
-                  <dt className="text-slate-300">Cuota inicial</dt>
-                  <dd className="font-semibold text-cyan-300">
+                <div className="flex items-baseline justify-between gap-3 py-2">
+                  <dt className="text-cyan-100/70">Cuota inicial</dt>
+                  <dd className="font-medium tabular-nums text-[var(--brand-light)]">
                     − {currency(form.cuotaInicial)}
                   </dd>
                 </div>
-                <div className="flex items-baseline justify-between gap-3 border-t border-white/10 pt-1.5">
+                <div className="flex items-baseline justify-between gap-3 py-2.5">
                   <dt className="font-semibold text-white">
                     Saldo a financiar
                   </dt>
-                  <dd className="font-bold text-cyan-300">
+                  <dd className="font-bold tabular-nums text-[var(--brand-light)]">
                     {currency(Math.round(montoAnim))}
                   </dd>
                 </div>
               </dl>
 
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <div className="rounded-lg bg-white/5 px-3 py-2.5 ring-1 ring-white/10">
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
-                    Total intereses
-                  </p>
-                  <p className="mt-0.5 text-sm font-semibold">
-                    {currency(Math.round(interesesAnim))}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-white/5 px-3 py-2.5 ring-1 ring-white/10">
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
-                    Total seguros
-                  </p>
-                  <p className="mt-0.5 text-sm font-semibold">
-                    {currency(Math.round(resultado.totalSeguros))}
-                  </p>
-                </div>
-                <div className="rounded-lg bg-cyan-400/10 px-3 py-2.5 ring-1 ring-cyan-400/30">
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-cyan-200">
-                    Total a pagar
-                  </p>
-                  <p className="mt-0.5 text-sm font-bold">
-                    {currency(Math.round(totalAnim))}
-                  </p>
-                </div>
-              </div>
+              <dl className="relative mt-5 grid grid-cols-3 gap-x-4">
+                {(
+                  [
+                    [
+                      'Total intereses',
+                      currency(Math.round(interesesAnim)),
+                      false,
+                    ],
+                    [
+                      'Total seguros',
+                      currency(Math.round(resultado.totalSeguros)),
+                      false,
+                    ],
+                    ['Total a pagar', currency(Math.round(totalAnim)), true],
+                  ] as const
+                ).map(([dt, dd, destacado]) => (
+                  <div key={dt}>
+                    <dt className="text-xs text-cyan-100/70">{dt}</dt>
+                    <dd
+                      className={`mt-0.5 text-base tabular-nums ${
+                        destacado
+                          ? 'font-bold text-[var(--brand-light)]'
+                          : 'font-semibold'
+                      }`}
+                    >
+                      {dd}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
 
-              <p className="mt-3 text-[10px] leading-relaxed text-slate-400">
+              <p className="relative mt-4 text-xs leading-relaxed text-cyan-100/55">
                 * Estimación sujeta a estudio de crédito, verificación de datos
                 y condiciones vigentes.
               </p>
@@ -320,17 +370,17 @@ export default function Simulador() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-200">
+                    <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
                       <th scope="col" className="py-2.5 pr-4">
                         Plazo
                       </th>
-                      <th scope="col" className="py-2.5 pr-4">
+                      <th scope="col" className="py-2.5 pr-4 text-right">
                         Cuota mensual
                       </th>
-                      <th scope="col" className="py-2.5 pr-4">
+                      <th scope="col" className="py-2.5 pr-4 text-right">
                         Total a pagar
                       </th>
-                      <th scope="col" className="py-2.5 pr-4">
+                      <th scope="col" className="py-2.5 pr-4 text-right">
                         Intereses
                       </th>
                     </tr>
@@ -375,9 +425,13 @@ export default function Simulador() {
                               {plazo} meses
                             </button>
                           </td>
-                          <td className="py-2.5 pr-4">{currency(cuota)}</td>
-                          <td className="py-2.5 pr-4">{currency(total)}</td>
-                          <td className="py-2.5 pr-4">
+                          <td className="py-2.5 pr-4 text-right tabular-nums">
+                            {currency(cuota)}
+                          </td>
+                          <td className="py-2.5 pr-4 text-right tabular-nums">
+                            {currency(total)}
+                          </td>
+                          <td className="py-2.5 pr-4 text-right tabular-nums text-slate-600">
                             {currency(
                               Math.max(
                                 0,
@@ -402,7 +456,7 @@ export default function Simulador() {
             </h3>
             <div className="flex-1 space-y-4">
               {producto && (
-                <p className="text-xs text-slate-500 rounded-lg bg-slate-50 border border-slate-200 p-3">
+                <p className="text-xs text-[var(--brand-ink)] rounded-lg bg-[var(--surface-tint)] border border-brand-100 p-3">
                   {producto.nombre} · {producto.aliado}: tasa {rangos.tasaMin}%–
                   {rangos.tasaMax}% m.v., plazo {rangos.plazoMin}–
                   {rangos.plazoMax} meses, monto {currency(rangos.montoMin)}–
@@ -447,19 +501,45 @@ export default function Simulador() {
               />
               {/* El seguro de vida no es editable: prima fija del 0,35 %
                   m.v. sobre el saldo a financiar (política del producto). */}
-              <p className="text-xs text-slate-500 rounded-lg bg-slate-50 border border-slate-200 p-3">
+              <p className="text-xs text-[var(--brand-ink)] rounded-lg bg-[var(--surface-tint)] border border-brand-100 p-3 tabular-nums">
                 Seguro de vida: {PRIMA_SEGURO_VIDA_PCT}% m.v. sobre el saldo a
                 financiar — {currency(Math.round(resultado.cuotaSeguros))}/mes.
               </p>
               <CampoNumerico
                 className="input-base"
-                label={`Tasa mensual % (${rangos.tasaMin}–${rangos.tasaMax})`}
+                label={`Tasa mensual % (${rangos.tasaMin}–${tasaMaxEfectiva})`}
                 decimales
                 minimo={rangos.tasaMin}
-                maximo={rangos.tasaMax}
+                maximo={tasaMaxEfectiva}
                 value={form.tasaMensual}
-                onValor={(n) => actualizarValor('tasaMensual', n)}
+                onValor={(n) => {
+                  tasaEditadaRef.current = true
+                  actualizarValor('tasaMensual', n)
+                }}
+                aria-invalid={!!alertaTasa}
               />
+              {consultaTasa.data ? (
+                <p className="flex items-start gap-1.5 text-xs text-slate-500">
+                  <Landmark
+                    size={14}
+                    className="mt-px shrink-0 text-[var(--brand-deep)]"
+                    aria-hidden="true"
+                  />
+                  <span>
+                    Usura consumo y ordinario (SFC):{' '}
+                    {consultaTasa.data.ordinario.usura_ea}% EA ≈{' '}
+                    {consultaTasa.data.ordinario.usura_mv.toFixed(6)}% m.v. — el
+                    producto opera por debajo · Res. SFC{' '}
+                    {consultaTasa.data.ordinario.resolucion} · vigente hasta{' '}
+                    {consultaTasa.data.ordinario.vigencia_hasta}
+                  </span>
+                </p>
+              ) : consultaTasa.isError ? (
+                <p className="text-xs text-slate-400">
+                  Referencia oficial no disponible — usando la tasa del
+                  producto.
+                </p>
+              ) : null}
               <CampoNumerico
                 className="input-base"
                 label={`Plazo meses (${rangos.plazoMin}–${rangos.plazoMax})`}
@@ -506,24 +586,24 @@ export default function Simulador() {
           </div>
           <div className="overflow-auto max-h-96">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-white">
-                <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-200">
+              <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm">
+                <tr className="text-left text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_0_theme(colors.slate.200)]">
                   <th scope="col" className="px-5 py-3">
                     Mes
                   </th>
-                  <th scope="col" className="px-5 py-3">
+                  <th scope="col" className="px-5 py-3 text-right">
                     Cuota
                   </th>
-                  <th scope="col" className="px-5 py-3">
+                  <th scope="col" className="px-5 py-3 text-right">
                     Seguro
                   </th>
-                  <th scope="col" className="px-5 py-3">
+                  <th scope="col" className="px-5 py-3 text-right">
                     Interés
                   </th>
-                  <th scope="col" className="px-5 py-3">
+                  <th scope="col" className="px-5 py-3 text-right">
                     Abono a capital
                   </th>
-                  <th scope="col" className="px-5 py-3">
+                  <th scope="col" className="px-5 py-3 text-right">
                     Saldo
                   </th>
                 </tr>
@@ -532,18 +612,26 @@ export default function Simulador() {
                 {resultado.tabla.map((fila) => (
                   <tr
                     key={fila.mes}
-                    className="border-b border-slate-100 hover:bg-slate-50"
+                    className="border-b border-slate-100 hover:bg-[var(--surface-tint)]"
                   >
-                    <td className="px-5 py-2.5">{fila.mes}</td>
-                    <td className="px-5 py-2.5">{currency(fila.cuota)}</td>
-                    <td className="px-5 py-2.5">
+                    <td className="px-5 py-2.5 tabular-nums text-slate-500">
+                      {fila.mes}
+                    </td>
+                    <td className="px-5 py-2.5 text-right tabular-nums">
+                      {currency(fila.cuota)}
+                    </td>
+                    <td className="px-5 py-2.5 text-right tabular-nums text-slate-600">
                       {currency(resultado.cuotaSeguros)}
                     </td>
-                    <td className="px-5 py-2.5">{currency(fila.interes)}</td>
-                    <td className="px-5 py-2.5">
+                    <td className="px-5 py-2.5 text-right tabular-nums text-slate-600">
+                      {currency(fila.interes)}
+                    </td>
+                    <td className="px-5 py-2.5 text-right tabular-nums">
                       {currency(fila.abonoCapital)}
                     </td>
-                    <td className="px-5 py-2.5">{currency(fila.saldo)}</td>
+                    <td className="px-5 py-2.5 text-right tabular-nums font-medium">
+                      {currency(fila.saldo)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

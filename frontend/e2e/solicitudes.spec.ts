@@ -74,7 +74,10 @@ test('el detalle muestra la evaluación y la oferta elegible', async ({
   await expect(
     page.getByText('Cliente E2E Playwright', { exact: true }),
   ).toBeVisible()
+  // La evaluación vive en su pestaña; las ofertas en Gestión.
+  await page.getByRole('tab', { name: 'Evaluación' }).click()
   await expect(page.getByText('Evaluación del motor')).toBeVisible()
+  await page.getByRole('tab', { name: 'Gestión' }).click()
   await expect(
     page.getByRole('heading', { name: 'Oferta elegible' }),
   ).toBeVisible()
@@ -95,6 +98,7 @@ test('la pantalla de resultado muestra la decisión aprobada', async ({
 
 test('el resumen carga KPIs con datos reales', async ({ page }) => {
   await page.goto('/dashboard')
-  await expect(page.getByText('Total solicitudes')).toBeVisible()
+  // Banda KPI: cada celda es un botón de filtro; el lateral usa enlaces.
+  await expect(page.getByRole('button', { name: /Solicitudes/ })).toBeVisible()
   await expect(filaSembrada(page)).toBeVisible()
 })

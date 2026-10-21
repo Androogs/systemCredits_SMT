@@ -95,11 +95,16 @@ function EvidenciaYDatos({
       ) : (
         <RevisionDatos
           compacto
-          inicial={
-            numeroDocumento
+          inicial={{
+            ...(numeroDocumento
               ? { numeroIdentificacion: numeroDocumento }
-              : undefined
-          }
+              : {}),
+            // Si el OCR leyó la fecha, su valor es el que se muestra y la
+            // diferencia sale como advertencia; si no, precarga lo digitado.
+            ...(fechaNacimiento && !biometria.ocr?.fecha_nacimiento?.valor
+              ? { fechaNacimiento }
+              : {}),
+          }}
           ocr={biometria.ocr ?? null}
           onContinue={(datos) =>
             onContinue({

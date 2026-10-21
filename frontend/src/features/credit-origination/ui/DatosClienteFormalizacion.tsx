@@ -226,6 +226,7 @@ function DatosClienteFormalizacion({
       type?: string
       min?: number
       max?: number
+      mostrarCero?: boolean
     } = {},
   ) => (
     <label>
@@ -239,6 +240,7 @@ function DatosClienteFormalizacion({
           placeholder={props.placeholder}
           minimo={props.min}
           maximo={props.max}
+          mostrarCero={props.mostrarCero}
           onValor={(n) => set(campo, n == null ? '' : String(n))}
         />
       ) : (
@@ -335,12 +337,14 @@ function DatosClienteFormalizacion({
             type: 'number',
             min: 0,
             placeholder: '0',
+            mostrarCero: true,
           })}
           {texto('numHijos', 'Número de hijos', {
             required: true,
             type: 'number',
             min: 0,
             placeholder: '0',
+            mostrarCero: true,
           })}
           {toggle('esCabezaFamilia', '¿Es cabeza de familia?')}
         </div>

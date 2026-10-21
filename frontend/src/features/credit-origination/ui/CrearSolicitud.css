@@ -14,7 +14,7 @@
 
 .solicitud__eyebrow {
   margin: 0 0 0.6rem;
-  color: #11648a;
+  color: var(--brand-ink);
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.11em;
@@ -23,7 +23,7 @@
 
 .solicitud__header-copy h1 {
   margin: 0;
-  color: var(--demo-ink, #1d2939);
+  color: var(--demo-ink, var(--ink));
   font-size: clamp(1.7rem, 3vw, 2.3rem);
   font-weight: 600;
   letter-spacing: -0.045em;
@@ -31,7 +31,7 @@
 
 .solicitud__subtitle {
   margin: 0.35rem 0 0;
-  color: #344054;
+  color: var(--slate-strong);
   font-size: 0.95rem;
   font-weight: 600;
 }
@@ -39,7 +39,7 @@
 .solicitud__lede {
   max-width: 42rem;
   margin: 0.65rem 0 0;
-  color: var(--demo-muted, #667085);
+  color: var(--demo-muted, var(--slate-soft));
   font-size: 0.9rem;
   line-height: 1.6;
 }
@@ -48,10 +48,10 @@
   display: grid;
   gap: 0.85rem;
   padding: 1.1rem 1.25rem;
-  border: 1px solid #e7ebf1;
+  border: 1px solid var(--border-soft);
   border-radius: 0.85rem;
-  background: #fff;
-  box-shadow: 0 0.2rem 0.8rem rgb(25 46 76 / 3%);
+  background: var(--white);
+  box-shadow: 0 0.2rem 0.8rem rgb(var(--shadow-rgb) / 3%);
 }
 
 .solicitud__meta {
@@ -68,7 +68,7 @@
 }
 
 .solicitud__meta dt {
-  color: #566575;
+  color: var(--slate);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -77,7 +77,7 @@
 
 .solicitud__meta dd {
   margin: 0;
-  color: var(--demo-ink, #1d2939);
+  color: var(--demo-ink, var(--ink));
   font-size: 0.82rem;
   font-weight: 600;
   text-align: right;
@@ -89,10 +89,10 @@
   display: grid;
   gap: 1.5rem;
   padding: clamp(1.25rem, 3vw, 2rem);
-  border: 1px solid #e7ebf1;
+  border: 1px solid var(--border-soft);
   border-radius: 1rem;
-  background: #fff;
-  box-shadow: 0 0.3rem 1.2rem rgb(25 46 76 / 3%);
+  background: var(--white);
+  box-shadow: 0 0.3rem 1.2rem rgb(var(--shadow-rgb) / 3%);
 }
 
 .solicitud__banner {
@@ -109,32 +109,32 @@
 }
 
 .solicitud__banner--ok {
-  border: 1px solid #b7e6ce;
-  background: #f2fdf7;
-  color: #0f6b48;
+  border: 1px solid var(--success-border);
+  background: var(--success-bg);
+  color: var(--success-ink);
 }
 
 .solicitud__banner--error {
-  border: 1px solid #f3c1c1;
-  background: #fdf3f3;
-  color: #8f2020;
+  border: 1px solid var(--error-border);
+  background: var(--error-bg);
+  color: var(--error-ink);
 }
 
 .solicitud__banner-demo {
   justify-self: start;
   margin-top: 0.35rem;
   padding: 0.4rem 0.9rem;
-  border: 1px solid #e0b3b3;
+  border: 1px solid var(--error-border);
   border-radius: 0.5rem;
-  background: #fff;
-  color: #8f2020;
+  background: var(--white);
+  color: var(--error-ink);
   font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
 }
 
 .solicitud__banner-demo:hover {
-  background: #fbeaea;
+  background: var(--error-bg);
 }
 
 /* ---------- Secciones numeradas ---------- */
@@ -150,7 +150,7 @@
   gap: 0.9rem;
   align-items: center;
   padding-bottom: 0.85rem;
-  border-bottom: 1px solid #eef1f6;
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .solicitud__section-num {
@@ -159,15 +159,15 @@
   height: 1.9rem;
   place-items: center;
   border-radius: 0.5rem;
-  background: #eaf6fc;
-  color: #11648a;
+  background: var(--surface-tint-deep);
+  color: var(--brand-ink);
   font-size: 0.85rem;
   font-weight: 700;
 }
 
 .solicitud__section-head h2 {
   margin: 0;
-  color: var(--demo-ink, #1d2939);
+  color: var(--demo-ink, var(--ink));
   font-size: 1.02rem;
   font-weight: 650;
   letter-spacing: -0.02em;
@@ -175,7 +175,7 @@
 
 .solicitud__section-head p {
   margin: 0.15rem 0 0;
-  color: #566575;
+  color: var(--slate);
   font-size: 0.76rem;
 }
 
@@ -194,14 +194,14 @@
 }
 
 .solicitud__field > label {
-  color: #344054;
+  color: var(--slate-strong);
   font-size: 0.8rem;
   font-weight: 600;
   line-height: 1.45;
 }
 
 .solicitud__required {
-  color: #d92d20;
+  color: var(--error);
 }
 
 .solicitud__input-wrap {
@@ -216,10 +216,10 @@
   min-width: 0;
   min-height: 2.75rem;
   padding: 0 0.9rem;
-  border: 1px solid #dde3ec;
+  border: 1px solid var(--border);
   border-radius: 0.55rem;
-  background: #fff;
-  color: var(--demo-ink, #1d2939);
+  background: var(--white);
+  color: var(--demo-ink, var(--ink));
   font: inherit;
   font-size: 0.88rem;
   transition:
@@ -230,13 +230,13 @@
 
 .solicitud__field input:hover,
 .solicitud__field select:hover {
-  border-color: #c3d3e3;
+  border-color: var(--border);
 }
 
 .solicitud__field input:focus,
 .solicitud__field select:focus {
-  border-color: #099dd7;
-  box-shadow: 0 0 0 3px rgb(9 157 215 / 14%);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgb(var(--brand-rgb) / 14%);
   outline: none;
 }
 
@@ -250,7 +250,7 @@
 .solicitud__prefix,
 .solicitud__suffix {
   position: absolute;
-  color: #667085;
+  color: var(--slate-soft);
   font-size: 0.78rem;
   font-weight: 700;
   pointer-events: none;
@@ -264,8 +264,8 @@
   right: 0.9rem;
   padding: 0.15rem 0.4rem;
   border-radius: 0.3rem;
-  background: #f2f4f8;
-  color: #475467;
+  background: var(--surface-neutral);
+  color: var(--slate);
   font-size: 0.65rem;
   letter-spacing: 0.05em;
 }
@@ -275,7 +275,7 @@
   top: 50%;
   right: 0.9rem;
   transform: translateY(-50%);
-  color: #667085;
+  color: var(--slate-soft);
   pointer-events: none;
   font-size: 0.75rem;
 }
@@ -287,13 +287,13 @@
 
 .solicitud__field.has-error input,
 .solicitud__field.has-error select {
-  border-color: #f0a9a2;
-  background: #fffbfa;
+  border-color: var(--error-border);
+  background: var(--error-bg);
 }
 
 .solicitud__error {
   margin: 0;
-  color: #b42318;
+  color: var(--error-strong);
   font-size: 0.74rem;
   font-weight: 600;
   line-height: 1.45;
@@ -301,7 +301,7 @@
 
 .solicitud__hint {
   margin: 0;
-  color: #566575;
+  color: var(--slate);
   font-size: 0.72rem;
   line-height: 1.45;
 }
@@ -313,9 +313,9 @@
   gap: 0.85rem;
   margin-top: 1.25rem;
   padding: 1.1rem 1.25rem;
-  border: 1px solid #eef1f6;
+  border: 1px solid var(--border-soft);
   border-radius: 0.85rem;
-  background: #fbfcfe;
+  background: var(--surface-tint-light);
 }
 
 .solicitud__analisis-head {
@@ -327,13 +327,13 @@
 
 .solicitud__analisis-head h3 {
   margin: 0;
-  color: var(--demo-ink, #1d2939);
+  color: var(--demo-ink, var(--ink));
   font-size: 0.85rem;
   font-weight: 700;
 }
 
 .solicitud__analisis-hint {
-  color: #566575;
+  color: var(--slate);
   font-size: 0.68rem;
   font-weight: 500;
   font-style: italic;
@@ -349,27 +349,27 @@
   display: grid;
   gap: 0.2rem;
   padding: 0.85rem 0.95rem;
-  border: 1px solid #eef1f6;
+  border: 1px solid var(--border-soft);
   border-radius: 0.65rem;
-  background: #fff;
+  background: var(--white);
 }
 
 .solicitud__analisis-card--primary {
-  border-color: #b3e3f3;
-  background: #f4fbfe;
+  border-color: var(--brand-light);
+  background: var(--surface-tint);
 }
 
 .solicitud__analisis-card--destacado {
-  border-color: #0f7a4d;
-  background: #f0fbf6;
+  border-color: var(--success);
+  background: var(--success-bg);
 }
 
 .solicitud__analisis-card--destacado .solicitud__analisis-valor {
-  color: #0f7a4d;
+  color: var(--success);
 }
 
 .solicitud__analisis-label {
-  color: #566575;
+  color: var(--slate);
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -377,14 +377,14 @@
 }
 
 .solicitud__analisis-valor {
-  color: var(--demo-ink, #1d2939);
+  color: var(--demo-ink, var(--ink));
   font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
 .solicitud__analisis-card small {
-  color: #566575;
+  color: var(--slate);
   font-size: 0.68rem;
   line-height: 1.4;
 }
@@ -396,30 +396,30 @@
 }
 
 .solicitud__analisis-card--alta {
-  border-color: #b7e6ce;
-  background: #f5fdf9;
+  border-color: var(--success-border);
+  background: var(--success-bg);
 }
 
 .solicitud__analisis-card--alta .solicitud__analisis-valor {
-  color: #0f6b48;
+  color: var(--success-ink);
 }
 
 .solicitud__analisis-card--media {
-  border-color: #f4dcb1;
-  background: #fffaf0;
+  border-color: var(--warning);
+  background: var(--warning-bg);
 }
 
 .solicitud__analisis-card--media .solicitud__analisis-valor {
-  color: #8a5a12;
+  color: var(--warning-ink);
 }
 
 .solicitud__analisis-card--baja {
-  border-color: #f3c2bd;
-  background: #fff6f5;
+  border-color: var(--error-border);
+  background: var(--error-bg);
 }
 
 .solicitud__analisis-card--baja .solicitud__analisis-valor {
-  color: #a4231a;
+  color: var(--error-ink);
 }
 
 /* ---------- Resultado final ---------- */
@@ -430,11 +430,19 @@
   gap: 1rem;
   align-items: center;
   padding: 1.1rem 1.35rem;
-  border: 1px solid #b5dced;
+  border: 1px solid var(--border-tint);
   border-radius: 0.85rem;
   background:
-    radial-gradient(ellipse at 100% 0%, rgb(9 157 215 / 10%), transparent 55%),
-    linear-gradient(135deg, #f7fdff 0%, #eef8fe 100%);
+    radial-gradient(
+      ellipse at 100% 0%,
+      rgb(var(--brand-rgb) / 10%),
+      transparent 55%
+    ),
+    linear-gradient(
+      135deg,
+      var(--surface-tint-light) 0%,
+      var(--surface-tint-deep) 100%
+    );
 }
 
 .solicitud__final-icon {
@@ -443,9 +451,9 @@
   height: 2.5rem;
   place-items: center;
   border-radius: 0.7rem;
-  background: #099dd7;
-  color: #fff;
-  box-shadow: 0 0 0 4px rgb(9 157 215 / 14%);
+  background: var(--brand);
+  color: var(--white);
+  box-shadow: 0 0 0 4px rgb(var(--brand-rgb) / 14%);
 }
 
 .solicitud__final-icon svg {
@@ -459,7 +467,7 @@
 }
 
 .solicitud__final-eyebrow {
-  color: #11648a;
+  color: var(--brand-ink);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -467,7 +475,7 @@
 }
 
 .solicitud__final-copy strong {
-  color: var(--demo-ink, #1d2939);
+  color: var(--demo-ink, var(--ink));
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -475,7 +483,7 @@
 
 .solicitud__final-copy p {
   margin: 0.2rem 0 0;
-  color: #475467;
+  color: var(--slate);
   font-size: 0.78rem;
   line-height: 1.5;
 }
@@ -488,7 +496,7 @@
   justify-content: space-between;
   gap: 1rem;
   padding-top: 1.25rem;
-  border-top: 1px solid #eef1f6;
+  border-top: 1px solid var(--border-soft);
 }
 
 .solicitud__actions-left {
@@ -501,7 +509,7 @@
   align-items: center;
   gap: 0.45rem;
   margin: 0;
-  color: #475467;
+  color: var(--slate);
   font-size: 0.74rem;
   font-weight: 600;
 }
@@ -510,8 +518,8 @@
   width: 0.45rem;
   height: 0.45rem;
   border-radius: 50%;
-  background: #18a873;
-  box-shadow: 0 0 0 3px rgb(24 168 115 / 14%);
+  background: var(--success);
+  box-shadow: 0 0 0 3px rgb(var(--success-rgb) / 14%);
 }
 
 /* ---------- Foco visible ---------- */

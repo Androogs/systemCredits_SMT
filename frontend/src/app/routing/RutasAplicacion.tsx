@@ -1,19 +1,25 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
 import type { ReactNode } from 'react'
 import ContenedorPanel from '../../widgets/app-shell/ContenedorPanel'
 import IniciarSesion from '../../pages/IniciarSesion'
-import CapturaMovil from '../../pages/CapturaMovil'
-import Resumen from '../../pages/Resumen'
-import Simulador from '../../pages/Simulador'
-import PanelAsesor from '../../pages/PanelAsesor'
-import Solicitudes from '../../pages/Solicitudes'
-import DetalleSolicitud from '../../pages/DetalleSolicitud'
-import Resultado from '../../pages/Resultado'
-import Originacion from '../../pages/Originacion'
-import Clientes from '../../pages/Clientes'
-import Riesgo from '../../pages/Riesgo'
-import Estados from '../../pages/Estados'
-import Ajustes from '../../pages/Ajustes'
+import CargandoPagina from '../../shared/ui/CargandoPagina'
+
+// Las páginas viajan en chunks por ruta: el asesor en la vitrina solo
+// descarga la pantalla que usa, no el panel completo (bundle inicial).
+const CapturaMovil = lazy(() => import('../../pages/CapturaMovil'))
+const VerificarFirma = lazy(() => import('../../pages/VerificarFirma'))
+const Resumen = lazy(() => import('../../pages/Resumen'))
+const Simulador = lazy(() => import('../../pages/Simulador'))
+const PanelAsesor = lazy(() => import('../../pages/PanelAsesor'))
+const Solicitudes = lazy(() => import('../../pages/Solicitudes'))
+const DetalleSolicitud = lazy(() => import('../../pages/DetalleSolicitud'))
+const Resultado = lazy(() => import('../../pages/Resultado'))
+const Originacion = lazy(() => import('../../pages/Originacion'))
+const Clientes = lazy(() => import('../../pages/Clientes'))
+const Riesgo = lazy(() => import('../../pages/Riesgo'))
+const Estados = lazy(() => import('../../pages/Estados'))
+const Ajustes = lazy(() => import('../../pages/Ajustes'))
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const authed = localStorage.getItem('uw_auth') === '1'
@@ -26,7 +32,24 @@ export default function RutasAplicacion() {
       <Route path="/login" element={<IniciarSesion />} />
       {/* Captura remota de evidencias: el token del link es la única
           autorización; el cliente no necesita sesión del asesor. */}
-      <Route path="/captura/:token" element={<CapturaMovil />} />
+      <Route
+        path="/captura/:token"
+        element={
+          <Suspense fallback={<CargandoPagina />}>
+            <CapturaMovil />
+          </Suspense>
+        }
+      />
+      {/* Verificación pública de firma: destino del QR estampado en los
+          documentos de legalización; no requiere sesión. */}
+      <Route
+        path="/verificar-firma/:uuid"
+        element={
+          <Suspense fallback={<CargandoPagina />}>
+            <VerificarFirma />
+          </Suspense>
+        }
+      />
       <Route
         path="/"
         element={
