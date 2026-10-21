@@ -105,6 +105,7 @@ class VehiculoFinanciadoRequest(BaseModel):
     accesorios: Decimal | None = Field(default=None, ge=0)
     matricula: Decimal | None = Field(default=None, ge=0)
     soat: Decimal | None = Field(default=None, ge=0)
+    impuestos: Decimal | None = Field(default=None, ge=0)
     aval_pct: Decimal | None = Field(default=None, ge=0, le=100)
 
 
@@ -193,6 +194,7 @@ class SolicitudResumenResponse(BaseModel):
     linea_credito: str | None
     destino_credito: str | None
     plazo_deseado_meses: int | None
+    fecha_hora_firma: datetime | None = None
     evaluacion: EvaluacionResumenSolicitud | None
 
 
@@ -228,6 +230,10 @@ class ConsentimientoResponse(BaseModel):
 
 
 class SolicitudDetalleResponse(SolicitudResumenResponse):
+    # Fecha de nacimiento del cliente: la necesita el flujo de
+    # originación al retomar la solicitud (el payload de re-diligencia
+    # la exige como dato de identidad).
+    fecha_nacimiento: date | None = None
     datos_laborales: dict | None
     contacto_vivienda: dict | None
     causales: list[CausalSolicitudResponse]
@@ -298,3 +304,39 @@ class VerificarOtpRequest(BaseModel):
 class VerificarOtpResponse(BaseModel):
     verificado: bool
     uuid_firma: UUID | None = None
+
+
+# ---------- Métricas del embudo originación → desembolso ----------
+
+
+class EtapaEmbudoResponse(BaseModel):
+    """Un paso del embudo con su conteo y conversión sobre radicadas."""
+
+    clave: str
+    etiqueta: str
+    total: int
+    pct: float
+
+
+class EmbudoAliadoResponse(BaseModel):
+    """Conversión por aliado financiero: el aliado se conoce desde la
+    oferta seleccionada, así que el conteo parte de las solicitudes con
+    oferta elegida de ese aliado."""
+
+    aliado: str
+    con_oferta: int
+    formalizadas: int
+    desembolsadas: int
+    valor_desembolsado: Decimal
+
+
+class MetricasEmbudoResponse(BaseModel):
+    """Agregados del embudo completo: originación → evaluación →
+    aprobación → formalización (firma OTP) → desembolso."""
+
+    generado_en: datetime
+    radicadas: int
+    canceladas: int
+    etapas: list[EtapaEmbudoResponse]
+    por_estado: dict[str, int]
+    por_aliado: list[EmbudoAliadoResponse]

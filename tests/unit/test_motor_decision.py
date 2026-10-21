@@ -48,6 +48,17 @@ def test_perfil_bajo_aprueba_con_causal_de_trazabilidad(motor, solicitud_emplead
     assert r.causales == [Causal.E4]
 
 
+def test_cuota_moto_sobre_capacidad_aprueba_con_cupo_real(
+    motor, solicitud_empleado, hdc_basico, vi_con_continuidad, parametros_demo
+):
+    """E9 no rechaza: el cupo que gobierna la oferta sale de los datos de
+    centrales; la cuota del saldo referencial queda como trazabilidad."""
+    s = solicitud_empleado.model_copy(update={"saldo_financiar": Decimal("100000000")})
+    r = _eval(motor, s, hdc_basico, vi_con_continuidad, parametros_demo)
+    assert r.decision == DecisionFinal.APROBADO
+    assert r.causales == [Causal.E9]
+
+
 def test_causales_ordenadas_por_prioridad(motor, solicitud_empleado, hdc_basico, parametros_demo):
     hdc_basico.cuentas_cartera = [CuentaCartera(comportamiento="1" + "N" * 20, estado_pago="17", calidad_deudor="00")]
     hdc_basico.cuentas_ahorro = [CuentaAhorro(estado="06")]

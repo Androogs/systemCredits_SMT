@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -19,7 +20,10 @@ from backend.models.solicitud_models import (
     CrearSolicitudResponse,
     DatosFormalizacionRequest,
     DesembolsoResponse,
+    EmbudoAliadoResponse,
+    EtapaEmbudoResponse,
     EvaluacionResumenSolicitud,
+    MetricasEmbudoResponse,
     OfertaResponse,
     SeleccionarOfertaRequest,
     SolicitudDetalleResponse,
@@ -113,6 +117,7 @@ def _resumen(solicitud) -> SolicitudResumenResponse:
         linea_credito=solicitud.linea_credito,
         destino_credito=solicitud.destino_credito,
         plazo_deseado_meses=solicitud.plazo_deseado_meses,
+        fecha_hora_firma=solicitud.fecha_hora_firma,
         evaluacion=_evaluacion_resumen(solicitud),
     )
 
@@ -157,24 +162,27 @@ class SolicitudService:
         self.repo = SolicitudRepository(db)
         self._db = db
 
-    def crear(
-        self, req: CrearSolicitudRequest, ip: str | None = None
-    ) -> CrearSolicitudResponse:
-        datos_cliente = req.cliente.model_dump(mode="python", exclude={"num_cedula"})
-        datos_cliente["tipo_documento"] = req.cliente.tipo_documento.value
-        datos_cliente["ocupacion"] = OCUPACION_A_DB[req.cliente.ocupacion]
-        datos_cliente["es_persona_natural"] = req.cliente.tipo_documento not in TIPOS_ID_PERSONA_JURIDICA
+    def _datos_cliente(self, cliente_in) -> dict:
+        """Columnas de `cliente` a partir del input de radicación:
+        resuelve tipo de documento, ocupación (catálogo DB) y ciudades
+        (texto → FK `ciudad`)."""
+        datos_cliente = cliente_in.model_dump(mode="python", exclude={"num_cedula"})
+        datos_cliente["tipo_documento"] = cliente_in.tipo_documento.value
+        datos_cliente["ocupacion"] = OCUPACION_A_DB[cliente_in.ocupacion]
+        datos_cliente["es_persona_natural"] = cliente_in.tipo_documento not in TIPOS_ID_PERSONA_JURIDICA
         # Las ciudades llegan como texto ("Palmira, Valle del Cauca") y
         # se resuelven al catálogo `ciudad` (FK).
-        ciudad_exp = self.repo.obtener_o_crear_ciudad(req.cliente.ciudad_expedicion)
-        ciudad_nac = self.repo.obtener_o_crear_ciudad(req.cliente.ciudad_nacimiento)
+        ciudad_exp = self.repo.obtener_o_crear_ciudad(cliente_in.ciudad_expedicion)
+        ciudad_nac = self.repo.obtener_o_crear_ciudad(cliente_in.ciudad_nacimiento)
         datos_cliente.pop("ciudad_expedicion")
         datos_cliente.pop("ciudad_nacimiento")
         datos_cliente["id_ciudad_expedicion"] = ciudad_exp.id_ciudad if ciudad_exp else None
         datos_cliente["id_ciudad_nacimiento"] = ciudad_nac.id_ciudad if ciudad_nac else None
-        cliente = self.repo.obtener_o_crear_cliente(req.cliente.num_cedula, datos_cliente)
-        # Cliente ya existente: rellena los datos de cédula que falten
-        # (no pisa valores previos).
+        return datos_cliente
+
+    def _rellenar_cliente(self, cliente, datos_cliente: dict) -> None:
+        """Cliente ya existente: rellena los datos de cédula que falten
+        (no pisa valores previos)."""
         if cliente.fecha_expedicion is None:
             cliente.fecha_expedicion = datos_cliente["fecha_expedicion"]
         if cliente.id_ciudad_expedicion is None:
@@ -187,13 +195,23 @@ class SolicitudService:
         # independiente / pensionado / FFMM).
         if cliente.ocupacion != datos_cliente["ocupacion"]:
             cliente.ocupacion = datos_cliente["ocupacion"]
-        datos_laborales = req.datos_laborales.model_dump(mode="python")
-        if req.datos_laborales.tipo_contrato is not None:
-            datos_laborales["tipo_contrato"] = TIPO_CONTRATO_A_DB[req.datos_laborales.tipo_contrato]
+
+    def _datos_laborales_db(self, laborales_in) -> dict:
+        datos_laborales = laborales_in.model_dump(mode="python")
+        if laborales_in.tipo_contrato is not None:
+            datos_laborales["tipo_contrato"] = TIPO_CONTRATO_A_DB[laborales_in.tipo_contrato]
+        return datos_laborales
+
+    def crear(
+        self, req: CrearSolicitudRequest, ip: str | None = None
+    ) -> CrearSolicitudResponse:
+        datos_cliente = self._datos_cliente(req.cliente)
+        cliente = self.repo.obtener_o_crear_cliente(req.cliente.num_cedula, datos_cliente)
+        self._rellenar_cliente(cliente, datos_cliente)
         solicitud = self.repo.crear_solicitud(
             id_cliente=cliente.id_cliente,
             moneda=req.moneda,
-            datos_laborales=datos_laborales,
+            datos_laborales=self._datos_laborales_db(req.datos_laborales),
             contacto_vivienda=req.contacto_vivienda.model_dump(),
             datos_solicitud={
                 "linea_credito": req.linea_credito,
@@ -209,6 +227,73 @@ class SolicitudService:
             )
         if req.consentimiento and req.consentimiento.aceptado:
             self.registrar_consentimiento(solicitud.id_solicitud, "web_asesor", ip)
+        return CrearSolicitudResponse(
+            id_solicitud=solicitud.id_solicitud,
+            num_solicitud=solicitud.num_solicitud,
+            estado=solicitud.estado,
+        )
+
+    def actualizar(
+        self, id_solicitud: uuid.UUID, req: CrearSolicitudRequest, ip: str | None = None
+    ) -> CrearSolicitudResponse:
+        """Re-diligencia la radicación cuando "continuar" encuentra pasos
+        pendientes (consentimiento, evidencias u otros datos): upsert
+        sobre el mismo registro en vez de duplicar la solicitud. Solo
+        aplica antes de la primera evaluación —o sobre una rechazada,
+        donde corregir datos mal capturados (p. ej. la ocupación) y
+        re-evaluar es la ruta de recuperación; nunca sobre una aprobada,
+        firmada, desembolsada o cancelada."""
+        solicitud = self.repo.obtener_detalle(id_solicitud)
+        if solicitud is None:
+            raise SolicitudNoEncontradaError(f"No existe la solicitud {id_solicitud}")
+        editable = solicitud.decision is None or (
+            solicitud.decision == "rechazado" and solicitud.estado == "rechazada"
+        )
+        if not editable:
+            raise ConflictoEstadoError(
+                "La solicitud ya fue evaluada; los cambios van por la ruta de reevaluación."
+            )
+        self._rellenar_cliente(solicitud.cliente, self._datos_cliente(req.cliente))
+
+        datos_laborales = self._datos_laborales_db(req.datos_laborales)
+        if solicitud.datos_laborales is None:
+            self._db.add(
+                DatosLaborales(id_solicitud=solicitud.id_solicitud, **datos_laborales)
+            )
+        else:
+            for campo, valor in datos_laborales.items():
+                setattr(solicitud.datos_laborales, campo, valor)
+
+        contacto = req.contacto_vivienda.model_dump(mode="python")
+        if solicitud.contacto_vivienda is None:
+            self._db.add(
+                SolicitudContactoVivienda(
+                    id_solicitud=solicitud.id_solicitud, **contacto
+                )
+            )
+        else:
+            for campo, valor in contacto.items():
+                setattr(solicitud.contacto_vivienda, campo, valor)
+
+        for campo in ("linea_credito", "destino_credito", "plazo_deseado_meses"):
+            valor = getattr(req, campo)
+            if valor is not None:
+                setattr(solicitud, campo, valor)
+        if req.sesion_captura:
+            from backend.services.evidencia_service import EvidenciaService
+
+            EvidenciaService(self._db).enlazar_solicitud(
+                req.sesion_captura, solicitud.id_solicitud
+            )
+        # Solo registra la prueba de consentimiento cuando aún no hay una:
+        # re-guardar no debe apilar aceptaciones duplicadas.
+        if (
+            req.consentimiento
+            and req.consentimiento.aceptado
+            and not solicitud.consentimientos
+        ):
+            self.registrar_consentimiento(solicitud.id_solicitud, "web_asesor", ip)
+        self._db.flush()
         return CrearSolicitudResponse(
             id_solicitud=solicitud.id_solicitud,
             num_solicitud=solicitud.num_solicitud,
@@ -272,6 +357,43 @@ class SolicitudService:
         )
         return [_resumen(s) for s in filas]
 
+    def metricas_embudo(
+        self,
+        desde: datetime | None = None,
+        hasta: datetime | None = None,
+    ) -> MetricasEmbudoResponse:
+        """Conversión del embudo originación → desembolso. Las etapas se
+        derivan de los hitos persistidos: decisión del motor, oferta
+        seleccionada (aliado), firma OTP y estado desembolsada."""
+        c = self.repo.conteos_embudo(desde=desde, hasta=hasta)
+        radicadas = c["radicadas"] or 1  # evita división por cero
+        etapas = [
+            ("radicadas", "Radicadas", c["radicadas"]),
+            ("evaluadas", "Evaluadas", c["evaluadas"]),
+            ("aprobadas", "Aprobadas", c["aprobadas"]),
+            ("formalizadas", "Formalizadas (firmadas)", c["formalizadas"]),
+            ("desembolsadas", "Desembolsadas", c["desembolsadas"]),
+        ]
+        return MetricasEmbudoResponse(
+            generado_en=datetime.now(UTC),
+            radicadas=c["radicadas"],
+            canceladas=c["canceladas"],
+            etapas=[
+                EtapaEmbudoResponse(
+                    clave=clave,
+                    etiqueta=etiqueta,
+                    total=total,
+                    pct=round(total * 100 / radicadas, 1),
+                )
+                for clave, etiqueta, total in etapas
+            ],
+            por_estado=c["por_estado"],
+            por_aliado=[
+                EmbudoAliadoResponse(**fila)
+                for fila in self.repo.conteos_por_aliado(desde=desde, hasta=hasta)
+            ],
+        )
+
     def detalle(self, id_solicitud: uuid.UUID) -> SolicitudDetalleResponse:
         solicitud = self.repo.obtener_detalle(id_solicitud)
         if solicitud is None:
@@ -281,6 +403,7 @@ class SolicitudService:
         contacto = solicitud.contacto_vivienda
         return SolicitudDetalleResponse(
             **resumen.model_dump(),
+            fecha_nacimiento=solicitud.cliente.fecha_nacimiento,
             datos_laborales=(
                 {
                     "tipo_contrato": laborales.tipo_contrato,
@@ -471,7 +594,7 @@ class SolicitudService:
         """Persiste el vehículo financiado capturado en la formalización.
 
         Desde la migración 0010 el desglose de la hoja de negocio
-        (descuento, accesorios, matrícula, SOAT, % aval) queda en
+        (descuento, accesorios, matrícula, SOAT, impuestos, % aval) queda en
         columnas de producto_vehiculo — alimenta el documento
         'Solicitud de crédito' del paquete de legalización."""
         solicitud = self.repo.obtener_detalle(id_solicitud)
@@ -498,6 +621,7 @@ class SolicitudService:
             ("accesorios", "accesorios"),
             ("matricula", "matricula"),
             ("soat", "soat"),
+            ("impuestos", "impuestos"),
             ("aval_pct", "aval_pct"),
         ):
             valor = getattr(datos, campo, None)

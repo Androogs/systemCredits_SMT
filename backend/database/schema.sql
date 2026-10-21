@@ -1075,6 +1075,26 @@ CREATE INDEX ix_motor_auditoria_numero_id ON motor_evaluacion_auditoria (numero_
 CREATE INDEX ix_motor_auditoria_decision  ON motor_evaluacion_auditoria (decision);
 CREATE INDEX ix_motor_auditoria_solicitud ON motor_evaluacion_auditoria (id_solicitud);
 
+-- =====================================================================
+-- Consulta a centrales por persona: la llamada a Experian es un recurso
+-- pago; el reporte crudo se guarda una vez y la re-evaluación corre el
+-- motor con esos datos mientras siga vigente (BURO_CACHE_DIAS). Cada
+-- fila documenta cuándo se consultó; la evaluación que reusa el dato
+-- queda trazada en auditoría con origen_datos 'cache:experian'.
+-- =====================================================================
+CREATE TABLE consulta_buro (
+    id_consulta        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    tipo_id            VARCHAR(2)  NOT NULL,
+    numero_id          VARCHAR(20) NOT NULL,
+    id_solicitud       UUID        REFERENCES solicitud_credito (id_solicitud),
+    fecha_consulta     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    origen             VARCHAR(30) NOT NULL,
+    hdc_json           TEXT        NOT NULL,
+    valor_ingreso_json TEXT
+);
+
+CREATE INDEX idx_consulta_buro_persona ON consulta_buro (tipo_id, numero_id, fecha_consulta DESC);
+
 -- Captura remota de evidencias documentales (cédula frontal/reverso y
 -- video de prueba de vida) desde el celular del cliente, por link con token.
 CREATE TABLE sesion_captura (

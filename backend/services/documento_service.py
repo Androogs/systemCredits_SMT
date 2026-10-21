@@ -24,6 +24,7 @@ electrónica (OTP) como trazabilidad del acto de firma.
 """
 
 import hashlib
+import io
 import secrets
 import shutil
 import uuid
@@ -33,8 +34,13 @@ from decimal import Decimal
 from pathlib import Path
 from xml.sax.saxutils import escape as _xml_escape
 
+import segno
 from docx import Document
-from docx.shared import Pt
+from docx.enum.section import WD_ORIENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Cm, Pt, RGBColor
 from mailmerge import MailMerge
 from sqlalchemy.orm import Session
 
@@ -127,7 +133,16 @@ _DOCS: list[tuple[str, str, str]] = [
     ("doc_asegurabilidad", "__asegurabilidad__", "6. Declaracion asegurabilidad - {cedula}.docx"),
     ("doc_solicitud", "solicitud_credito.docx", "7. Solicitud de credito - {cedula}.docx"),
     ("doc_compromiso", "compromiso_cartera.docx", "8. Compromiso de pago - {cedula}.docx"),
+    ("doc_amortizacion", "__amortizacion__", "9. Tabla de amortizacion - {cedula}.docx"),
 ]
+
+# Soporte documental de la radicación: la autorización de consulta a
+# centrales (evidencia del consentimiento Habeas Data) y la solicitud
+# de crédito diligenciada. Se generan al evaluar — haya o no
+# aprobación — porque la consulta al buró ya se hizo con el aval del
+# cliente. Si luego firma, el paquete de legalización regenera estos
+# mismos tipos ya estampados con el uuid_firma.
+_DOCS_RADICACION = [d for d in _DOCS if d[0] in {"doc_autorizacion", "doc_solicitud"}]
 
 
 def _fmt(valor: Decimal | int | float | None) -> str:
@@ -142,6 +157,56 @@ def _sumar_meses(fecha: date, meses: int) -> date:
     mes = fecha.month - 1 + meses
     anio = fecha.year + mes // 12
     return date(anio, mes % 12 + 1, min(fecha.day, 28))
+
+
+# Paleta de marca usada en los documentos generados (azul Pacífico).
+_AZUL = "005787"
+_AZUL_SUAVE = "E8F0F5"
+_CEBRA = "F3F7FA"
+_BORDE_SUAVE = "B7C6CF"
+_TOTALES = "D8E4EC"
+
+
+def _sombrear_celda(celda, fill: str) -> None:
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:fill"), fill)
+    celda._tc.get_or_add_tcPr().append(shd)
+
+
+def _bordes_tabla(tabla, color: str = _BORDE_SUAVE, tamano: int = 4) -> None:
+    """Bordes finos de un solo color (reemplaza la rejilla negra)."""
+    bordes = OxmlElement("w:tblBorders")
+    for lado in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        el = OxmlElement(f"w:{lado}")
+        el.set(qn("w:val"), "single")
+        el.set(qn("w:sz"), str(tamano))
+        el.set(qn("w:color"), color)
+        bordes.append(el)
+    tabla._tbl.tblPr.append(bordes)
+
+
+def _margenes_tabla(tabla, horizontal: int = 80, vertical: int = 30) -> None:
+    """Aire interno en las celdas (twips: 80 ≈ 0.14 cm)."""
+    mar = OxmlElement("w:tblCellMar")
+    for lado, valor in (("left", horizontal), ("right", horizontal), ("top", vertical), ("bottom", vertical)):
+        el = OxmlElement(f"w:{lado}")
+        el.set(qn("w:w"), str(valor))
+        el.set(qn("w:type"), "dxa")
+        mar.append(el)
+    tabla._tbl.tblPr.append(mar)
+
+
+def _celda(celda, texto: str, *, negrita=False, tamano=8, color=None,
+           alinear=None) -> None:
+    p = celda.paragraphs[0]
+    if alinear is not None:
+        p.alignment = alinear
+    run = p.add_run(texto)
+    run.bold = negrita
+    run.font.size = Pt(tamano)
+    if color is not None:
+        run.font.color.rgb = color
 
 
 def _partes_fecha(fecha: date | datetime) -> dict[str, str]:
@@ -196,21 +261,38 @@ class DocumentoService:
         if solicitud.fecha_hora_firma is None:
             # El paquete solo existe una vez el cliente firmó por OTP.
             return []
+        return self._generar_docs(solicitud, _DOCS)
 
+    def generar_paquete_radicacion(self, id_solicitud: uuid.UUID) -> list[DocumentoEvidencia]:
+        """Documentos de soporte de la radicación: autorización de
+        consulta a centrales y solicitud de crédito, sin firma OTP — el
+        consentimiento del paso 2 respalda la consulta que ya se hizo."""
+        solicitud = self.repo.obtener_detalle(id_solicitud)
+        if solicitud is None:
+            raise SolicitudNoEncontradaError(f"No existe la solicitud {id_solicitud}")
+        return self._generar_docs(solicitud, _DOCS_RADICACION)
+
+    def _generar_docs(
+        self,
+        solicitud: SolicitudCredito,
+        docs: list[tuple[str, str, str]],
+    ) -> list[DocumentoEvidencia]:
         campos = self._campos(solicitud)
         plantillas = Path(self.settings.documentos_plantillas_dir)
         destino_dir = (
-            Path(self.settings.evidencias_dir) / "legalizacion" / str(id_solicitud)
+            Path(self.settings.evidencias_dir) / "legalizacion" / str(solicitud.id_solicitud)
         )
         destino_dir.mkdir(parents=True, exist_ok=True)
 
         sesion = self._sesion_legalizacion(solicitud)
         generadas: list[DocumentoEvidencia] = []
-        for tipo, plantilla, patron in _DOCS:
+        for tipo, plantilla, patron in docs:
             nombre = patron.format(cedula=solicitud.cliente.num_cedula)
             salida = destino_dir / nombre
             if plantilla == "__asegurabilidad__":
                 self._generar_asegurabilidad(salida, solicitud, campos)
+            elif plantilla == "__amortizacion__":
+                self._generar_amortizacion(salida, solicitud, campos)
             elif plantilla in ("compromiso_cartera.docx", "solicitud_credito.docx"):
                 # Sin MERGEFIELDs: se llenan por reemplazo literal.
                 shutil.copyfile(plantillas / plantilla, salida)
@@ -226,19 +308,80 @@ class DocumentoService:
         return generadas
 
     def _estampar_firma(self, salida: Path, campos: dict[str, str]) -> None:
-        """Estampa el uuid_firma al final de TODOS los documentos del
-        paquete: es el identificador del acto de firma electrónica
-        (OTP) y debe quedar visible en cada pieza legal."""
-        if not campos.get("FIRMA_UUID"):
+        """Estampa el uuid_firma en TODOS los documentos del paquete:
+        QR + texto. Es el identificador del acto de firma electrónica
+        (OTP) y debe quedar visible —y verificable— en cada pieza legal.
+
+        Si el documento tiene el bloque de firma en un cuadro de texto
+        anclado a la página (la "Solicitud de crédito"), el sello va
+        dentro de ese cuadro: agregarlo al final del flujo lo
+        superpondría sobre el nombre del deudor."""
+        uuid_firma = campos.get("FIRMA_UUID")
+        if not uuid_firma:
             return
         doc = Document(str(salida))
-        p = doc.add_paragraph()
-        run = p.add_run(
-            "Identificador único de firma electrónica (OTP): "
-            f"{campos['FIRMA_UUID']}"
+        url_verificacion = (
+            f"{self.settings.app_url_publica.rstrip('/')}"
+            f"/verificar-firma/{uuid_firma}"
         )
-        run.font.size = Pt(8)
+        qr = segno.make(url_verificacion, error="m")
+        buffer = io.BytesIO()
+        qr.save(buffer, kind="png", scale=6, border=2)
+        buffer.seek(0)
+        texto = (
+            "Identificador único de firma electrónica (OTP): "
+            f"{uuid_firma}"
+        )
+        if not self._estampar_en_cuadro_firma(doc, buffer, texto):
+            doc.add_paragraph().add_run().add_picture(buffer, width=Cm(2.4))
+            run = doc.add_paragraph().add_run(texto)
+            run.font.size = Pt(8)
         doc.save(str(salida))
+
+    @staticmethod
+    def _run_imagen(doc, origen, ancho: Cm):
+        """Compone la imagen en un párrafo temporal del cuerpo
+        (python-docx crea la relación) y devuelve el <w:r> reutilizable
+        dentro de cuadros de texto."""
+        tmp = doc.add_paragraph()
+        tmp.add_run().add_picture(origen, width=ancho)
+        run = tmp._p.find(qn("w:r"))
+        tmp._p.getparent().remove(tmp._p)
+        return run
+
+    def _estampar_en_cuadro_firma(
+        self, doc, buffer: io.BytesIO, texto: str
+    ) -> bool:
+        """Inyecta QR + uuid dentro del cuadro de firma (w:txbxContent
+        con 'DEUDOR'). Devuelve True si había cuadro; False si el doc no
+        lo tiene y el sello debe ir al final del flujo normal."""
+        from copy import deepcopy
+
+        cajas = [
+            c
+            for c in doc.element.findall(f".//{qn('w:txbxContent')}")
+            if "DEUDOR" in "".join(c.itertext())
+        ]
+        if not cajas:
+            return False
+        run_qr = self._run_imagen(doc, buffer, Cm(2.0))
+        for caja in cajas:
+            p_qr = OxmlElement("w:p")
+            p_qr.append(deepcopy(run_qr))
+            caja.append(p_qr)
+            p_txt = OxmlElement("w:p")
+            r = OxmlElement("w:r")
+            rpr = OxmlElement("w:rPr")
+            sz = OxmlElement("w:sz")
+            sz.set(qn("w:val"), "14")  # 7 pt
+            rpr.append(sz)
+            r.append(rpr)
+            t = OxmlElement("w:t")
+            t.text = texto
+            r.append(t)
+            p_txt.append(r)
+            caja.append(p_txt)
+        return True
 
     def _reemplazos_literal(
         self, plantilla: str, campos: dict[str, str]
@@ -315,7 +458,11 @@ class DocumentoService:
         dia_pago = self.settings.documentos_dia_pago
         mes_siguiente = _sumar_meses(firma, 1)
         fecha_inicio = date(mes_siguiente.year, mes_siguiente.month, dia_pago)
-        plazo = int(oferta.plazo_ofrecido or solicitud.plazo_deseado_meses or 0)
+        plazo = int(
+            (oferta.plazo_ofrecido if oferta else None)
+            or solicitud.plazo_deseado_meses
+            or 0
+        )
         fecha_fin = _sumar_meses(fecha_inicio, plazo)
         monto = oferta.monto_aprobado if oferta else None
         # La cuota del pagaré/carta es la TOTAL (anualidad + seguro de
@@ -667,4 +814,194 @@ class DocumentoService:
         doc.add_paragraph("Firma:")
         doc.add_paragraph(campos["NOMBRE_COMPLETO"])
         doc.add_paragraph(f"{campos['TIPO_ID']} {campos['CÉDULA']}")
+        doc.save(str(salida))
+
+    def _generar_amortizacion(
+        self, salida: Path, solicitud: SolicitudCredito, campos: dict[str, str]
+    ) -> None:
+        """Doc 9: tabla de amortización francesa del crédito — saldo,
+        tasa y plazo reales (del crédito persistido o de la oferta
+        seleccionada), con la misma fórmula de finanzas."""
+        cliente = solicitud.cliente
+        oferta = next(
+            (o for o in solicitud.ofertas if o.seleccionada),
+            solicitud.ofertas[0] if solicitud.ofertas else None,
+        )
+        credito = (
+            self.db.query(CreditoFinanciacion)
+            .filter(CreditoFinanciacion.id_solicitud == solicitud.id_solicitud)
+            .first()
+        )
+        firma = (solicitud.fecha_hora_firma or datetime.now(UTC)).date()
+        dia_pago = self.settings.documentos_dia_pago
+        mes_siguiente = _sumar_meses(firma, 1)
+        fecha_inicio = date(mes_siguiente.year, mes_siguiente.month, dia_pago)
+
+        saldo = Decimal(str(credito.saldo_financiar)) if credito else (
+            Decimal(str(oferta.monto_aprobado))
+            if oferta and oferta.monto_aprobado is not None
+            else Decimal(0)
+        )
+        tasa = Decimal(
+            str(credito.tasa if credito else (oferta.tasa_ofrecida or 0) if oferta else 0)
+        )
+        plazo = int(
+            credito.plazo
+            if credito
+            else (oferta.plazo_ofrecido or solicitud.plazo_deseado_meses or 0)
+            if oferta
+            else (solicitud.plazo_deseado_meses or 0)
+        )
+        if credito is not None:
+            cuota_fin = Decimal(str(credito.cuota_financiacion or 0))
+            cuota_vida = Decimal(str(credito.cuota_seguro_vida or 0))
+        else:
+            seguro = seguro_vida_vigente(self.db)
+            prima = Decimal(str(seguro.tasa_prima)) if seguro else Decimal(0)
+            cuota_fin = cuota_anualidad(saldo, tasa, plazo)
+            cuota_vida = cuota_seguro(saldo, prima)
+        cuota_total = cuota_fin + cuota_vida
+
+        doc = Document()
+        seccion = doc.sections[0]
+        seccion.orientation = WD_ORIENT.LANDSCAPE
+        seccion.page_width, seccion.page_height = (
+            seccion.page_height,
+            seccion.page_width,
+        )
+        seccion.left_margin = seccion.right_margin = Cm(1.4)
+        seccion.top_margin = seccion.bottom_margin = Cm(1.4)
+
+        # Banda de título azul Pacífico.
+        banda = doc.add_paragraph()
+        banda.paragraph_format.space_after = Pt(10)
+        shd = OxmlElement("w:shd")
+        shd.set(qn("w:val"), "clear")
+        shd.set(qn("w:fill"), _AZUL)
+        banda._p.get_or_add_pPr().append(shd)
+        run = banda.add_run("  TABLA DE AMORTIZACIÓN")
+        run.bold = True
+        run.font.size = Pt(13)
+        run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+        run = banda.add_run(
+            f"   INVERSIONES PACIFICO S.A. — {firma.strftime('%d/%m/%Y')}"
+        )
+        run.font.size = Pt(9)
+        run.font.color.rgb = RGBColor(0xD5, 0xE5, 0xEF)
+
+        # Tarjeta-resumen: etiqueta | valor × 2 columnas.
+        resumen = [
+            ("Cliente", campos["NOMBRE_COMPLETO"],
+             "Saldo a financiar", f"$ {_fmt(saldo)}"),
+            ("Documento", f"{campos['TIPO_ID']} {campos['CÉDULA']}",
+             "Tasa", f"{_fmt_pct(tasa)}% mensual"),
+            ("Solicitud", f"N.º {campos['CONSECUTIVO']}",
+             "Plazo", f"{plazo} meses"),
+            ("Cuota financiación", f"$ {_fmt(cuota_fin)}",
+             "Seguro de vida", f"$ {_fmt(cuota_vida)}"),
+            ("Cuota total", f"$ {_fmt(cuota_total)}",
+             "Primera cuota", fecha_inicio.strftime("%d/%m/%Y")),
+        ]
+        card = doc.add_table(rows=len(resumen), cols=4)
+        card.autofit = False
+        _bordes_tabla(card)
+        _margenes_tabla(card)
+        for fila, (e1, v1, e2, v2) in zip(card.rows, resumen):
+            _sombrear_celda(fila.cells[0], _AZUL_SUAVE)
+            _sombrear_celda(fila.cells[2], _AZUL_SUAVE)
+            _celda(fila.cells[0], e1, negrita=True, color=RGBColor(0x00, 0x57, 0x87))
+            _celda(fila.cells[1], v1)
+            _celda(fila.cells[2], e2, negrita=True, color=RGBColor(0x00, 0x57, 0x87))
+            _celda(fila.cells[3], v2)
+        for i, w in enumerate((Cm(4.6), Cm(8.4), Cm(4.6), Cm(8.0))):
+            for fila in card.rows:
+                fila.cells[i].width = w
+
+        doc.add_paragraph()  # respiro entre tarjeta y tabla
+
+        encabezados = [
+            "N.º", "Fecha", "Saldo inicial", "Cuota", "Interés",
+            "Abono a capital", "Seguro de vida", "Cuota total", "Saldo final",
+        ]
+        tabla = doc.add_table(rows=1, cols=len(encabezados))
+        tabla.autofit = False
+        _bordes_tabla(tabla)
+        _margenes_tabla(tabla)
+        blanco = RGBColor(0xFF, 0xFF, 0xFF)
+        for i, (celda, texto) in enumerate(zip(tabla.rows[0].cells, encabezados)):
+            _sombrear_celda(celda, _AZUL)
+            _celda(
+                celda, texto, negrita=True, color=blanco,
+                alinear=WD_ALIGN_PARAGRAPH.CENTER
+                if i < 2 else WD_ALIGN_PARAGRAPH.RIGHT,
+            )
+
+        saldo_corriente = saldo
+        totales = [Decimal(0)] * 4  # cuota, interés, capital, seguro
+        for n in range(1, plazo + 1):
+            interes = saldo_corriente * tasa / 100
+            capital = cuota_fin - interes
+            saldo_final = saldo_corriente - capital
+            if n == plazo:
+                # Última cuota: ajuste por redondeo acumulado.
+                capital = saldo_corriente
+                cuota_fin_n = capital + interes
+                saldo_final = Decimal(0)
+            else:
+                cuota_fin_n = cuota_fin
+            fila = tabla.add_row().cells
+            valores = [
+                str(n),
+                _sumar_meses(fecha_inicio, n - 1).strftime("%d/%m/%Y"),
+                _fmt(saldo_corriente),
+                _fmt(cuota_fin_n),
+                _fmt(interes),
+                _fmt(capital),
+                _fmt(cuota_vida),
+                _fmt(cuota_fin_n + cuota_vida),
+                _fmt(saldo_final),
+            ]
+            for i, (celda, texto) in enumerate(zip(fila, valores)):
+                _celda(
+                    celda, texto,
+                    alinear=WD_ALIGN_PARAGRAPH.CENTER
+                    if i < 2 else WD_ALIGN_PARAGRAPH.RIGHT,
+                )
+                if n % 2 == 0:
+                    _sombrear_celda(celda, _CEBRA)
+            saldo_corriente = saldo_final
+            totales[0] += cuota_fin_n
+            totales[1] += interes
+            totales[2] += capital
+            totales[3] += cuota_vida
+
+        fila = tabla.add_row().cells
+        totales_txt = [
+            "", "TOTALES", "", _fmt(totales[0]), _fmt(totales[1]),
+            _fmt(totales[2]), _fmt(totales[3]),
+            _fmt(totales[0] + totales[3]), "",
+        ]
+        for i, (celda, texto) in enumerate(zip(fila, totales_txt)):
+            _sombrear_celda(celda, _TOTALES)
+            _celda(
+                celda, texto, negrita=True,
+                alinear=WD_ALIGN_PARAGRAPH.CENTER
+                if i < 2 else WD_ALIGN_PARAGRAPH.RIGHT,
+            )
+
+        anchos = [1.5, 2.4, 3.2, 3.0, 2.7, 3.2, 2.7, 3.0, 3.2]
+        for i, w in enumerate(anchos):
+            for fila in tabla.rows:
+                fila.cells[i].width = Cm(w)
+
+        nota = doc.add_paragraph()
+        nota.paragraph_format.space_before = Pt(8)
+        run = nota.add_run(
+            "Valores en pesos colombianos (COP). Sistema francés de cuota "
+            f"fija mensual con vencimiento el día {dia_pago} de cada mes; "
+            "la última cuota ajusta el redondeo acumulado. El seguro de "
+            "vida se paga junto con la cuota de financiación."
+        )
+        run.font.size = Pt(7.5)
+        run.font.color.rgb = RGBColor(0x64, 0x74, 0x80)
         doc.save(str(salida))

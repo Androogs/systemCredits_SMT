@@ -30,11 +30,13 @@ Decisiones:
     Endeudamiento > Endeu_1  -> Rechazo R17
     (si no hubo rechazo)
     Endeu_2 <= Endeudamiento -> Estudio E8
-    Cuota moto > cuota sugerida -> Estudio E9
+    Cuota moto > cuota sugerida -> E9, solo trazabilidad: el saldo
+    evaluado es insumo de política, no una moto concreta; la oferta
+    se topea por el cupo calculado con datos de centrales.
 
 Nota: con la PPT v4 el cupo y la cuota sugerida usan la misma tasa y
 plazo, por lo que cuota_sugerida = capacidad_pago por construcción; E9
-equivale a "la cuota de la moto supera la capacidad de pago".
+equivale a "la cuota estimada supera la capacidad de pago".
 """
 
 from dataclasses import dataclass, field
@@ -136,6 +138,9 @@ class ResultadoCapacidadPago:
     cuota_sugerida: Decimal = Decimal(0)
     cuota_moto: Decimal = Decimal(0)
     causales: list[Causal] = field(default_factory=list)
+    # E9 reporta pero no decide: el saldo evaluado es insumo de política
+    # (el cliente aún no elige moto); la oferta se topea por el cupo real.
+    causales_traza: list[Causal] = field(default_factory=list)
     detalles: list[str] = field(default_factory=list)
 
     @property
@@ -342,7 +347,7 @@ def calcular_capacidad_pago(
 
     if not r.causales:
         if cuota_sugerida > 0 and cuota_moto > cuota_sugerida:
-            r.causales.append(Causal.E9)
+            r.causales_traza.append(Causal.E9)
             r.detalles.append(f"Cuota moto {cuota_moto:.0f} > cuota sugerida {cuota_sugerida:.0f}")
 
     return r

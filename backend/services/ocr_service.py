@@ -22,6 +22,7 @@ advertencias; el asesor confirma los datos en la revisión.
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from dataclasses import asdict, dataclass, field
@@ -51,9 +52,13 @@ def _detectar_tesseract() -> bool:  # pragma: no cover - depende del entorno
     if not (img._TESSERACT_IMPORTADO and img._OPENCV_DISPONIBLE):
         return False
     try:
-        cmd = get_settings().tesseract_cmd
-        if cmd:
-            img.pytesseract.pytesseract.tesseract_cmd = cmd
+        settings = get_settings()
+        if settings.tesseract_cmd:
+            img.pytesseract.pytesseract.tesseract_cmd = settings.tesseract_cmd
+        if settings.tessdata_dir:
+            # Tesseract resuelve los .traineddata por esta variable; se
+            # exporta al proceso para cada subproceso que lanza pytesseract.
+            os.environ["TESSDATA_PREFIX"] = settings.tessdata_dir
         img.pytesseract.get_tesseract_version()
         return True
     except Exception as exc:  # noqa: BLE001
@@ -163,7 +168,14 @@ def _a_campos(lectura: LecturaParseada | dict) -> dict[str, CampoOCR]:
 
 
 def _elegir_recorte(rgb, idioma: str, inicio: float):
-    """Devuelve (imagen, metodo, lineas_primera_pasada, tipo, cara)."""
+    """Devuelve (imagen, metodo, lineas_primera_pasada, tipo, cara).
+
+    Si ningún candidato clasifica se devuelve igualmente el mejor para
+    que las pasadas de variantes trabajen sobre él: el contorno de la
+    tarjeta si se halló (contiene la tarjeta completa aislada) y, si no,
+    la foto entera. El recorte por texto solo se usa cuando clasifica —
+    puede haber quedado estrecho y cortado rótulos o la zona MRZ.
+    """
     gris = img.a_gris(rgb)
 
     def primera(imagen):
@@ -173,14 +185,17 @@ def _elegir_recorte(rgb, idioma: str, inicio: float):
 
     # 1) Contorno de la tarjeta (proporción ID-1). Se prueba también girada
     #    180° por si la foto quedó al revés.
+    candidata = None
     geo = img.localizar_por_geometria(rgb)
     if geo is not None:
         geo = img.a_horizontal(geo)
         for grados in (0, 180):
-            candidata = img.rotar(geo, grados)
-            lineas, tipo, cara = primera(candidata)
+            girada = img.rotar(geo, grados)
+            lineas, tipo, cara = primera(girada)
             if tipo:
-                return candidata, "geometria", lineas, tipo, cara
+                return girada, "geometria", lineas, tipo, cara
+            if grados == 0:
+                candidata = (girada, "geometria", lineas)
             if time.monotonic() - inicio > _PRESUPUESTO_SEG / 2:
                 break
 
@@ -201,11 +216,17 @@ def _elegir_recorte(rgb, idioma: str, inicio: float):
                 break
     if recorte is not None:
         lineas, tipo, cara = primera(recorte)
-        return recorte, "texto", lineas, tipo, cara
+        if tipo:
+            return recorte, "texto", lineas, tipo, cara
 
-    # 3) Último recurso: la foto completa.
+    # 3) La foto completa contiene todo (incluida la zona MRZ que el
+    #    recorte pudo cortar).
     lineas, tipo, cara = primera(gris)
-    return gris, "completa", lineas, tipo, cara
+    if tipo:
+        return gris, "completa", lineas, tipo, cara
+    if candidata is not None:
+        return (*candidata, None, None)
+    return gris, "completa", lineas, None, None
 
 
 def _banda_mrz(imagen, lineas) -> "img.np.ndarray":
@@ -240,6 +261,21 @@ def analizar_cara(ruta: Path, lado_declarado: str | None = None) -> LecturaCara:
         mejor_mrz = primera if primera.mrz_valido else None
         base = img.escalar(imagen)
 
+        if tipo is None and time.monotonic() - inicio <= _PRESUPUESTO_SEG / 2:
+            # Puede ser el reverso: la zona MRZ se lee mucho mejor
+            # restringiendo el alfabeto a sus caracteres.
+            lineas_mrz = img.ocr_lineas(
+                base, idioma, 6, _TIMEOUT_PASADA_SEG, img.LISTA_BLANCA_MRZ
+            )
+            pasadas += 1
+            tipo_mrz, cara_mrz, _ = clasificar(lineas_mrz)
+            if tipo_mrz:
+                tipo, cara = tipo_mrz, cara_mrz
+                lectura_mrz = parsear_lineas(lineas_mrz, tipo, cara)
+                votos.agregar(lectura_mrz.campos)
+                if lectura_mrz.mrz_valido:
+                    mejor_mrz = lectura_mrz
+
         if tipo == TIPO_BLANCA and cara == CARA_REVERSO:
             # MRZ: lista blanca de caracteres; se para cuando validan los dígitos de control.
             intentos = (
@@ -258,7 +294,10 @@ def analizar_cara(ruta: Path, lado_declarado: str | None = None) -> LecturaCara:
                 votos.agregar(lectura.campos)
                 if lectura.mrz_valido:
                     mejor_mrz = lectura
-        elif tipo is not None or metodo != "completa":
+        else:
+            # Las variantes de preprocesamiento se intentan siempre —
+            # sobre todo cuando la primera pasada no clasificó nada
+            # (tipo None), que es justo cuando más falta hacen.
             esperados = CAMPOS_POR_CARA.get((tipo, cara), ())
             for modo, psm in (("fondo", 6), ("gris", 6), ("fondo", 4)):
                 if esperados and votos.estable(esperados):

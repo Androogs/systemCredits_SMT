@@ -283,7 +283,11 @@ def test_sin_disponible_rechaza(parametros_demo, solicitud_empleado):
     assert {Causal.R18, Causal.R19, Causal.R17} <= set(r.causales)
 
 
-def test_cuota_moto_supera_capacidad_es_estudio(parametros_demo, solicitud_empleado):
+def test_cuota_moto_supera_capacidad_es_trazabilidad(parametros_demo, solicitud_empleado):
+    """El saldo del request es insumo de política (el cliente aún no elige
+    moto): si la cuota estimada supera la capacidad, E9 solo reporta — la
+    oferta real se topea por el cupo calculado con datos de centrales."""
     s = solicitud_empleado.model_copy(update={"saldo_financiar": Decimal("100000000")})
     r = calcular_capacidad_pago(RespuestaHDC(), s, parametros_demo, Decimal("5000000"), Decimal("3.8"))
-    assert r.causales == [Causal.E9]
+    assert r.causales == []
+    assert r.causales_traza == [Causal.E9]
