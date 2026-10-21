@@ -1,6 +1,6 @@
 .validacion {
   display: grid;
-  gap: 1.5rem;
+  gap: 2.25rem;
 }
 
 /* ---------- Encabezado ---------- */
@@ -87,8 +87,8 @@
 
 .validacion__form {
   display: grid;
-  gap: 1.5rem;
-  padding: clamp(1.25rem, 3vw, 2rem);
+  gap: 1.75rem;
+  padding: clamp(1.75rem, 4vw, 2.5rem);
   border: 1px solid #e7ebf1;
   border-radius: 1rem;
   background: #fff;
@@ -100,7 +100,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  padding-bottom: 1.25rem;
+  padding-bottom: 1.75rem;
   border-bottom: 1px solid #eef1f6;
 }
 
@@ -121,7 +121,7 @@
 .validacion__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.25rem 1.5rem;
+  gap: 2.25rem 2.5rem;
 }
 
 .validacion__field {
@@ -364,22 +364,22 @@
 @media (max-width: 680px) {
   .validacion__form-head {
     flex-direction: column;
+    align-items: flex-start;
   }
 
   .validacion__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1rem 0.85rem;
-  }
-
-  /* Las opciones de multas llevan descripción larga: una por fila */
-  .validacion__options {
     grid-template-columns: 1fr;
+    gap: 1rem;
   }
 
-  /* El badge "CC COLOMBIANA" deja el input sin espacio en media columna;
-     el tipo de documento ya se eligió en el campo anterior */
+  /* El badge "CC COLOMBIANA" deja el input sin espacio en media columna */
   .validacion__badge {
     display: none;
+  }
+
+  /* Input de fecha más angosto en móvil */
+  .validacion__input-group--fecha {
+    max-width: 170px;
   }
 
   .validacion__actions {
@@ -397,4 +397,36 @@
   .validacion__lede {
     display: none;
   }
+}
+
+/* ---------- Toggle segmentado Sí / No ---------- */
+
+.validacion__toggle {
+  display: inline-flex;
+  border: 1px solid #d8e2ec;
+  border-radius: 9999px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.validacion__toggle-option {
+  flex: 1 1 50%;
+  padding: 0.55rem 1.35rem;
+  border: none;
+  background: transparent;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #566575;
+  cursor: pointer;
+  text-align: center;
+  transition:
+    background 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.validacion__toggle-option.is-active {
+  background: #099dd7;
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
 }

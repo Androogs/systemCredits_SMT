@@ -60,21 +60,18 @@ export default function PanelAsesor() {
             icon={Inbox}
             label="Solicitudes"
             valor={solicitudes.length}
-            tone="brand"
             cargando={cargando}
           />
           <Kpi
             icon={CheckCircle2}
             label="Aprobadas"
             valor={aprobadas}
-            tone="emerald"
             cargando={cargando}
           />
           <Kpi
             icon={Clock}
             label="Pendientes"
             valor={enCola.length}
-            tone="amber"
             cargando={cargando}
           />
           <Kpi
@@ -84,7 +81,6 @@ export default function PanelAsesor() {
               solicitudes.length ? (aprobadas / solicitudes.length) * 100 : 0
             }
             formato={(n) => `${n.toFixed(0)}%`}
-            tone="emerald"
             cargando={cargando}
           />
         </div>
@@ -253,27 +249,18 @@ function Kpi({
   label,
   valor,
   formato = (n) => number(Math.round(n)),
-  tone = 'brand',
   cargando = false,
 }: {
   icon: typeof Inbox
   label: string
   valor: number
   formato?: (n: number) => string
-  tone?: 'brand' | 'emerald' | 'amber'
   cargando?: boolean
 }) {
   const animado = useCuentaAscendente(valor)
-  const tones = {
-    brand: 'bg-brand-50 text-brand-600',
-    emerald: 'bg-emerald-50 text-emerald-600',
-    amber: 'bg-amber-50 text-amber-600',
-  }
   return (
     <Tarjeta className="flex items-center gap-4">
-      <div
-        className={`h-11 w-11 rounded-xl grid place-items-center ${tones[tone]}`}
-      >
+      <div className="h-11 w-11 rounded-xl grid place-items-center bg-slate-50 text-slate-600">
         <Icon size={20} />
       </div>
       <div className="min-w-0" aria-busy={cargando}>
@@ -308,7 +295,7 @@ function Accion({
       to={to}
       className="flex items-center gap-3 rounded-xl border border-slate-200 p-4 hover:border-brand-500/40 hover:bg-brand-50/40 transition"
     >
-      <div className="h-10 w-10 rounded-xl bg-brand-50 text-brand-600 grid place-items-center shrink-0">
+      <div className="h-10 w-10 rounded-xl grid place-items-center bg-slate-50 text-slate-600 shrink-0">
         <Icon size={18} />
       </div>
       <div className="min-w-0">

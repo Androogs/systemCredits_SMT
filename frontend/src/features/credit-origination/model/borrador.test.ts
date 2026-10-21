@@ -27,7 +27,7 @@ const contexto: ContextoOriginacion = {
   validacion: {
     tipoDocumento: 'CC',
     numeroDocumento: '4372665',
-    edad: 34,
+    fechaNacimiento: '1990-05-15',
     nacionalidad: 'Colombia',
     multasPendientes: false,
   },

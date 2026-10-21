@@ -1,7 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { ArrowRight } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
-import CampoNumerico from '../../../shared/ui/CampoNumerico'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import {
   validacionInicialSchema,
@@ -13,7 +12,7 @@ import './ValidacionInicial.css'
 export interface DatosValidacion {
   tipoDocumento: string
   numeroDocumento: string
-  edad: number
+  fechaNacimiento: string
   nacionalidad: string
   multasPendientes: boolean
 }
@@ -22,7 +21,7 @@ interface ValidacionInicialProps {
   onContinue?: (datos: DatosValidacion) => void
 }
 
-type Campo = 'numeroDocumento' | 'edad' | 'multas'
+type Campo = 'numeroDocumento' | 'fechaNacimiento' | 'multas'
 
 // Precarga de demostración: solo en dev (import.meta.env.DEV), nunca en
 // el build de producción.
@@ -32,7 +31,9 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
   const [numeroDocumento, setNumeroDocumento] = useState(
     DEMO ? '1032448900' : '',
   )
-  const [edad, setEdad] = useState(DEMO ? '34' : '')
+  const [fechaNacimiento, setFechaNacimiento] = useState(
+    DEMO ? '1990-05-15' : '',
+  )
   const [multas, setMultas] = useState<'si' | 'no' | ''>(DEMO ? 'no' : '')
   const [tocados, setTocados] = useState<Partial<Record<Campo, boolean>>>({})
   const [intentado, setIntentado] = useState(false)
@@ -41,7 +42,7 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
   const errores = useMemo(() => {
     const resultado = validacionInicialSchema.safeParse({
       numeroDocumento,
-      edad,
+      fechaNacimiento,
       multas: multas === '' ? undefined : multas,
     })
     if (resultado.success) return {}
@@ -51,7 +52,7 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
       if (campo && !(campo in lista)) lista[campo] = issue.message
     }
     return lista
-  }, [numeroDocumento, edad, multas])
+  }, [numeroDocumento, fechaNacimiento, multas])
 
   const mostrarError = (campo: Campo) =>
     Boolean(errores[campo]) && (intentado || tocados[campo])
@@ -74,7 +75,7 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
     onContinue?.({
       tipoDocumento: 'CC',
       numeroDocumento,
-      edad: Number(edad),
+      fechaNacimiento,
       nacionalidad: 'Colombiana',
       multasPendientes: multas === 'si',
     })
@@ -149,7 +150,7 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
         <div className="validacion__grid">
           <div className="validacion__field">
             <label htmlFor="tipo-documento">
-              Tipo de Documento de Identidad{' '}
+              Tipo de Documento{' '}
               <span className="validacion__required" aria-hidden="true">
                 *
               </span>
@@ -193,50 +194,45 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
               <p className="validacion__error" role="alert">
                 {errores.numeroDocumento}
               </p>
-            ) : (
-              <p className="validacion__hint">
-                Valida contra formato registral estándar nacional de Colombia.
-              </p>
-            )}
+            ) : null}
           </div>
 
           <div
-            className={`validacion__field${mostrarError('edad') ? ' has-error' : ''}`}
+            className={`validacion__field${mostrarError('fechaNacimiento') ? ' has-error' : ''}`}
           >
-            <label htmlFor="edad">
-              Edad del Solicitante{' '}
+            <label htmlFor="fecha-nacimiento">
+              Fecha de Nacimiento{' '}
               <span className="validacion__required" aria-hidden="true">
                 *
               </span>
             </label>
-            <div className="validacion__input-group">
-              <CampoNumerico
-                id="edad"
-                value={edad === '' ? null : Number(edad)}
-                aria-invalid={mostrarError('edad')}
-                onValor={(n) => {
-                  setEdad(n == null ? '' : String(n))
+            <div className="validacion__input-group validacion__input-group--fecha">
+              <input
+                id="fecha-nacimiento"
+                type="date"
+                value={fechaNacimiento}
+                aria-invalid={mostrarError('fechaNacimiento')}
+                onChange={(event) => {
+                  setFechaNacimiento(event.target.value)
                   limpiarResultado()
                 }}
-                onBlur={() => marcarTocado('edad')}
+                onBlur={() => marcarTocado('fechaNacimiento')}
               />
-              <span className="validacion__suffix">años</span>
             </div>
-            {mostrarError('edad') ? (
+            {mostrarError('fechaNacimiento') ? (
               <p className="validacion__error" role="alert">
-                {errores.edad}
+                {errores.fechaNacimiento}
               </p>
             ) : (
               <p className="validacion__hint">
-                Debe tener entre {EDAD_MINIMA} y {EDAD_MAXIMA} años para
-                radicación de crédito.
+                Debe tener entre {EDAD_MINIMA} y {EDAD_MAXIMA} años.
               </p>
             )}
           </div>
 
           <div className="validacion__field">
             <label htmlFor="nacionalidad">
-              Nacionalidad del Solicitante{' '}
+              Nacionalidad{' '}
               <span className="validacion__required" aria-hidden="true">
                 *
               </span>
@@ -244,9 +240,6 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
             <select id="nacionalidad" defaultValue="Colombiana">
               <option value="Colombiana">Colombiana</option>
             </select>
-            <p className="validacion__hint">
-              Requisito mandatorio de radicación nacional.
-            </p>
           </div>
 
           <div
@@ -262,49 +255,37 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
             </span>
 
             <div
-              className="validacion__options"
+              className="validacion__toggle"
               role="radiogroup"
               aria-labelledby="multas-label"
             >
-              <label
-                className={`validacion__option${multas === 'si' ? ' is-selected' : ''}`}
+              <button
+                type="button"
+                role="radio"
+                aria-checked={multas === 'si'}
+                className={`validacion__toggle-option${multas === 'si' ? ' is-active' : ''}`}
+                onClick={() => {
+                  setMultas('si')
+                  marcarTocado('multas')
+                  limpiarResultado()
+                }}
               >
-                <input
-                  type="radio"
-                  name="multas"
-                  value="si"
-                  checked={multas === 'si'}
-                  onChange={() => {
-                    setMultas('si')
-                    marcarTocado('multas')
-                    limpiarResultado()
-                  }}
-                />
-                <span className="validacion__option-copy">
-                  <strong>Sí, tiene pendientes</strong>
-                  <small>Requiere revisión antes de la radicación.</small>
-                </span>
-              </label>
+                Sí
+              </button>
 
-              <label
-                className={`validacion__option${multas === 'no' ? ' is-selected' : ''}`}
+              <button
+                type="button"
+                role="radio"
+                aria-checked={multas === 'no'}
+                className={`validacion__toggle-option${multas === 'no' ? ' is-active' : ''}`}
+                onClick={() => {
+                  setMultas('no')
+                  marcarTocado('multas')
+                  limpiarResultado()
+                }}
               >
-                <input
-                  type="radio"
-                  name="multas"
-                  value="no"
-                  checked={multas === 'no'}
-                  onChange={() => {
-                    setMultas('no')
-                    marcarTocado('multas')
-                    limpiarResultado()
-                  }}
-                />
-                <span className="validacion__option-copy">
-                  <strong>No, está al día / Libre de multas</strong>
-                  <small>Cumple el criterio de radicación.</small>
-                </span>
-              </label>
+                No
+              </button>
             </div>
 
             {mostrarError('multas') ? (

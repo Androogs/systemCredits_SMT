@@ -8,7 +8,7 @@ import {
 
 const validacionValida = {
   numeroDocumento: '1032448900',
-  edad: '34',
+  fechaNacimiento: '1990-05-15',
   multas: 'no' as const,
 }
 
@@ -38,19 +38,19 @@ describe('validacionInicialSchema', () => {
     expect(r.success).toBe(false)
   })
 
-  it('distingue edad vacía de edad fuera de rango', () => {
+  it('distingue fecha vacía de edad fuera de rango', () => {
     const vacia = validacionInicialSchema.safeParse({
       ...validacionValida,
-      edad: '',
+      fechaNacimiento: '',
     })
     const fuera = validacionInicialSchema.safeParse({
       ...validacionValida,
-      edad: '17',
+      fechaNacimiento: '2015-01-01',
     })
     expect(vacia.success).toBe(false)
     expect(fuera.success).toBe(false)
     if (!vacia.success)
-      expect(vacia.error.issues[0].message).toContain('Ingresa la edad')
+      expect(vacia.error.issues[0].message).toContain('Ingresa la fecha')
     if (!fuera.success)
       expect(fuera.error.issues[0].message).toContain('entre 18 y 65')
   })

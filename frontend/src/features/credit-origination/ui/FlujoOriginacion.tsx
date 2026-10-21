@@ -89,7 +89,7 @@ function contextoDesdeSolicitud(
     validacion: {
       tipoDocumento: tipoDocumentoUi(datos.tipo_documento),
       numeroDocumento: datos.num_cedula,
-      edad: 0,
+      fechaNacimiento: '',
       nacionalidad: 'Colombia',
       multasPendientes: false,
     },

@@ -112,15 +112,6 @@ const GRUPOS_RIESGO: GrupoParametros[] = [
       },
     ],
   },
-  {
-    titulo: 'Endeudamiento',
-    descripcion:
-      'Porcentajes de endeudamiento definidos por la política del motor.',
-    campos: [
-      { key: 'endeu_1', label: 'Umbral superior de endeudamiento (%)' },
-      { key: 'endeu_2', label: 'Umbral de endeudamiento para rechazo (%)' },
-    ],
-  },
 ]
 
 const GRUPOS_MOTOR: GrupoParametros[] = [
@@ -243,6 +234,116 @@ const GRUPOS_MOTOR: GrupoParametros[] = [
       {
         key: 'meses_promedio_valor_ingreso',
         label: 'Promedio de Valor Ingreso (meses)',
+      },
+    ],
+  },
+  {
+    titulo: 'Endeudamiento',
+    descripcion:
+      'Porcentajes de endeudamiento definidos por la política del motor.',
+    campos: [
+      { key: 'endeu_1', label: 'Umbral superior de endeudamiento (%)' },
+      { key: 'endeu_2', label: 'Umbral de endeudamiento para rechazo (%)' },
+    ],
+  },
+  {
+    titulo: 'Política de edad y exclusiones',
+    descripcion:
+      'Edades mínimas/máximas y exclusiones globales aplicadas antes de evaluar.',
+    campos: [
+      { key: 'edad_minima_be', label: 'Edad mínima (años)' },
+      {
+        key: 'edad_maxima_be',
+        label: 'Edad máxima exclusiva (años)',
+        ayuda: 'El cliente debe ser menor a esta edad.',
+      },
+      {
+        key: 'activar_exclusion_persona_juridica',
+        label: 'Excluir personas jurídicas',
+      },
+      { key: 'activar_exclusion_score_0', label: 'Excluir score 0' },
+      {
+        key: 'activar_exclusion_score_3_fallecido',
+        label: 'Excluir score 3 (fallecido)',
+      },
+      {
+        key: 'activar_exclusion_score_4_codeudor',
+        label: 'Excluir score 4 (requiere codeudor)',
+      },
+      {
+        key: 'scores_exclusion',
+        label: 'Scores de exclusión',
+        ayuda: 'Separados por coma.',
+      },
+    ],
+  },
+  {
+    titulo: 'Políticas de buró',
+    descripcion:
+      'Estados, calificaciones y ventana histórica consultados en HDC+.',
+    campos: [
+      {
+        key: 'saldo_mora_be',
+        label: 'Saldo de mora mínimo (COP)',
+      },
+      {
+        key: 'estados_buro_embargo',
+        label: 'Estados de embargo',
+        ayuda: 'Códigos separados por coma.',
+      },
+      {
+        key: 'estados_buro_cartera_castigada',
+        label: 'Estados de cartera castigada',
+        ayuda: 'Códigos separados por coma.',
+      },
+      {
+        key: 'estados_buro_dudoso_recaudo',
+        label: 'Estados de dudoso recaudo',
+        ayuda: 'Códigos separados por coma.',
+      },
+      {
+        key: 'estados_buro_pago_total',
+        label: 'Estados de pago total',
+        ayuda: 'Códigos separados por coma.',
+      },
+      {
+        key: 'evento_cancelacion_mal_manejo',
+        label: 'Evento de cancelación por mal manejo',
+      },
+      {
+        key: 'calificaciones_negativas',
+        label: 'Calificaciones negativas',
+        ayuda: 'Letras separadas por coma.',
+      },
+      {
+        key: 'codigos_reestructuracion',
+        label: 'Códigos de reestructuración',
+        ayuda: 'Códigos separados por coma.',
+      },
+      {
+        key: 'tokens_reestructuracion',
+        label: 'Palabras clave de reestructuración',
+        ayuda: 'Palabras separadas por coma.',
+      },
+      {
+        key: 'meses_ventana_buro',
+        label: 'Ventana histórica del buró (meses)',
+      },
+      {
+        key: 'umbral_mora_30_historica',
+        label: 'Máximo de moras históricas de 30 días',
+      },
+      {
+        key: 'umbral_mora_60_historica',
+        label: 'Máximo de moras históricas de 60 días',
+      },
+      {
+        key: 'umbral_mora_90_historica',
+        label: 'Máximo de moras históricas de 90 días',
+      },
+      {
+        key: 'umbral_reestructuraciones',
+        label: 'Máximo de reestructuraciones',
       },
     ],
   },

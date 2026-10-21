@@ -1,6 +1,7 @@
 import { useId, useState, useRef, useCallback, useEffect } from 'react'
 import type { ChangeEvent, InputHTMLAttributes, ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
+import { env } from '../env'
 import {
   actualizarParametros,
   obtenerParametros,
@@ -43,12 +44,12 @@ import {
   Copy,
 } from 'lucide-react'
 import CampoNumerico from '../shared/ui/CampoNumerico'
+import { useRol } from '../shared/lib/sesion'
 
 type SeccionId =
   | 'perfil'
   | 'usuarios'
   | 'motor'
-  | 'riesgo'
   | 'concesionarios'
   | 'documentos'
   | 'auditoria'
@@ -57,12 +58,69 @@ type SeccionId =
 type Usuario = {
   id: number
   n: string
+  cedula: string
   email: string
   telefono: string
   r: string
   c: string
   estado: 'Activo' | 'Inactivo'
+  ciudad?: string
+  fechaCreacion?: string
+  fechaModificacion?: string
+  observaciones?: string
 }
+
+const CIUDADES_COMUNES: { ciudad: string; departamento: string }[] = [
+  // Valle del Cauca (ciudades y municipios de registro frecuente)
+  { ciudad: 'Buga', departamento: 'Valle del Cauca' },
+  { ciudad: 'Cali', departamento: 'Valle del Cauca' },
+  { ciudad: 'Cartago', departamento: 'Valle del Cauca' },
+  { ciudad: 'Candelaria', departamento: 'Valle del Cauca' },
+  { ciudad: 'Cerrito', departamento: 'Valle del Cauca' },
+  { ciudad: 'Florida', departamento: 'Valle del Cauca' },
+  { ciudad: 'Palmira', departamento: 'Valle del Cauca' },
+  { ciudad: 'Pradera', departamento: 'Valle del Cauca' },
+  { ciudad: 'Roldanillo', departamento: 'Valle del Cauca' },
+  { ciudad: 'Tuluá', departamento: 'Valle del Cauca' },
+  { ciudad: 'Yumbo', departamento: 'Valle del Cauca' },
+  { ciudad: 'Zarzal', departamento: 'Valle del Cauca' },
+  { ciudad: 'La Unión', departamento: 'Valle del Cauca' },
+  { ciudad: 'Buenaventura', departamento: 'Valle del Cauca' },
+
+  // Capitales departamentales principales
+  { ciudad: 'Medellín', departamento: 'Antioquia' },
+  { ciudad: 'Barranquilla', departamento: 'Atlántico' },
+  { ciudad: 'Bogotá', departamento: 'Bogotá D.C.' },
+  { ciudad: 'Bucaramanga', departamento: 'Santander' },
+  { ciudad: 'Cartagena', departamento: 'Bolívar' },
+  { ciudad: 'Cúcuta', departamento: 'Norte de Santander' },
+  { ciudad: 'Ibagué', departamento: 'Tolima' },
+  { ciudad: 'Pereira', departamento: 'Risaralda' },
+  { ciudad: 'Santa Marta', departamento: 'Magdalena' },
+  { ciudad: 'Villavicencio', departamento: 'Meta' },
+  { ciudad: 'Manizales', departamento: 'Caldas' },
+  { ciudad: 'Pasto', departamento: 'Nariño' },
+  { ciudad: 'Neiva', departamento: 'Huila' },
+  { ciudad: 'Armenia', departamento: 'Quindío' },
+  { ciudad: 'Sincelejo', departamento: 'Sucre' },
+  { ciudad: 'Valledupar', departamento: 'Cesar' },
+  { ciudad: 'Montería', departamento: 'Córdoba' },
+  { ciudad: 'Riohacha', departamento: 'La Guajira' },
+  { ciudad: 'San Andrés', departamento: 'San Andrés y Providencia' },
+  { ciudad: 'Leticia', departamento: 'Amazonas' },
+  { ciudad: 'Mocoa', departamento: 'Putumayo' },
+  { ciudad: 'Puerto Carreño', departamento: 'Vichada' },
+  { ciudad: 'Inírida', departamento: 'Guainía' },
+  { ciudad: 'Mitú', departamento: 'Vaupés' },
+  { ciudad: 'Tunja', departamento: 'Boyacá' },
+  { ciudad: 'Popayán', departamento: 'Cauca' },
+
+  // Otros municipios del área de influencia
+  { ciudad: 'Dorada', departamento: 'Tolima' },
+  { ciudad: 'Espinal', departamento: 'Tolima' },
+  { ciudad: 'Dosquebradas', departamento: 'Risaralda' },
+  { ciudad: 'La Virginia', departamento: 'Risaralda' },
+]
 
 const SECCIONES: {
   id: SeccionId
@@ -90,14 +148,7 @@ const SECCIONES: {
     label: 'Motor de Decisión',
     mobileLabel: 'Motor',
     icon: Cpu,
-    desc: 'Score, Quanto y límites',
-  },
-  {
-    id: 'riesgo',
-    label: 'Reglas de Riesgo',
-    mobileLabel: 'Riesgo',
-    icon: ShieldCheck,
-    desc: 'Filtros y listas',
+    desc: 'Score, Quanto y límites, reglas de buró y endeudamiento',
   },
   {
     id: 'concesionarios',
@@ -147,11 +198,11 @@ const Card = ({
   desc?: string
   action?: ReactNode
 }) => (
-  <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
+  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
     <div className="mb-4 flex flex-col gap-3 sm:mb-5 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <h3 className="font-semibold text-[14px] tracking-tight">{title}</h3>
-        {desc && <p className="text-xs text-zinc-500 mt-1">{desc}</p>}
+        {desc && <p className="text-xs text-slate-500 mt-1">{desc}</p>}
       </div>
       {action}
     </div>
@@ -171,21 +222,21 @@ const Input = ({
     <div className="space-y-1.5">
       <label
         htmlFor={inputId}
-        className="text-[11px] font-medium uppercase tracking-wide text-zinc-600"
+        className="text-[11px] font-medium uppercase tracking-wide text-slate-600"
       >
         {label}
       </label>
       <input
         {...props}
         id={inputId}
-        className="h-11 w-full rounded-md border border-zinc-200 bg-white px-3 text-base focus:outline-none focus:ring-1 focus:ring-zinc-900 sm:h-9 sm:text-sm"
+        className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-base focus:outline-none focus:ring-1 focus:ring-slate-900 sm:h-9 sm:text-sm"
       />
     </div>
   )
 }
 
 const CLASE_INPUT_NUMERICO =
-  'h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-900'
+  'h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-slate-900'
 
 const InputNumerico = ({
   label,
@@ -213,7 +264,7 @@ const InputNumerico = ({
     <div className="space-y-1.5">
       <label
         htmlFor={inputId}
-        className="text-[11px] font-medium uppercase tracking-wide text-zinc-600"
+        className="text-[11px] font-medium uppercase tracking-wide text-slate-600"
       >
         {label}
       </label>
@@ -233,15 +284,17 @@ const InputNumerico = ({
 }
 
 export default function Ajustes() {
+  const rol = useRol()
+  const esAsesor = rol === 'asesor'
   const [seccion, setSeccion] = useState<SeccionId>('perfil')
   const [hasChanges, setHasChanges] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const userModalRef = useRef<HTMLDivElement>(null)
   const [avatar, setAvatar] = useState<string | null>(null)
   const [concesionarios, setConcesionarios] = useState<string[]>([
-    'Suzuki Palmira',
-    'Hero Cali',
-    'Bajaj Tuluá',
+    'Sumoto Palmira',
+    'Tulua Motos',
+    'Pijaos Motos',
   ])
   const [nuevoConcesionario, setNuevoConcesionario] = useState('')
   const [showPass, setShowPass] = useState(false)
@@ -260,26 +313,41 @@ export default function Ajustes() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([
     {
       id: 1,
-      n: 'Laura G.',
+      n: 'Leidy Portilla',
+      cedula: '12345678',
       email: 'laura@sumoto.com',
       telefono: '310 111 1111',
       r: 'Analista',
-      c: 'Suzuki Palmira',
+      c: 'Sumoto Palmira',
+      ciudad: 'Pradera, Valle del Cauca',
       estado: 'Activo',
+      fechaCreacion: '01/01/2026',
+      fechaModificacion: '',
+      observaciones: '',
     },
     {
       id: 2,
       n: 'Juan P.',
+      cedula: '87654321',
       email: 'juan@sumoto.com',
       telefono: '310 222 2222',
       r: 'Asesor',
-      c: 'Hero Cali',
+      c: 'Tulua Motos',
+      ciudad: 'Tuluá, Valle del Cauca',
       estado: 'Activo',
+      fechaCreacion: '15/03/2026',
+      fechaModificacion: '',
+      observaciones: '',
     },
   ])
   const [searchUser, setSearchUser] = useState('')
   const [showUserModal, setShowUserModal] = useState(false)
   const [editingUser, setEditingUser] = useState<Usuario | null>(null)
+  const [usuarioAEliminar, setUsuarioAEliminar] = useState<Usuario | null>(null)
+  const [pasoEliminar, setPasoEliminar] = useState<
+    'confirmar' | 'cedula' | null
+  >(null)
+  const [cedulaConfirmacion, setCedulaConfirmacion] = useState('')
   useEffect(() => {
     if (!showUserModal) return
 
@@ -299,65 +367,164 @@ export default function Ajustes() {
   const [userForm, setUserForm] = useState({
     nombre: '',
     email: '',
+    cedula: '',
     telefono: '',
+    ciudad: '',
     cargo: 'Asesor',
-    concesionario: 'Suzuki Palmira',
+    concesionario: 'Sumoto Palmira',
     estado: 'Activo',
     password: '',
+    fechaCreacion: '',
+    fechaModificacion: '',
+    observaciones: '',
   })
 
-  // DOCUMENTOS
-  const [documentos, setDocumentos] = useState([
-    {
-      id: 1,
-      nombre: 'Cédula frontal',
-      requerido: true,
-      formato: 'PDF/JPG',
-      max: '5MB',
-      activo: true,
-    },
-    {
-      id: 2,
-      nombre: 'Desprendible de nómina',
-      requerido: true,
-      formato: 'PDF',
-      max: '10MB',
-      activo: true,
-    },
+  const [ciudadQuery, setCiudadQuery] = useState('')
+  const [ciudadSugerenciasAbiertas, setCiudadSugerenciasAbiertas] =
+    useState(false)
+
+  const ciudadFiltrada = CIUDADES_COMUNES.filter((c) =>
+    `${c.ciudad}, ${c.departamento}`
+      .toLowerCase()
+      .includes(ciudadQuery.toLowerCase()),
+  )
+  const [documentosVisuales] = useState([
+    { id: 1, nombre: 'Cédula anverso', formato: 'PDF/JPG', tamano: '5MB' },
+    { id: 2, nombre: 'Cédula reverso', formato: 'PDF/JPG', tamano: '5MB' },
     {
       id: 3,
-      nombre: 'Contrato de crédito',
-      requerido: false,
-      formato: 'PDF/DOCX',
-      max: '20MB',
-      activo: true,
+      nombre: 'Documento de valor ingreso',
+      formato: 'PDF',
+      tamano: '10MB',
+    },
+    {
+      id: 4,
+      nombre: 'Documento de historial crediticio',
+      formato: 'PDF',
+      tamano: '10MB',
+    },
+  ])
+
+  const [plantillas] = useState([
+    {
+      id: 5,
+      nombre: 'AUTORIZACION CONSULTA CENTRALES INVERSIONES PACIFICO.docx',
+      formato: 'DOCX',
+      tamano: '59 kB',
+    },
+    {
+      id: 6,
+      nombre: 'autorizacionDeCanalesDeContacto735.pdf',
+      formato: 'PDF',
+      tamano: '102 kB',
+    },
+    {
+      id: 7,
+      nombre: 'CARTA DE APROBACION INVERSIONES PACIFICO.docx',
+      formato: 'DOCX',
+      tamano: '52 kB',
+    },
+    {
+      id: 8,
+      nombre: 'cartaAprobacion735.pdf',
+      formato: 'PDF',
+      tamano: '94 kB',
+    },
+    {
+      id: 9,
+      nombre: 'PAGARE INVERSIONES PACIFICO.docx',
+      formato: 'DOCX',
+      tamano: '56 kB',
+    },
+    { id: 10, nombre: 'pagare735.pdf', formato: 'PDF', tamano: '103 kB' },
+    {
+      id: 11,
+      nombre: 'DECLARACION ASEGURABILIDAD INVERSIONES PACIFICO.docx',
+      formato: 'DOCX',
+      tamano: '34 kB',
+    },
+    {
+      id: 12,
+      nombre: 'declaracionAsegurabilidad735.pdf',
+      formato: 'PDF',
+      tamano: '94 kB',
+    },
+    {
+      id: 13,
+      nombre: 'solicitudCredito735.pdf',
+      formato: 'PDF',
+      tamano: '96 kB',
+    },
+    {
+      id: 14,
+      nombre: 'Tabla de amortización',
+      formato: 'PDF',
+      tamano: '—',
+      nota: 'Plantilla pendiente',
     },
   ])
 
   // AUDITORIA
-  const [logs] = useState([
-    {
-      id: 1,
-      fecha: '02/10/2026 11:42',
-      usuario: 'Alejandro G.',
-      accion: 'Evaluó crédito #9821',
-      ip: '190.121.45.XX',
-    },
-    {
-      id: 2,
-      fecha: '02/10/2026 10:15',
-      usuario: 'Laura G.',
-      accion: 'Actualizó parametros.json',
-      ip: '190.121.46.10',
-    },
-    {
-      id: 3,
-      fecha: '01/10/2026 16:20',
-      usuario: 'Sistema',
-      accion: 'Backup automático completado',
-      ip: 'localhost',
-    },
-  ])
+  const [logs, setLogs] = useState<
+    { id: string; fecha: string; usuario: string; accion: string; ip: string }[]
+  >([])
+  const [cargandoAuditoria, setCargandoAuditoria] = useState(false)
+  const [errorAuditoria, setErrorAuditoria] = useState<string | null>(null)
+  const [filtroAuditoria, setFiltroAuditoria] = useState('')
+  const [filtroDecision, setFiltroDecision] = useState('')
+
+  const cargarAuditoria = useCallback(async () => {
+    setCargandoAuditoria(true)
+    setErrorAuditoria(null)
+    try {
+      const params = new URLSearchParams()
+      params.set('limite', '100')
+      if (filtroAuditoria) params.set('numero_id', filtroAuditoria)
+      if (filtroDecision) params.set('decision', filtroDecision)
+      const respuesta = await fetch(
+        `${env.VITE_API_URL.replace(/\/$/, '')}/api/auditoria?${params}`,
+        {
+          headers: { 'Content-Type': 'application/json' },
+        },
+      )
+      if (!respuesta.ok) throw new Error(`Error HTTP ${respuesta.status}`)
+      const data = await respuesta.json()
+      setLogs(
+        data.map(
+          (e: {
+            evaluacion_id: string
+            fecha_evaluacion: string
+            numero_id: string | null
+            ocupacion: string
+            decision: string
+            origen_datos: string | null
+          }) => ({
+            id: e.evaluacion_id,
+            fecha: new Date(e.fecha_evaluacion).toLocaleString('es-CO', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+            usuario: e.numero_id || '-',
+            accion: `${e.decision} • ${e.ocupacion}`,
+            ip: e.origen_datos || '-',
+          }),
+        ),
+      )
+    } catch (error) {
+      setErrorAuditoria(
+        error instanceof Error ? error.message : 'Error al cargar auditoría.',
+      )
+    } finally {
+      setCargandoAuditoria(false)
+    }
+  }, [filtroAuditoria, filtroDecision])
+
+  useEffect(() => {
+    void cargarAuditoria()
+  }, [cargarAuditoria])
 
   // SEGURIDAD
   const [apiKeys, setApiKeys] = useState([
@@ -376,7 +543,7 @@ export default function Ajustes() {
   // FORM GLOBAL
   const [form, setForm] = useState({
     nombre: 'Alejandro Garcia',
-    email: 'desarrollo@saumoto.com.co',
+    email: 'desarrollo@sumoto.com.co',
     telefono: '3211234567',
     cargo: 'Super Admin',
     passActual: '',
@@ -440,8 +607,15 @@ export default function Ajustes() {
   }, [])
 
   useEffect(() => {
+    if (esAsesor) return
     void cargarParametros()
-  }, [cargarParametros])
+  }, [cargarParametros, esAsesor])
+
+  useEffect(() => {
+    if (esAsesor && seccion !== 'perfil') {
+      setSeccion('perfil')
+    }
+  }, [esAsesor, seccion])
 
   const parametrosModificados =
     parametros !== null &&
@@ -581,15 +755,21 @@ export default function Ajustes() {
     setHasChanges(true)
   }
   const openCreateModal = () => {
+    const hoy = new Date().toISOString().slice(0, 10)
     setEditingUser(null)
     setUserForm({
       nombre: '',
       email: '',
+      cedula: '',
       telefono: '',
+      ciudad: '',
       cargo: 'Asesor',
-      concesionario: concesionarios[0],
+      concesionario: 'Sumoto Palmira',
       estado: 'Activo',
       password: '',
+      fechaCreacion: hoy,
+      fechaModificacion: '',
+      observaciones: '',
     })
     setShowUserModal(true)
   }
@@ -597,17 +777,22 @@ export default function Ajustes() {
     setEditingUser(u)
     setUserForm({
       nombre: u.n,
+      cedula: u.cedula ?? '',
       email: u.email,
       telefono: u.telefono,
+      ciudad: u.ciudad ?? '',
       cargo: u.r,
       concesionario: u.c,
-      estado: u.estado,
+      estado: u.estado as Usuario['estado'],
       password: '',
+      fechaCreacion: u.fechaCreacion ?? '',
+      fechaModificacion: new Date().toISOString().slice(0, 10),
+      observaciones: u.observaciones ?? '',
     })
     setShowUserModal(true)
   }
   const handleSaveUser = () => {
-    if (!userForm.nombre || !userForm.email) return
+    if (!userForm.nombre || !userForm.cedula || !userForm.email) return
     if (editingUser)
       setUsuarios((p) =>
         p.map((x) =>
@@ -615,11 +800,15 @@ export default function Ajustes() {
             ? {
                 ...x,
                 n: userForm.nombre,
+                cedula: userForm.cedula,
                 email: userForm.email,
                 telefono: userForm.telefono,
+                ciudad: userForm.ciudad,
                 r: userForm.cargo,
                 c: userForm.concesionario,
                 estado: userForm.estado as Usuario['estado'],
+                fechaModificacion: new Date().toISOString().slice(0, 10),
+                observaciones: userForm.observaciones,
               }
             : x,
         ),
@@ -630,56 +819,88 @@ export default function Ajustes() {
         {
           id: Date.now(),
           n: userForm.nombre,
+          cedula: userForm.cedula,
           email: userForm.email,
           telefono: userForm.telefono,
+          ciudad: userForm.ciudad,
           r: userForm.cargo,
           c: userForm.concesionario,
           estado: userForm.estado as Usuario['estado'],
+          fechaCreacion: userForm.fechaCreacion,
+          fechaModificacion: userForm.fechaModificacion,
+          observaciones: userForm.observaciones,
         },
       ])
     setShowUserModal(false)
     setHasChanges(true)
   }
 
+  const abrirConfirmarEliminar = (u: Usuario) => {
+    setUsuarioAEliminar(u)
+    setPasoEliminar('confirmar')
+    setCedulaConfirmacion('')
+  }
+
+  const cerrarEliminar = () => {
+    setUsuarioAEliminar(null)
+    setPasoEliminar(null)
+    setCedulaConfirmacion('')
+  }
+
+  const procederEscribirCedula = () => {
+    setPasoEliminar('cedula')
+    setCedulaConfirmacion('')
+  }
+
+  const confirmarEliminarPorCedula = () => {
+    if (!usuarioAEliminar) return
+    if (cedulaConfirmacion.trim() !== usuarioAEliminar.cedula) return
+    setUsuarios((p) => p.filter((x) => x.id !== usuarioAEliminar!.id))
+    setHasChanges(true)
+    cerrarEliminar()
+  }
+
   return (
-    <div className="min-h-screen overflow-x-clip bg-[#F8FAFC] text-zinc-900">
+    <div className="min-h-screen overflow-x-clip bg-slate-50 text-slate-900">
       <div className="sticky top-0 z-20 border-b bg-white">
         <div className="mx-auto flex h-14 max-w-[1400px] items-center justify-between gap-2 pl-16 pr-3 sm:px-6">
           <h1 className="flex min-w-0 items-center gap-2 text-base font-semibold">
             Ajustes
             {(hasChanges || parametrosModificados) && (
-              <span className="truncate rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-medium text-amber-900 sm:text-[11px]">
+              <span className="truncate rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-medium text-amber-600 sm:text-[11px]">
                 <span className="sm:hidden">Sin guardar</span>
                 <span className="hidden sm:inline">Cambios sin guardar</span>
               </span>
             )}
           </h1>
-          <button
-            onClick={() => void guardarCambios()}
-            disabled={
-              guardandoParametros || (!hasChanges && !parametrosModificados)
-            }
-            aria-label="Guardar cambios"
-            className="h-10 shrink-0 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-zinc-700 disabled:opacity-40 sm:px-4"
-          >
-            {guardandoParametros ? (
-              'Guardando…'
-            ) : (
-              <>
-                <span className="sm:hidden">Guardar</span>
-                <span className="hidden sm:inline">Guardar cambios</span>
-              </>
-            )}
-          </button>
+          {!esAsesor && (
+            <button
+              onClick={() => void guardarCambios()}
+              disabled={
+                guardandoParametros || (!hasChanges && !parametrosModificados)
+              }
+              aria-label="Guardar cambios"
+              className="h-10 shrink-0 rounded-lg bg-[#000033] px-3 text-xs font-medium text-white shadow-sm transition hover:bg-[#000033] disabled:opacity-40 sm:px-4"
+            >
+              {guardandoParametros ? (
+                'Guardando…'
+              ) : (
+                <>
+                  <span className="sm:hidden">Guardar</span>
+                  <span className="hidden sm:inline">Guardar cambios</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
       <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-4 px-3 py-4 sm:px-6 sm:py-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-6">
         <nav
           aria-label="Secciones de ajustes"
-          className="sticky top-14 z-10 -mx-3 flex min-w-0 snap-x snap-mandatory gap-2 overflow-x-auto border-b border-zinc-200 bg-[#F8FAFC]/95 px-3 py-2 backdrop-blur sm:-mx-6 sm:px-6 lg:top-[68px] lg:mx-0 lg:block lg:h-fit lg:space-y-1 lg:overflow-visible lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none"
+          className="sticky top-14 z-10 -mx-3 flex min-w-0 snap-x snap-mandatory gap-2 overflow-x-auto border-b border-slate-200 bg-slate-50/95 px-3 py-2 backdrop-blur sm:-mx-6 sm:px-6 lg:top-[68px] lg:mx-0 lg:block lg:h-fit lg:space-y-1 lg:overflow-visible lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none"
         >
-          {SECCIONES.map((s) => {
+          {SECCIONES.filter((s) => !esAsesor || s.id === 'perfil').map((s) => {
             const Icon = s.icon
             const active = seccion === s.id
             return (
@@ -690,8 +911,8 @@ export default function Ajustes() {
                 aria-pressed={active}
                 className={`flex min-h-11 shrink-0 snap-start items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors lg:mb-1 lg:w-full lg:justify-start lg:gap-3 lg:rounded-md lg:px-3 lg:py-2.5 lg:text-left lg:text-sm ${
                   active
-                    ? 'border-zinc-900 bg-zinc-900 text-white shadow-sm'
-                    : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 lg:border-transparent lg:bg-transparent lg:shadow-none'
+                    ? 'border-[#000033] bg-[#000033] text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 lg:border-transparent lg:bg-transparent lg:shadow-none'
                 }`}
               >
                 <Icon className="h-4 w-4 shrink-0 lg:h-[18px] lg:w-[18px]" />
@@ -709,10 +930,10 @@ export default function Ajustes() {
           })}
           <div className="mt-4 hidden border-t pt-4 lg:block">
             <div className="rounded-md bg-white border p-3 text-xs">
-              <p className="font-medium text-[11px] uppercase text-zinc-600">
+              <p className="font-medium text-[11px] uppercase text-slate-600">
                 Última conexión
               </p>
-              <p className="text-zinc-500 mt-1">
+              <p className="text-slate-500 mt-1">
                 02/10/2026 11:42
                 <br />
                 IP: 190.121.45.XX
@@ -724,13 +945,15 @@ export default function Ajustes() {
         </nav>
 
         <div className="min-w-0 space-y-4 pb-28 sm:pb-24">
-          <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
-            La configuración conectada al backend corresponde al motor de
-            decisión y sus reglas de riesgo. Las demás secciones aún no cuentan
-            con endpoints de persistencia y sus cambios no se guardan en el
-            servidor.
-          </div>
-          {(errorParametros || mensajeParametros) && (
+          {!esAsesor && (
+            <div className="rounded-md border border-brand-100 bg-brand-50 p-3 text-xs text-brand-900">
+              La configuración conectada al backend corresponde al motor de
+              decisión y sus reglas de riesgo. Las demás secciones aún no
+              cuentan con endpoints de persistencia y sus cambios no se guardan
+              en el servidor.
+            </div>
+          )}
+          {!esAsesor && (errorParametros || mensajeParametros) && (
             <div
               role={errorParametros ? 'alert' : 'status'}
               className={`rounded-md border p-3 text-sm ${
@@ -755,7 +978,7 @@ export default function Ajustes() {
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         aria-label="Seleccionar foto de perfil"
-                        className="h-24 w-24 rounded-full bg-zinc-50 border-2 border-dashed border-zinc-300 overflow-hidden flex items-center justify-center cursor-pointer hover:border-zinc-900 group focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900"
+                        className="h-24 w-24 rounded-full bg-slate-50 border-2 border-dashed border-slate-300 overflow-hidden flex items-center justify-center cursor-pointer hover:border-brand-900 group focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
                       >
                         {avatar ? (
                           <img
@@ -765,8 +988,8 @@ export default function Ajustes() {
                           />
                         ) : (
                           <div className="flex flex-col items-center">
-                            <User className="h-7 w-7 text-zinc-400 group-hover:text-zinc-900" />
-                            <span className="text-[10px] uppercase text-zinc-500 mt-1">
+                            <User className="h-7 w-7 text-slate-400 group-hover:text-slate-900" />
+                            <span className="text-[10px] uppercase text-slate-500 mt-1">
                               Foto
                             </span>
                           </div>
@@ -823,7 +1046,7 @@ export default function Ajustes() {
                     />
                     <div className="space-y-1.5">
                       <label
-                        className="text-[11px] uppercase text-zinc-600"
+                        className="text-[11px] uppercase text-slate-600"
                         htmlFor="profile-role"
                       >
                         Cargo
@@ -841,14 +1064,14 @@ export default function Ajustes() {
                       </select>
                     </div>
                     <div className="sm:col-span-2">
-                      <p className="text-[11px] uppercase text-zinc-600">
+                      <p className="text-[11px] uppercase text-slate-600">
                         Concesionarios asignados
                       </p>
                       <div className="mt-1.5 flex flex-wrap gap-2">
                         {concesionarios.map((c) => (
                           <span
                             key={c}
-                            className="text-xs px-2.5 py-1 rounded-full bg-zinc-900 text-white flex items-center gap-1.5"
+                            className="text-xs px-2.5 py-1 rounded-full bg-[#000033] text-white flex items-center gap-1.5"
                           >
                             {c}
                             <button
@@ -875,7 +1098,7 @@ export default function Ajustes() {
                           onKeyDown={(e) =>
                             e.key === 'Enter' && addConcesionario()
                           }
-                          placeholder="Ej: Suzuki Yumbo"
+                          placeholder="Ej: Suzuki Cali"
                           className="h-11 w-full min-w-0 rounded-lg border px-3 text-base sm:h-9 sm:flex-1 sm:rounded-md sm:text-sm"
                         />
                         <button
@@ -894,7 +1117,7 @@ export default function Ajustes() {
                 <div className="grid md:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
                     <label
-                      className="text-[11px] uppercase text-zinc-600"
+                      className="text-[11px] uppercase text-slate-600"
                       htmlFor="current-password"
                     >
                       Actual
@@ -917,7 +1140,7 @@ export default function Ajustes() {
                             : 'Mostrar contraseña actual'
                         }
                         aria-pressed={showPass}
-                        className="absolute right-1 top-1.5 grid h-6 w-6 place-items-center text-zinc-600"
+                        className="absolute right-1 top-1.5 grid h-6 w-6 place-items-center text-slate-600"
                       >
                         {showPass ? (
                           <EyeOff className="h-4 w-4" />
@@ -950,21 +1173,21 @@ export default function Ajustes() {
                       <p className="text-sm font-medium flex items-center gap-2">
                         <ShieldCheck className="h-4 w-4" /> 2FA
                       </p>
-                      <p className="text-xs text-zinc-500">Segundo factor</p>
+                      <p className="text-xs text-slate-500">Segundo factor</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => onChange('twoFA', !form.twoFA)}
                       aria-label="Autenticación de dos factores"
                       aria-pressed={form.twoFA}
-                      className={`h-6 w-11 rounded-full flex items-center ${form.twoFA ? 'bg-zinc-900 justify-end' : 'bg-zinc-200 justify-start'}`}
+                      className={`h-6 w-11 rounded-full flex items-center ${form.twoFA ? 'bg-[#000033] justify-end' : 'bg-slate-200 justify-start'}`}
                     >
                       <span className="h-4 w-4 rounded-full bg-white shadow mx-1" />
                     </button>
                   </div>
                   <div className="rounded-lg border p-4">
                     <label
-                      className="text-[11px] uppercase text-zinc-600"
+                      className="text-[11px] uppercase text-slate-600"
                       htmlFor="two-factor-method"
                     >
                       Método
@@ -985,12 +1208,12 @@ export default function Ajustes() {
               <div className="grid md:grid-cols-2 gap-4">
                 <Card
                   title="Preferencias"
-                  action={<Palette className="h-4 w-4 text-zinc-400" />}
+                  action={<Palette className="h-4 w-4 text-slate-400" />}
                 >
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-1.5">
                       <label
-                        className="text-[11px] uppercase text-zinc-600"
+                        className="text-[11px] uppercase text-slate-600"
                         htmlFor="settings-theme"
                       >
                         Tema
@@ -1008,7 +1231,7 @@ export default function Ajustes() {
                     </div>
                     <div className="space-y-1.5">
                       <label
-                        className="text-[11px] uppercase text-zinc-600"
+                        className="text-[11px] uppercase text-slate-600"
                         htmlFor="settings-language"
                       >
                         Idioma
@@ -1027,16 +1250,16 @@ export default function Ajustes() {
                 </Card>
                 <Card
                   title="Sesión activa"
-                  action={<Monitor className="h-4 w-4 text-zinc-400" />}
+                  action={<Monitor className="h-4 w-4 text-slate-400" />}
                 >
-                  <div className="rounded-md bg-zinc-50 border p-3 text-xs">
+                  <div className="rounded-md bg-slate-50 border p-3 text-xs">
                     <p className="font-medium">Sesión actual</p>
-                    <p className="text-zinc-600 mt-1">
+                    <p className="text-slate-600 mt-1">
                       02/10/2026 11:42 • 190.121.45.XX
                       <br />
                       Palmira, CO • Chrome / Windows
                     </p>
-                    <span className="mt-2 inline-flex text-[10px] px-2 py-0.5 rounded-full bg-green-50 border border-green-200 text-green-700">
+                    <span className="mt-2 inline-flex text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">
                       Activa
                     </span>
                   </div>
@@ -1048,7 +1271,7 @@ export default function Ajustes() {
             </>
           )}
 
-          {seccion === 'usuarios' && (
+          {!esAsesor && seccion === 'usuarios' && (
             <Card
               title="Usuarios y Permisos"
               desc="Edita, crea y elimina. El límite está en Motor"
@@ -1057,9 +1280,9 @@ export default function Ajustes() {
                 <button
                   onClick={openCreateModal}
                   type="button"
-                  className="flex h-11 items-center justify-center gap-2 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white sm:h-9 sm:rounded-md"
+                  className="flex h-11 items-center justify-center gap-2 rounded-lg bg-[#000033] px-3 text-xs font-medium text-white sm:h-9 sm:rounded-md"
                 >
-                  <Plus className="h-4 w-4 sm:h-3 sm:w-3" /> Crear
+                  <Plus className="h-4 w-4 sm:h-3 sm:w-3" /> Crea un Usuario
                 </button>
                 <input
                   aria-label="Buscar usuarios"
@@ -1071,13 +1294,19 @@ export default function Ajustes() {
               </div>
               <div className="hidden overflow-auto rounded-md border sm:block">
                 <table className="w-full text-sm">
-                  <thead className="bg-zinc-50 text-[11px] uppercase text-zinc-500">
+                  <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
                     <tr>
                       <th scope="col" className="text-left p-3">
                         Usuario
                       </th>
                       <th scope="col" className="text-left p-3">
                         Rol
+                      </th>
+                      <th scope="col" className="text-left p-3">
+                        Teléfono
+                      </th>
+                      <th scope="col" className="text-left p-3">
+                        Correo
                       </th>
                       <th scope="col" className="text-left p-3">
                         Concesionario
@@ -1096,20 +1325,21 @@ export default function Ajustes() {
                         u.n.toLowerCase().includes(searchUser.toLowerCase()),
                       )
                       .map((u) => (
-                        <tr key={u.id} className="border-t hover:bg-zinc-50">
+                        <tr key={u.id} className="border-t hover:bg-slate-50">
                           <td className="p-3">
                             <p className="font-medium">{u.n}</p>
-                            <p className="text-xs text-zinc-500">{u.email}</p>
                           </td>
                           <td className="p-3">
                             <span className="text-xs px-2 py-1 rounded border bg-white">
                               {u.r}
                             </span>
                           </td>
+                          <td className="p-3 text-xs">{u.telefono}</td>
+                          <td className="p-3 text-xs">{u.email}</td>
                           <td className="p-3 text-xs">{u.c}</td>
                           <td className="p-3">
                             <span
-                              className={`text-[11px] px-2 py-0.5 rounded-full border ${u.estado === 'Activo' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-zinc-100'}`}
+                              className={`text-[11px] px-2 py-0.5 rounded-full border ${u.estado === 'Activo' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}
                             >
                               {u.estado}
                             </span>
@@ -1126,11 +1356,7 @@ export default function Ajustes() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() =>
-                                  setUsuarios((p) =>
-                                    p.filter((x) => x.id !== u.id),
-                                  )
-                                }
+                                onClick={() => abrirConfirmarEliminar(u)}
                                 aria-label={`Eliminar usuario ${u.n}`}
                                 className="h-7 w-7 grid place-items-center rounded border"
                               >
@@ -1151,40 +1377,56 @@ export default function Ajustes() {
                   .map((u) => (
                     <article
                       key={u.id}
-                      className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm"
+                      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
                     >
                       <div className="flex min-w-0 items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold">
                             {u.n}
                           </p>
-                          <p className="mt-1 break-all text-xs text-zinc-500">
-                            {u.email}
+                          <p className="mt-1 break-all text-xs text-slate-500">
+                            {u.cedula}
                           </p>
                         </div>
                         <span
-                          className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] ${u.estado === 'Activo' ? 'border-green-200 bg-green-50 text-green-700' : 'border-zinc-200 bg-zinc-100 text-zinc-600'}`}
+                          className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] ${u.estado === 'Activo' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}
                         >
                           {u.estado}
                         </span>
                       </div>
-                      <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-zinc-100 pt-3">
+                      <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
                         <div>
-                          <dt className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                          <dt className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
                             Rol
                           </dt>
                           <dd className="mt-1 text-xs font-medium">{u.r}</dd>
                         </div>
                         <div className="min-w-0">
-                          <dt className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                          <dt className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                            Cédula
+                          </dt>
+                          <dd className="mt-1 truncate text-xs font-medium">
+                            {u.cedula}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
                             Concesionario
                           </dt>
                           <dd className="mt-1 truncate text-xs font-medium">
                             {u.c}
                           </dd>
                         </div>
+                        <div className="min-w-0">
+                          <dt className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                            Ciudad
+                          </dt>
+                          <dd className="mt-1 truncate text-xs font-medium">
+                            {u.ciudad || '-'}
+                          </dd>
+                        </div>
                       </dl>
-                      <div className="mt-3 flex gap-2 border-t border-zinc-100 pt-3">
+                      <div className="mt-3 flex gap-2 border-t border-slate-100 pt-3">
                         <button
                           type="button"
                           onClick={() => openEditModal(u)}
@@ -1194,13 +1436,9 @@ export default function Ajustes() {
                         </button>
                         <button
                           type="button"
-                          onClick={() =>
-                            setUsuarios((actuales) =>
-                              actuales.filter((usuario) => usuario.id !== u.id),
-                            )
-                          }
+                          onClick={() => abrirConfirmarEliminar(u)}
                           aria-label={`Eliminar usuario ${u.n}`}
-                          className="grid h-11 w-11 place-items-center rounded-lg border text-zinc-500 hover:bg-red-50 hover:text-red-600"
+                          className="grid h-11 w-11 place-items-center rounded-lg border text-slate-500 hover:bg-red-50 hover:text-red-600"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -1211,10 +1449,10 @@ export default function Ajustes() {
             </Card>
           )}
 
-          {seccion === 'motor' && (
+          {!esAsesor && seccion === 'motor' && (
             <>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs text-zinc-500">
+                <p className="text-xs text-slate-500">
                   Parámetros activos del motor cargados desde el servidor.
                 </p>
                 <button
@@ -1251,47 +1489,7 @@ export default function Ajustes() {
             </>
           )}
 
-          {seccion === 'riesgo' && (
-            <>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs text-zinc-500">
-                  Reglas de elegibilidad, buró y endeudamiento del backend.
-                </p>
-                <button
-                  type="button"
-                  onClick={recargarParametros}
-                  disabled={cargandoParametros || guardandoParametros}
-                  className="h-8 rounded-md border bg-white px-3 text-xs disabled:opacity-50"
-                >
-                  Recargar desde backend
-                </button>
-              </div>
-              <EditorParametros
-                seccion="riesgo"
-                parametros={parametros}
-                bloqueados={bloqueadosPorEntorno}
-                cargando={cargandoParametros}
-                deshabilitado={cargandoParametros || guardandoParametros}
-                error={errorParametros}
-                onRetry={recargarParametros}
-                onChange={handleParametroChange}
-              />
-              {parametros && (
-                <div className="flex flex-wrap justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void restablecerValores()}
-                    disabled={guardandoParametros || cargandoParametros}
-                    className="h-9 rounded-md border bg-white px-4 text-xs disabled:opacity-50"
-                  >
-                    Restablecer valores por defecto
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-
-          {seccion === 'concesionarios' && (
+          {!esAsesor && seccion === 'concesionarios' && (
             <Card title="Concesionarios" desc="Aliados y cupos de crédito">
               <div className="flex flex-col sm:flex-row gap-2 mb-4">
                 <label className="sr-only" htmlFor="dealer-name">
@@ -1302,13 +1500,13 @@ export default function Ajustes() {
                   value={nuevoConcesionario}
                   onChange={(e) => setNuevoConcesionario(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addConcesionario()}
-                  placeholder="Ej: Suzuki Yumbo"
+                  placeholder="Ej: Suzuki Palmira"
                   className="h-11 w-full flex-1 rounded-lg border px-3 text-base sm:h-9 sm:rounded-md sm:text-sm"
                 />
                 <button
                   type="button"
                   onClick={addConcesionario}
-                  className="h-11 w-full rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
+                  className="h-11 w-full rounded-lg bg-[#000033] px-4 text-sm font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
                 >
                   Agregar
                 </button>
@@ -1317,22 +1515,22 @@ export default function Ajustes() {
                 {concesionarios.map((c) => (
                   <div
                     key={c}
-                    className="flex items-center justify-between p-4 rounded-lg border bg-white hover:border-zinc-300 transition-colors"
+                    className="flex items-center justify-between p-4 rounded-lg border bg-white hover:border-slate-300 transition-colors"
                   >
                     <div>
                       <p className="text-sm font-medium">{c}</p>
-                      <p className="text-xs text-zinc-500 mt-0.5">
+                      <p className="text-xs text-slate-500 mt-0.5">
                         Cupo: $120M • Usado: $45M • Asesores: 3
                       </p>
-                      <div className="mt-2 h-1.5 w-32 bg-zinc-100 rounded-full overflow-hidden">
-                        <div className="h-full w-[37%] bg-zinc-900" />
+                      <div className="mt-2 h-1.5 w-32 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full w-[37%] bg-[#000033]" />
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => removeConcesionario(c)}
                       aria-label={`Quitar concesionario ${c}`}
-                      className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border text-zinc-500 hover:bg-red-50 hover:text-red-600 sm:h-9 sm:w-9 sm:rounded-md"
+                      className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border text-slate-500 hover:bg-red-50 hover:text-red-600 sm:h-9 sm:w-9 sm:rounded-md"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -1342,15 +1540,92 @@ export default function Ajustes() {
             </Card>
           )}
 
-          {seccion === 'documentos' && (
+          {!esAsesor && seccion === 'documentos' && (
             <>
               <Card
-                title="Documentos y Plantillas"
-                desc="Gestiona requisitos por tipo de crédito. Afecta el checklist del asesor"
+                title="Documentos"
+                desc="Documentos requeridos (solo visual)"
+              >
+                <div className="hidden overflow-auto rounded-md border sm:block">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
+                      <tr>
+                        <th scope="col" className="text-left p-3">
+                          Documento
+                        </th>
+                        <th scope="col" className="text-left p-3">
+                          Formato
+                        </th>
+                        <th scope="col" className="text-left p-3">
+                          Tamaño
+                        </th>
+                        <th scope="col" className="text-left p-3">
+                          Ver
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {documentosVisuales.map((d) => (
+                        <tr key={d.id} className="border-t hover:bg-slate-50">
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              <FileCheck className="h-4 w-4 text-slate-400" />
+                              <span className="font-medium">{d.nombre}</span>
+                            </div>
+                          </td>
+                          <td className="p-3 text-xs">{d.formato}</td>
+                          <td className="p-3 text-xs">{d.tamano}</td>
+                          <td className="p-3">
+                            <button
+                              type="button"
+                              aria-label={`Ver ${d.nombre}`}
+                              className="h-7 w-7 grid place-items-center rounded border"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="space-y-3 sm:hidden">
+                  {documentosVisuales.map((d) => (
+                    <article
+                      key={d.id}
+                      className="rounded-xl border border-slate-200 bg-white p-4"
+                    >
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="flex min-w-0 items-start gap-2">
+                          <FileCheck className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold">{d.nombre}</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {d.formato} · {d.tamano}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="shrink-0 flex gap-2">
+                          <button
+                            type="button"
+                            aria-label={`Ver ${d.nombre}`}
+                            className="flex h-11 items-center justify-center gap-2 rounded-lg border text-xs font-medium"
+                          >
+                            <Download className="h-4 w-4" /> Ver
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </Card>
+              <Card
+                title="Plantillas"
+                desc="Plantillas descargables y reemplazables"
                 action={
                   <button
                     type="button"
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#000033] px-3 text-xs font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
                   >
                     <Upload className="h-4 w-4 sm:h-3 sm:w-3" /> Subir plantilla
                   </button>
@@ -1358,19 +1633,16 @@ export default function Ajustes() {
               >
                 <div className="hidden overflow-auto rounded-md border sm:block">
                   <table className="w-full text-sm">
-                    <thead className="bg-zinc-50 text-[11px] uppercase text-zinc-500">
+                    <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
                       <tr>
                         <th scope="col" className="text-left p-3">
-                          Documento
-                        </th>
-                        <th scope="col" className="text-left p-3">
-                          Requerido
+                          Plantilla
                         </th>
                         <th scope="col" className="text-left p-3">
                           Formato
                         </th>
                         <th scope="col" className="text-left p-3">
-                          Tamaño Máx
+                          Tamaño
                         </th>
                         <th scope="col" className="text-left p-3">
                           Estado
@@ -1381,62 +1653,52 @@ export default function Ajustes() {
                       </tr>
                     </thead>
                     <tbody>
-                      {documentos.map((d) => (
-                        <tr key={d.id} className="border-t hover:bg-zinc-50">
+                      {plantillas.map((d) => (
+                        <tr key={d.id} className="border-t hover:bg-slate-50">
                           <td className="p-3">
                             <div className="flex items-center gap-2">
-                              <FileCheck className="h-4 w-4 text-zinc-400" />
+                              <FileText className="h-4 w-4 text-slate-400" />
                               <span className="font-medium">{d.nombre}</span>
+                              {d.nota && (
+                                <span className="ml-2 text-[10px] text-amber-500">
+                                  ({d.nota})
+                                </span>
+                              )}
                             </div>
                           </td>
+                          <td className="p-3 text-xs">{d.formato}</td>
+                          <td className="p-3 text-xs">{d.tamano}</td>
                           <td className="p-3">
                             <span
-                              className={`text-[11px] px-2 py-0.5 rounded-full border ${d.requerido ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-zinc-50 text-zinc-600'}`}
+                              className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                                d.nota
+                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              }`}
                             >
-                              {d.requerido ? 'Obligatorio' : 'Opcional'}
+                              {d.nota || 'Disponible'}
                             </span>
                           </td>
-                          <td className="p-3 text-xs">{d.formato}</td>
-                          <td className="p-3 text-xs">{d.max}</td>
                           <td className="p-3">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setDocumentos((p) =>
-                                  p.map((x) =>
-                                    x.id === d.id
-                                      ? { ...x, activo: !x.activo }
-                                      : x,
-                                  ),
-                                )
-                              }
-                              aria-label={`Documento activo: ${d.nombre}`}
-                              aria-pressed={d.activo}
-                              className={`h-6 w-11 rounded-full flex items-center ${d.activo ? 'bg-zinc-900 justify-end' : 'bg-zinc-200 justify-start'}`}
-                            >
-                              <span className="h-4 w-4 rounded-full bg-white shadow mx-1" />
-                            </button>
-                          </td>
-                          <td className="p-3">
-                            <div className="flex justify-end gap-1">
+                            <div className="flex gap-1">
                               <button
                                 type="button"
                                 aria-label={`Descargar ${d.nombre}`}
-                                className="h-7 w-7 grid place-items-center rounded border"
+                                disabled={!!d.nota}
+                                className={`h-7 w-7 grid place-items-center rounded border ${
+                                  d.nota
+                                    ? 'text-slate-400 border-slate-200'
+                                    : 'text-slate-600 border-slate-300'
+                                }`}
                               >
                                 <Download className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 type="button"
-                                onClick={() =>
-                                  setDocumentos((p) =>
-                                    p.filter((x) => x.id !== d.id),
-                                  )
-                                }
-                                aria-label={`Eliminar documento ${d.nombre}`}
-                                className="h-7 w-7 grid place-items-center rounded border hover:bg-red-50"
+                                aria-label={`Reemplazar ${d.nombre}`}
+                                className="h-7 w-7 grid place-items-center rounded border bg-[#000033] text-white"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <RefreshCw className="h-3.5 w-3.5" />
                               </button>
                             </div>
                           </td>
@@ -1446,108 +1708,60 @@ export default function Ajustes() {
                   </table>
                 </div>
                 <div className="space-y-3 sm:hidden">
-                  {documentos.map((d) => (
+                  {plantillas.map((d) => (
                     <article
                       key={d.id}
-                      className="rounded-xl border border-zinc-200 bg-white p-4"
+                      className="rounded-xl border border-slate-200 bg-white p-4"
                     >
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start justify-between gap-3">
                         <div className="flex min-w-0 items-start gap-2">
-                          <FileCheck className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
+                          <FileText className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                           <div className="min-w-0">
                             <p className="text-sm font-semibold">{d.nombre}</p>
-                            <p className="mt-1 text-xs text-zinc-500">
-                              {d.formato} · Máx. {d.max}
+                            <p className="mt-1 text-xs text-slate-500">
+                              {d.formato} · {d.tamano}
                             </p>
                           </div>
+                          <span
+                            className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-medium ${
+                              d.nota
+                                ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            }`}
+                          >
+                            {d.nota || 'Disponible'}
+                          </span>
                         </div>
-                        <span
-                          className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-medium ${d.requerido ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-zinc-200 bg-zinc-50 text-zinc-600'}`}
-                        >
-                          {d.requerido ? 'Obligatorio' : 'Opcional'}
-                        </span>
-                      </div>
-                      <div className="mt-4 flex items-center justify-between border-t border-zinc-100 pt-3">
-                        <span className="text-xs font-medium text-zinc-600">
-                          {d.activo ? 'Documento activo' : 'Documento inactivo'}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setDocumentos((actuales) =>
-                              actuales.map((documento) =>
-                                documento.id === d.id
-                                  ? { ...documento, activo: !documento.activo }
-                                  : documento,
-                              ),
-                            )
-                          }
-                          aria-label={`Documento activo: ${d.nombre}`}
-                          aria-pressed={d.activo}
-                          className={`flex h-11 w-14 items-center rounded-full ${d.activo ? 'justify-end bg-zinc-900' : 'justify-start bg-zinc-200'}`}
-                        >
-                          <span className="mx-1 h-5 w-5 rounded-full bg-white shadow" />
-                        </button>
-                      </div>
-                      <div className="mt-3 flex gap-2">
-                        <button
-                          type="button"
-                          aria-label={`Descargar ${d.nombre}`}
-                          className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg border text-xs font-medium"
-                        >
-                          <Download className="h-4 w-4" /> Descargar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setDocumentos((actuales) =>
-                              actuales.filter(
-                                (documento) => documento.id !== d.id,
-                              ),
-                            )
-                          }
-                          aria-label={`Eliminar documento ${d.nombre}`}
-                          className="grid h-11 w-11 place-items-center rounded-lg border text-zinc-500 hover:bg-red-50 hover:text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="shrink-0 flex gap-2">
+                          <button
+                            type="button"
+                            aria-label={`Descargar ${d.nombre}`}
+                            disabled={!!d.nota}
+                            className={`flex h-11 items-center justify-center gap-2 rounded-lg border text-xs font-medium ${
+                              d.nota
+                                ? 'text-slate-400 border-slate-200'
+                                : 'text-slate-600 border-slate-300'
+                            }`}
+                          >
+                            <Download className="h-4 w-4" /> Descargar
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Reemplazar ${d.nombre}`}
+                            className="flex h-11 items-center justify-center gap-2 rounded-lg border bg-[#000033] text-white text-xs font-medium"
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" /> Reemplazar
+                          </button>
+                        </div>
                       </div>
                     </article>
                   ))}
                 </div>
               </Card>
-              <Card
-                title="Plantilla de Contrato Base"
-                desc="PDF que se genera automáticamente al aprobar"
-              >
-                <div className="rounded-xl border border-dashed bg-zinc-50 p-5 text-center sm:p-8">
-                  <FileText className="h-8 w-8 mx-auto text-zinc-400" />
-                  <p className="text-sm font-medium mt-2">
-                    contrato_base_v4.pdf
-                  </p>
-                  <p className="text-xs text-zinc-500 mt-1">
-                    Última actualización: 28/09/2026 • 2.4MB
-                  </p>
-                  <div className="mt-4 grid grid-cols-1 gap-2 sm:flex sm:justify-center">
-                    <button
-                      type="button"
-                      className="h-11 rounded-lg border bg-white px-3 text-xs sm:h-9 sm:rounded-md"
-                    >
-                      Ver PDF
-                    </button>
-                    <button
-                      type="button"
-                      className="h-11 rounded-lg bg-zinc-900 px-3 text-xs text-white sm:h-9 sm:rounded-md"
-                    >
-                      Reemplazar
-                    </button>
-                  </div>
-                </div>
-              </Card>
             </>
           )}
 
-          {seccion === 'auditoria' && (
+          {!esAsesor && seccion === 'auditoria' && (
             <>
               <Card
                 title="Auditoría y Logs"
@@ -1583,10 +1797,14 @@ export default function Ajustes() {
                   <input
                     aria-label="Buscar en el registro de auditoría"
                     placeholder="Buscar por usuario, acción o IP..."
+                    value={filtroAuditoria}
+                    onChange={(e) => setFiltroAuditoria(e.target.value)}
                     className="h-11 flex-1 rounded-lg border px-3 text-base sm:h-9 sm:rounded-md sm:text-sm"
                   />
                   <select
                     aria-label="Filtrar registros por acción"
+                    value={filtroDecision}
+                    onChange={(e) => setFiltroDecision(e.target.value)}
                     className="h-11 w-full min-w-0 rounded-lg border px-3 text-base sm:h-9 sm:w-auto sm:rounded-md sm:px-2 sm:text-sm"
                   >
                     <option>Todas las acciones</option>
@@ -1595,71 +1813,93 @@ export default function Ajustes() {
                     <option>Login</option>
                   </select>
                 </div>
-                <div className="hidden overflow-auto rounded-md border sm:block">
-                  <table className="w-full text-sm">
-                    <thead className="bg-zinc-50 text-[11px] uppercase text-zinc-500">
-                      <tr>
-                        <th scope="col" className="text-left p-3">
-                          Fecha
-                        </th>
-                        <th scope="col" className="text-left p-3">
-                          Usuario
-                        </th>
-                        <th scope="col" className="text-left p-3">
-                          Acción
-                        </th>
-                        <th scope="col" className="text-left p-3">
-                          IP
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                {cargandoAuditoria && (
+                  <div className="rounded-lg border bg-white p-6 text-sm text-zinc-600 text-center">
+                    Cargando registros de auditoría…
+                  </div>
+                )}
+                {errorAuditoria && !cargandoAuditoria && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-800 text-center">
+                    {errorAuditoria}
+                  </div>
+                )}
+                {!cargandoAuditoria && !errorAuditoria && (
+                  <>
+                    )
+                    <div className="hidden overflow-auto rounded-md border sm:block">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
+                          <tr>
+                            <th scope="col" className="text-left p-3">
+                              Fecha
+                            </th>
+                            <th scope="col" className="text-left p-3">
+                              Usuario
+                            </th>
+                            <th scope="col" className="text-left p-3">
+                              Acción
+                            </th>
+                            <th scope="col" className="text-left p-3">
+                              IP
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {logs.map((l) => (
+                            <tr
+                              key={l.id}
+                              className="border-t hover:bg-slate-50"
+                            >
+                              <td className="p-3 text-xs flex items-center gap-1.5">
+                                <Clock className="h-3 w-3 text-slate-400" />
+                                {l.fecha}
+                              </td>
+                              <td className="p-3 font-medium">{l.usuario}</td>
+                              <td className="p-3 text-xs">{l.accion}</td>
+                              <td className="p-3 text-xs text-slate-500">
+                                {l.ip}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="space-y-3 sm:hidden">
                       {logs.map((l) => (
-                        <tr key={l.id} className="border-t hover:bg-zinc-50">
-                          <td className="p-3 text-xs flex items-center gap-1.5">
-                            <Clock className="h-3 w-3 text-zinc-400" />
-                            {l.fecha}
-                          </td>
-                          <td className="p-3 font-medium">{l.usuario}</td>
-                          <td className="p-3 text-xs">{l.accion}</td>
-                          <td className="p-3 text-xs text-zinc-500">{l.ip}</td>
-                        </tr>
+                        <article
+                          key={l.id}
+                          className="rounded-xl border border-slate-200 bg-white p-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex min-w-0 items-start gap-2">
+                              <Clock className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+                              <p className="text-xs font-medium">{l.fecha}</p>
+                            </div>
+                            <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-medium text-slate-600">
+                              {l.ip}
+                            </span>
+                          </div>
+                          <p className="mt-3 text-sm font-semibold">
+                            {l.usuario}
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-slate-600">
+                            {l.accion}
+                          </p>
+                        </article>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="space-y-3 sm:hidden">
-                  {logs.map((l) => (
-                    <article
-                      key={l.id}
-                      className="rounded-xl border border-zinc-200 bg-white p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-start gap-2">
-                          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
-                          <p className="text-xs font-medium">{l.fecha}</p>
-                        </div>
-                        <span className="shrink-0 rounded-full bg-zinc-100 px-2.5 py-1 text-[10px] font-medium text-zinc-600">
-                          {l.ip}
-                        </span>
-                      </div>
-                      <p className="mt-3 text-sm font-semibold">{l.usuario}</p>
-                      <p className="mt-1 text-xs leading-5 text-zinc-600">
-                        {l.accion}
-                      </p>
-                    </article>
-                  ))}
-                </div>
-                <div className="mt-3 flex items-center gap-2 text-[11px] text-zinc-500">
-                  <AlertTriangle className="h-3 w-3" /> Los logs se retienen{' '}
-                  {form.retencionLogs} días según tu configuración. Cumple con
-                  auditoría interna.
-                </div>
+                    </div>
+                    <div className="mt-3 flex items-center gap-2 text-[11px] text-slate-500">
+                      <AlertTriangle className="h-3 w-3" /> Los logs se retienen{' '}
+                      {form.retencionLogs} días según tu configuración. Cumple
+                      con auditoría interna.
+                    </div>
+                  </>
+                )}
               </Card>
             </>
           )}
 
-          {seccion === 'seguridad' && (
+          {!esAsesor && seccion === 'seguridad' && (
             <>
               <Card
                 title="API Keys"
@@ -1679,7 +1919,7 @@ export default function Ajustes() {
                         },
                       ])
                     }
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 px-3 text-xs font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#000033] px-3 text-xs font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
                   >
                     <Key className="h-4 w-4 sm:h-3 sm:w-3" /> Nueva Key
                   </button>
@@ -1689,16 +1929,16 @@ export default function Ajustes() {
                   {apiKeys.map((k) => (
                     <div
                       key={k.id}
-                      className="flex flex-col gap-3 rounded-xl border bg-zinc-50 p-3 sm:flex-row sm:items-center sm:justify-between"
+                      className="flex flex-col gap-3 rounded-xl border bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="min-w-0">
                         <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
                           {k.nombre}{' '}
-                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-50 border border-green-200 text-green-700">
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700">
                             Activa
                           </span>
                         </p>
-                        <p className="mt-1 break-all text-xs font-mono text-zinc-600">
+                        <p className="mt-1 break-all text-xs font-mono text-slate-600">
                           {k.key} • Creada: {k.creado} • Último uso:{' '}
                           {k.ultimoUso}
                         </p>
@@ -1730,10 +1970,10 @@ export default function Ajustes() {
                 <Card
                   title="CORS y Dominios"
                   desc="Orígenes permitidos para consumir la API"
-                  action={<Globe className="h-4 w-4 text-zinc-400" />}
+                  action={<Globe className="h-4 w-4 text-slate-400" />}
                 >
                   <label
-                    className="text-[11px] uppercase text-zinc-600"
+                    className="text-[11px] uppercase text-slate-600"
                     htmlFor="allowed-domains"
                   >
                     Dominios permitidos (separados por coma)
@@ -1745,7 +1985,7 @@ export default function Ajustes() {
                     className="mt-1 min-h-[96px] w-full rounded-lg border px-3 py-2 text-base sm:rounded-md sm:text-sm"
                     placeholder="https://..."
                   />
-                  <p className="text-[11px] text-zinc-500 mt-2">
+                  <p className="text-[11px] text-slate-500 mt-2">
                     Usa * solo en desarrollo. En producción lista blanca
                     estricta.
                   </p>
@@ -1789,33 +2029,33 @@ export default function Ajustes() {
             </>
           )}
 
-          {seccion === 'backup' && (
+          {!esAsesor && seccion === 'backup' && (
             <>
               <div className="grid md:grid-cols-3 gap-4">
                 <Card title="Salud del Sistema">
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-zinc-600">API Motor</span>
-                      <span className="flex items-center gap-1.5 text-green-700 text-xs">
+                      <span className="text-slate-600">API Motor</span>
+                      <span className="flex items-center gap-1.5 text-emerald-700 text-xs">
                         <CheckCircle2 className="h-4 w-4" /> Operativo
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-zinc-600">Base de datos</span>
-                      <span className="flex items-center gap-1.5 text-green-700 text-xs">
+                      <span className="text-slate-600">Base de datos</span>
+                      <span className="flex items-center gap-1.5 text-emerald-700 text-xs">
                         <CheckCircle2 className="h-4 w-4" /> 42ms
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-zinc-600">Storage docs</span>
-                      <span className="flex items-center gap-1.5 text-green-700 text-xs">
+                      <span className="text-slate-600">Storage docs</span>
+                      <span className="flex items-center gap-1.5 text-emerald-700 text-xs">
                         <CheckCircle2 className="h-4 w-4" /> 78% libre
                       </span>
                     </div>
-                    <div className="mt-3 h-2 w-full bg-zinc-100 rounded-full overflow-hidden">
-                      <div className="h-full w-[92%] bg-green-600" />
+                    <div className="mt-3 h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full w-[92%] bg-emerald-600" />
                     </div>
-                    <p className="text-[11px] text-zinc-500">
+                    <p className="text-[11px] text-slate-500">
                       Uptime 99.94% últimos 30 días
                     </p>
                   </div>
@@ -1829,32 +2069,32 @@ export default function Ajustes() {
                     ].map((b, i) => (
                       <div
                         key={i}
-                        className="flex items-center justify-between p-2 rounded border bg-zinc-50"
+                        className="flex items-center justify-between p-2 rounded border bg-slate-50"
                       >
                         <div>
                           <p className="font-medium text-xs">{b.f}</p>
-                          <p className="text-[11px] text-zinc-500">
+                          <p className="text-[11px] text-slate-500">
                             {b.s} • {b.e}
                           </p>
                         </div>
-                        <Database className="h-4 w-4 text-zinc-400" />
+                        <Database className="h-4 w-4 text-slate-400" />
                       </div>
                     ))}
                   </div>
                 </Card>
                 <Card title="Backup Manual">
                   <div className="text-center py-2">
-                    <HardDrive className="h-8 w-8 mx-auto text-zinc-400" />
+                    <HardDrive className="h-8 w-8 mx-auto text-slate-400" />
                     <p className="text-sm font-medium mt-2">
                       Respaldo bajo demanda
                     </p>
-                    <p className="text-xs text-zinc-500 mt-1">
+                    <p className="text-xs text-slate-500 mt-1">
                       Incluye parametros.json, usuarios y plantillas
                     </p>
-                    <button className="mt-4 w-full h-9 rounded-md bg-zinc-900 text-white text-sm flex items-center justify-center gap-1.5">
+                    <button className="mt-4 w-full h-9 rounded-md bg-[#000033] text-white text-sm flex items-center justify-center gap-1.5">
                       <RefreshCw className="h-4 w-4" /> Crear backup ahora
                     </button>
-                    <p className="text-[11px] text-zinc-500 mt-2">
+                    <p className="text-[11px] text-slate-500 mt-2">
                       Se guardará en /backups y S3 si está configurado
                     </p>
                   </div>
@@ -1868,7 +2108,7 @@ export default function Ajustes() {
                   <div className="flex items-center justify-between rounded-lg border p-4">
                     <div>
                       <p className="text-sm font-medium">Backup automático</p>
-                      <p className="text-xs text-zinc-500">
+                      <p className="text-xs text-slate-500">
                         Todos los días a la hora indicada
                       </p>
                     </div>
@@ -1877,7 +2117,7 @@ export default function Ajustes() {
                       onClick={() => onChange('backupAuto', !form.backupAuto)}
                       aria-label="Respaldo automático"
                       aria-pressed={form.backupAuto}
-                      className={`h-6 w-11 rounded-full flex items-center ${form.backupAuto ? 'bg-zinc-900 justify-end' : 'bg-zinc-200 justify-start'}`}
+                      className={`h-6 w-11 rounded-full flex items-center ${form.backupAuto ? 'bg-[#000033] justify-end' : 'bg-slate-200 justify-start'}`}
                     >
                       <span className="h-4 w-4 rounded-full bg-white shadow mx-1" />
                     </button>
@@ -1943,7 +2183,7 @@ export default function Ajustes() {
                 </h3>
                 <p
                   id="user-modal-description"
-                  className="text-xs text-zinc-500"
+                  className="text-xs text-slate-500"
                 >
                   {editingUser ? `Editando a ${editingUser.n}` : 'Crear acceso'}
                 </p>
@@ -1952,7 +2192,7 @@ export default function Ajustes() {
                 type="button"
                 onClick={() => setShowUserModal(false)}
                 aria-label="Cerrar diálogo"
-                className="grid h-11 w-11 place-items-center rounded-full hover:bg-zinc-100 sm:h-8 sm:w-8"
+                className="grid h-11 w-11 place-items-center rounded-full hover:bg-slate-100 sm:h-8 sm:w-8"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -1967,23 +2207,80 @@ export default function Ajustes() {
                   }
                 />
                 <Input
+                  label="Cédula *"
+                  value={userForm.cedula}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    setUserForm((s) => ({ ...s, cedula: e.target.value }))
+                  }
+                />
+                <Input
                   label="Teléfono"
                   value={userForm.telefono}
                   onChange={(e: ChangeEvent<HTMLInputElement>) =>
                     setUserForm((s) => ({ ...s, telefono: e.target.value }))
                   }
                 />
+                <Input
+                  label="Email *"
+                  type="email"
+                  value={userForm.email}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    setUserForm((s) => ({ ...s, email: e.target.value }))
+                  }
+                />
+                <div className="space-y-1.5">
+                  <label
+                    className="text-[11px] font-medium uppercase tracking-wide text-slate-500"
+                    htmlFor="modal-ciudad"
+                  >
+                    Ciudad
+                  </label>
+                  <div className="relative space-y-1.5">
+                    <input
+                      id="modal-ciudad"
+                      value={userForm.ciudad}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setUserForm((s) => ({ ...s, ciudad: val }))
+                        setCiudadQuery(val)
+                        setCiudadSugerenciasAbiertas(val.length > 0)
+                      }}
+                      onFocus={() => setCiudadSugerenciasAbiertas(true)}
+                      onBlur={() =>
+                        setTimeout(
+                          () => setCiudadSugerenciasAbiertas(false),
+                          150,
+                        )
+                      }
+                      className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-base sm:h-9 sm:rounded-md sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#000033]"
+                    />
+                    {ciudadSugerenciasAbiertas && ciudadFiltrada.length > 0 && (
+                      <div className="absolute z-10 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {ciudadFiltrada.map((c) => (
+                          <div
+                            key={`${c.ciudad}|${c.departamento}`}
+                            onClick={() => {
+                              const nombre = `${c.ciudad}, ${c.departamento}`
+                              setUserForm((s) => ({ ...s, ciudad: nombre }))
+                              setCiudadQuery('')
+                              setCiudadSugerenciasAbiertas(false)
+                            }}
+                            className="px-3 py-2 text-sm text-slate-700 hover:bg-[#000033] hover:text-white cursor-pointer"
+                          >
+                            {c.ciudad}, {c.departamento}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-              <Input
-                label="Email *"
-                value={userForm.email}
-                onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                  setUserForm((s) => ({ ...s, email: e.target.value }))
-                }
-              />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <label className="text-[11px] uppercase" htmlFor="modal-role">
+                  <label
+                    className="text-[11px] font-medium uppercase tracking-wide text-slate-500"
+                    htmlFor="modal-role"
+                  >
                     Rol
                   </label>
                   <select
@@ -1992,17 +2289,25 @@ export default function Ajustes() {
                     onChange={(e) =>
                       setUserForm((s) => ({ ...s, cargo: e.target.value }))
                     }
-                    className="h-11 w-full rounded-lg border px-3 text-base sm:h-9 sm:rounded-md sm:text-sm"
+                    disabled={userForm.cargo === 'Super Admin'}
+                    className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-base sm:h-9 sm:rounded-md sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#000033]"
                   >
                     <option>Asesor</option>
                     <option>Analista</option>
                     <option>Administrador</option>
-                    <option>Super Admin</option>
+                    <option>Contador</option>
+                    <option disabled>
+                      Super Administrador (solo creadores)
+                    </option>
                   </select>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Super Administrador solo disponible para creadores del
+                    sistema
+                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <label
-                    className="text-[11px] uppercase"
+                    className="text-[11px] font-medium uppercase tracking-wide text-slate-500"
                     htmlFor="modal-dealer"
                   >
                     Concesionario
@@ -2016,37 +2321,44 @@ export default function Ajustes() {
                         concesionario: e.target.value,
                       }))
                     }
-                    className="h-11 w-full rounded-lg border px-3 text-base sm:h-9 sm:rounded-md sm:text-sm"
+                    className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-base sm:h-9 sm:rounded-md sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#000033]"
                   >
                     {concesionarios.map((c) => (
                       <option key={c}>{c}</option>
                     ))}
-                    <option>Todos</option>
                   </select>
                 </div>
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <label
-                    className="text-[11px] uppercase"
+                    className="text-[11px] font-medium uppercase tracking-wide text-slate-500"
                     htmlFor="modal-state"
                   >
                     Estado
                   </label>
-                  <select
-                    id="modal-state"
-                    value={userForm.estado}
-                    onChange={(e) =>
-                      setUserForm((s) => ({ ...s, estado: e.target.value }))
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setUserForm((s) => ({
+                        ...s,
+                        estado: s.estado === 'Activo' ? 'Inactivo' : 'Activo',
+                      }))
                     }
-                    className="h-11 w-full rounded-lg border px-3 text-base sm:h-9 sm:rounded-md sm:text-sm"
+                    aria-label={`Estado ${userForm.estado === 'Activo' ? 'Activo' : 'Inactivo'}`}
+                    aria-pressed={userForm.estado === 'Activo'}
+                    className={`h-6 w-11 rounded-full flex items-center ${
+                      userForm.estado === 'Activo'
+                        ? 'bg-emerald-600 justify-end'
+                        : 'bg-red-500 justify-start'
+                    }`}
                   >
-                    <option>Activo</option>
-                    <option>Inactivo</option>
-                  </select>
+                    <span className="h-4 w-4 rounded-full bg-white shadow mx-1" />
+                  </button>
                 </div>
                 <Input
-                  label={editingUser ? 'Nueva contraseña' : 'Contraseña *'}
+                  id="modal-password"
+                  label="Contraseña"
                   type="password"
                   value={userForm.password}
                   onChange={(e: ChangeEvent<HTMLInputElement>) =>
@@ -2054,8 +2366,65 @@ export default function Ajustes() {
                   }
                 />
               </div>
+              <div className="space-y-1.5">
+                <label
+                  className="text-[11px] font-medium uppercase tracking-wide text-slate-500"
+                  htmlFor="modal-fecha-creacion"
+                >
+                  Fecha de creación
+                </label>
+                <input
+                  id="modal-fecha-creacion"
+                  type="date"
+                  defaultValue={
+                    userForm.fechaCreacion ||
+                    new Date().toISOString().slice(0, 10)
+                  }
+                  readOnly
+                  className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-base sm:h-9 sm:rounded-md sm:text-sm focus:outline-none cursor-not-allowed"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label
+                  className="text-[11px] font-medium uppercase tracking-wide text-slate-500"
+                  htmlFor="modal-fecha-modificacion"
+                >
+                  Fecha de modificación
+                </label>
+                <input
+                  id="modal-fecha-modificacion"
+                  type="date"
+                  defaultValue={
+                    userForm.fechaModificacion ||
+                    new Date().toISOString().slice(0, 10)
+                  }
+                  readOnly
+                  className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-base sm:h-9 sm:rounded-md sm:text-sm focus:outline-none cursor-not-allowed"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label
+                  className="text-[11px] font-medium uppercase tracking-wide text-slate-500"
+                  htmlFor="modal-observaciones"
+                >
+                  Observaciones
+                </label>
+                <textarea
+                  id="modal-observaciones"
+                  value={userForm.observaciones}
+                  onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
+                    setUserForm((s) => ({
+                      ...s,
+                      observaciones: e.target.value,
+                    }))
+                  }
+                  placeholder="Menciona a qué persona estaba antes y a quién quedará asignado este perfil..."
+                  rows={3}
+                  className="min-h-[96px] w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-base sm:rounded-md sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#000033]"
+                />
+              </div>
             </div>
-            <div className="flex shrink-0 flex-col-reverse gap-2 rounded-b-xl bg-zinc-50 p-4 sm:flex-row sm:justify-end">
+            <div className="flex shrink-0 flex-col-reverse gap-2 rounded-b-xl bg-slate-50 p-4 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={() => setShowUserModal(false)}
@@ -2066,9 +2435,117 @@ export default function Ajustes() {
               <button
                 type="button"
                 onClick={handleSaveUser}
-                className="h-11 rounded-lg bg-zinc-900 px-5 text-sm text-white sm:h-9 sm:rounded-md"
+                className="h-11 rounded-lg bg-[#000033] px-5 text-sm text-white sm:h-9 sm:rounded-md"
               >
                 {editingUser ? 'Guardar' : 'Crear'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {usuarioAEliminar && pasoEliminar === 'confirmar' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm sm:items-center sm:p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-md flex-col overflow-hidden rounded-xl border bg-white shadow-2xl"
+          >
+            <div className="flex shrink-0 items-center justify-between border-b p-4 sm:p-5">
+              <div>
+                <h3 className="font-semibold text-sm">Eliminar usuario</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  ¿Está seguro de eliminar a <b>{usuarioAEliminar.n}</b>? Esta
+                  acción no se puede deshacer.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={cerrarEliminar}
+                aria-label="Cerrar diálogo"
+                className="grid h-11 w-11 place-items-center rounded-full hover:bg-slate-100 sm:h-8 sm:w-8"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex shrink-0 flex-col-reverse gap-2 rounded-b-xl bg-slate-50 p-4 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={cerrarEliminar}
+                className="h-11 rounded-lg border bg-white px-4 text-sm sm:h-9 sm:rounded-md"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={procederEscribirCedula}
+                className="h-11 rounded-lg bg-[#000033] px-5 text-sm text-white sm:h-9 sm:rounded-md"
+              >
+                Sí, eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {usuarioAEliminar && pasoEliminar === 'cedula' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm sm:items-center sm:p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full max-w-md flex-col overflow-hidden rounded-xl border bg-white shadow-2xl"
+          >
+            <div className="flex shrink-0 items-center justify-between border-b p-4 sm:p-5">
+              <div>
+                <h3 className="font-semibold text-sm">Confirmar cédula</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Escriba la cédula de <b>{usuarioAEliminar.n}</b> (
+                  {usuarioAEliminar.cedula}) para confirmar la eliminación.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={cerrarEliminar}
+                aria-label="Cerrar diálogo"
+                className="grid h-11 w-11 place-items-center rounded-full hover:bg-slate-100 sm:h-8 sm:w-8"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4 sm:p-5">
+              <div className="space-y-1.5">
+                <label
+                  className="text-[11px] font-medium uppercase tracking-wide text-slate-500"
+                  htmlFor="eliminar-cedula"
+                >
+                  Cédula
+                </label>
+                <input
+                  id="eliminar-cedula"
+                  value={cedulaConfirmacion}
+                  onChange={(e) => setCedulaConfirmacion(e.target.value)}
+                  placeholder="Ej: 106308061"
+                  className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-base sm:h-9 sm:rounded-md sm:text-sm focus:outline-none focus:ring-1 focus:ring-[#000033]"
+                  autoFocus
+                />
+                <p className="text-[10px] text-slate-400">
+                  La cédula debe coincidir exactamente con la del usuario.
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 flex-col-reverse gap-2 rounded-b-xl bg-slate-50 p-4 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={cerrarEliminar}
+                className="h-11 rounded-lg border bg-white px-4 text-sm sm:h-9 sm:rounded-md"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarEliminarPorCedula}
+                disabled={cedulaConfirmacion.trim() !== usuarioAEliminar.cedula}
+                className="h-11 rounded-lg bg-[#000033] px-5 text-sm text-white sm:h-9 sm:rounded-md disabled:opacity-50"
+              >
+                Confirmar
               </button>
             </div>
           </div>

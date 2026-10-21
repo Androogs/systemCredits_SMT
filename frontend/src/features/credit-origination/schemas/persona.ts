@@ -21,22 +21,21 @@ export const numeroIdentificacionSchema = z.preprocess(
 
 export const validacionInicialSchema = z.object({
   numeroDocumento: numeroDocumentoSchema,
-  edad: z.preprocess(
-    (valor) => {
-      if (typeof valor === 'string' && valor.trim() === '') return NaN
-      return typeof valor === 'string' ? Number(valor) : valor
-    },
+  fechaNacimiento: z.preprocess(
+    (valor) => (typeof valor === 'string' ? valor : valor),
     z
-      .number({ invalid_type_error: 'Ingresa la edad del solicitante.' })
-      .int(`La edad debe estar entre ${EDAD_MINIMA} y ${EDAD_MAXIMA} años.`)
-      .min(
-        EDAD_MINIMA,
-        `La edad debe estar entre ${EDAD_MINIMA} y ${EDAD_MAXIMA} años.`,
-      )
-      .max(
-        EDAD_MAXIMA,
-        `La edad debe estar entre ${EDAD_MINIMA} y ${EDAD_MAXIMA} años.`,
-      ),
+      .string({ invalid_type_error: 'Ingresa la fecha de nacimiento.' })
+      .min(1, 'Ingresa la fecha de nacimiento.')
+      .refine((fecha) => {
+        const nacimiento = new Date(fecha)
+        const hoy = new Date()
+        if (Number.isNaN(nacimiento.getTime())) return false
+        let edad = hoy.getFullYear() - nacimiento.getFullYear()
+        const mes = hoy.getMonth() - nacimiento.getMonth()
+        if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate()))
+          edad -= 1
+        return edad >= EDAD_MINIMA && edad <= EDAD_MAXIMA
+      }, `La fecha de nacimiento debe corresponder a una edad entre ${EDAD_MINIMA} y ${EDAD_MAXIMA} años.`),
   ),
   multas: z.enum(['si', 'no'], {
     errorMap: () => ({ message: 'Selecciona una opción para continuar.' }),
