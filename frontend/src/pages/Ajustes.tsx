@@ -1,5 +1,5 @@
 import { useId, useState, useRef, useCallback, useEffect } from 'react'
-import type { ChangeEvent, InputHTMLAttributes, ReactNode } from 'react'
+import type { ChangeEvent, ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { env } from '../env'
 import {
@@ -44,6 +44,7 @@ import {
   Copy,
 } from 'lucide-react'
 import CampoNumerico from '../shared/ui/CampoNumerico'
+import CampoEntrada from '../shared/ui/CampoEntrada'
 import { useRol } from '../shared/lib/sesion'
 
 type SeccionId =
@@ -198,7 +199,7 @@ const Card = ({
   desc?: string
   action?: ReactNode
 }) => (
-  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+  <div className="card p-4 sm:p-5">
     <div className="mb-4 flex flex-col gap-3 sm:mb-5 sm:flex-row sm:items-start sm:justify-between">
       <div>
         <h3 className="font-semibold text-[14px] tracking-tight">{title}</h3>
@@ -210,33 +211,7 @@ const Card = ({
   </div>
 )
 
-const Input = ({
-  label,
-  id,
-  ...props
-}: { label: string } & InputHTMLAttributes<HTMLInputElement>) => {
-  const generatedId = useId()
-  const inputId = id ?? generatedId
-
-  return (
-    <div className="space-y-1.5">
-      <label
-        htmlFor={inputId}
-        className="text-[11px] font-medium uppercase tracking-wide text-slate-600"
-      >
-        {label}
-      </label>
-      <input
-        {...props}
-        id={inputId}
-        className="h-11 w-full rounded-md border border-slate-200 bg-white px-3 text-base focus:outline-none focus:ring-1 focus:ring-slate-900 sm:h-9 sm:text-sm"
-      />
-    </div>
-  )
-}
-
-const CLASE_INPUT_NUMERICO =
-  'h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-1 focus:ring-slate-900'
+const Input = CampoEntrada
 
 const InputNumerico = ({
   label,
@@ -261,16 +236,13 @@ const InputNumerico = ({
   const inputId = id ?? generatedId
 
   return (
-    <div className="space-y-1.5">
-      <label
-        htmlFor={inputId}
-        className="text-[11px] font-medium uppercase tracking-wide text-slate-600"
-      >
+    <div>
+      <label htmlFor={inputId} className="label-base">
         {label}
       </label>
       <CampoNumerico
         id={inputId}
-        className={CLASE_INPUT_NUMERICO}
+        className="input-base"
         value={value}
         onValor={onValor}
         decimales={decimales}

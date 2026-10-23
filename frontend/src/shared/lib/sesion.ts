@@ -14,8 +14,6 @@ import { useSyncExternalStore } from 'react'
 export type RolSesion = 'asesor' | 'administrador'
 
 const CLAVE_ROL = 'uw_rol'
-const CLAVE_NOMBRE = 'uw_nombre'
-const CLAVE_SEDE = 'uw_sede'
 const EVENTO_ROL = 'inversiones-pacifico:rol'
 
 export function obtenerRol(): RolSesion {
@@ -51,48 +49,59 @@ export function useRol(): RolSesion {
   return useSyncExternalStore(suscribir, obtenerRol)
 }
 
-/* ---------- Perfil del usuario autenticado ---------- */
+/* ---------- Usuario autenticado ---------- */
 
-const SEDE_DEFECTO = 'Palmira - Centro Interno'
+const CLAVE_USUARIO = 'uw_usuario'
 
-export function obtenerNombre(): string {
+export interface UsuarioSesion {
+  nombre: string
+  correo: string
+  rol: string
+}
+
+/** Persiste el usuario devuelto por POST /api/auth/login para que las
+ * cabeceras muestren al asesor real en vez de datos quemados. */
+export function guardarUsuario(usuario: UsuarioSesion): void {
   try {
-    return localStorage.getItem(CLAVE_NOMBRE) || ''
+    localStorage.setItem(CLAVE_USUARIO, JSON.stringify(usuario))
   } catch {
-    return ''
+    // localStorage bloqueado: la sesión sigue funcionando en memoria.
   }
 }
 
-export function guardarNombre(nombre: string): void {
+export function obtenerUsuario(): UsuarioSesion | null {
   try {
-    localStorage.setItem(CLAVE_NOMBRE, nombre)
+    const crudo = localStorage.getItem(CLAVE_USUARIO)
+    if (!crudo) return null
+    const datos: unknown = JSON.parse(crudo)
+    if (
+      !datos ||
+      typeof datos !== 'object' ||
+      !('nombre' in datos) ||
+      typeof datos.nombre !== 'string'
+    )
+      return null
+    return datos as UsuarioSesion
   } catch {
-    // Sin persistencia: solo afecta esta sesión.
+    return null
   }
 }
 
-export function useNombre(): string {
-  return useSyncExternalStore(suscribir, obtenerNombre)
-}
-
-export function obtenerSede(): string {
+export function limpiarUsuario(): void {
   try {
-    return localStorage.getItem(CLAVE_SEDE) || SEDE_DEFECTO
+    localStorage.removeItem(CLAVE_USUARIO)
   } catch {
-    return SEDE_DEFECTO
+    // Sin persistencia que limpiar.
   }
 }
 
-export function guardarSede(sede: string): void {
-  try {
-    localStorage.setItem(CLAVE_SEDE, sede)
-  } catch {
-    // Sin persistencia: solo afecta esta sesión.
+/** Contexto visible en las cabeceras de radicación: asesor autenticado
+ * y concesionario donde opera. */
+export function contextoRadicacion(): { asesor: string; sede: string } {
+  return {
+    asesor: obtenerUsuario()?.nombre ?? 'Asesor',
+    sede: obtenerConcesionario(),
   }
-}
-
-export function useSede(): string {
-  return useSyncExternalStore(suscribir, obtenerSede)
 }
 
 /* ---------- Concesionario del asesor ---------- */

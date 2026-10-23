@@ -27,6 +27,7 @@ import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginac
 import ResultadoCredito, { type OfertaSeleccionada } from './ResultadoCredito'
 import type { DatosSolicitud } from './CrearSolicitud'
 import type { SimulacionPrevia } from '../model/borrador'
+import { MODO_DEMO } from '../../../env'
 import './EvaluacionYResultado.css'
 
 export interface DatosEvaluacion {
@@ -75,7 +76,7 @@ export default function EvaluacionYResultado({
     resultadoInicial ? 'resultado' : 'origen',
   )
   const [origen, setOrigen] = useState<DatosEvaluacion>({
-    origen: 'demo',
+    origen: MODO_DEMO ? 'demo' : 'experian',
     escenarioMock: 'aprobado',
   })
   const [escenarios, setEscenarios] = useState<Record<string, string>>(
@@ -249,54 +250,60 @@ export default function EvaluacionYResultado({
             </div>
           </div>
 
-          <h2>Origen de la consulta</h2>
-          <div
-            className="evaluacion-resultado__origen-grupo"
-            role="group"
-            aria-label="Origen de datos del buró"
-          >
-            <label className="evaluacion-resultado__origen-opcion">
-              <input
-                type="radio"
-                name="origen-consulta"
-                checked={origen.origen === 'demo'}
-                onChange={() =>
-                  setOrigen((prev) => ({ ...prev, origen: 'demo' }))
-                }
-              />
-              Escenario de demostración
-              {origen.origen === 'demo' && (
-                <select
-                  value={origen.escenarioMock}
-                  aria-label="Escenario simulado"
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) =>
-                    setOrigen((prev) => ({
-                      ...prev,
-                      escenarioMock: e.target.value,
-                    }))
-                  }
-                >
-                  {Object.entries(escenarios).map(([codigo, descripcion]) => (
-                    <option key={codigo} value={codigo}>
-                      {descripcion || codigo}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </label>
-            <label className="evaluacion-resultado__origen-opcion">
-              <input
-                type="radio"
-                name="origen-consulta"
-                checked={origen.origen === 'experian'}
-                onChange={() =>
-                  setOrigen((prev) => ({ ...prev, origen: 'experian' }))
-                }
-              />
-              Experian en línea (requiere credenciales)
-            </label>
-          </div>
+          {MODO_DEMO ? (
+            <>
+              <h2>Origen de la consulta</h2>
+              <div
+                className="evaluacion-resultado__origen-grupo"
+                role="group"
+                aria-label="Origen de datos del buró"
+              >
+                <label className="evaluacion-resultado__origen-opcion">
+                  <input
+                    type="radio"
+                    name="origen-consulta"
+                    checked={origen.origen === 'demo'}
+                    onChange={() =>
+                      setOrigen((prev) => ({ ...prev, origen: 'demo' }))
+                    }
+                  />
+                  Escenario de demostración
+                  {origen.origen === 'demo' && (
+                    <select
+                      value={origen.escenarioMock}
+                      aria-label="Escenario simulado"
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) =>
+                        setOrigen((prev) => ({
+                          ...prev,
+                          escenarioMock: e.target.value,
+                        }))
+                      }
+                    >
+                      {Object.entries(escenarios).map(
+                        ([codigo, descripcion]) => (
+                          <option key={codigo} value={codigo}>
+                            {descripcion || codigo}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  )}
+                </label>
+                <label className="evaluacion-resultado__origen-opcion">
+                  <input
+                    type="radio"
+                    name="origen-consulta"
+                    checked={origen.origen === 'experian'}
+                    onChange={() =>
+                      setOrigen((prev) => ({ ...prev, origen: 'experian' }))
+                    }
+                  />
+                  Experian en línea (requiere credenciales)
+                </label>
+              </div>
+            </>
+          ) : null}
 
           {error && (
             <div className="evaluacion-resultado__error" role="alert">

@@ -12,7 +12,7 @@ import {
   type ResultadoOCRApi,
   type TipoEvidencia,
 } from '../api/originacionApi'
-import { env } from '../../../env'
+import { env, MODO_DEMO } from '../../../env'
 import './CapturaCedula.css'
 
 const API = env.VITE_API_URL.replace(/\/$/, '')
@@ -571,7 +571,7 @@ function CapturaCedula({
             </p>
             {/* Atajo solo en desarrollo: permite recorrer el wizard sin
                 completar la captura remota. No existe en build de producción. */}
-            {import.meta.env.DEV && !completada && (
+            {MODO_DEMO && !completada && (
               <button
                 type="button"
                 className="captura__modo-cambiar"

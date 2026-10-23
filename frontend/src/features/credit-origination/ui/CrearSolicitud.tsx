@@ -17,6 +17,8 @@ import {
   INSTITUCIONES_FUERZAS,
 } from '../schemas/laboral'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
+import { contextoRadicacion } from '../../../shared/lib/sesion'
+import { MODO_DEMO } from '../../../env'
 import './CrearSolicitud.css'
 
 export interface DatosSolicitud {
@@ -103,9 +105,9 @@ function normalizarOcupacion(
 
 const PLAZO_FIJO_MESES = 24
 
-// Precarga de demostración solo en dev (import.meta.env.DEV); en el
-// build de producción los campos económicos arrancan vacíos.
-const valoresIniciales: DatosSolicitud = import.meta.env.DEV
+// Precarga de demostración: activa en dev y en builds con VITE_DEMO=true;
+// en el build de producción los campos económicos arrancan vacíos.
+const valoresIniciales: DatosSolicitud = MODO_DEMO
   ? {
       lineaCredito: 'Inversiones Pacífico',
       destinoCredito: 'Financiamiento de Vehículos',
@@ -177,6 +179,7 @@ function CrearSolicitud({
   identidad,
   sesionCapturaToken,
 }: CrearSolicitudProps) {
+  const { asesor, sede } = contextoRadicacion()
   const [datos, setDatos] = useState<DatosSolicitud>({
     ...valoresIniciales,
     ...normalizarOcupacion(inicial),
@@ -275,11 +278,11 @@ function CrearSolicitud({
           <dl className="solicitud__meta">
             <div>
               <dt>Asesor</dt>
-              <dd>Carlos Mendoza</dd>
+              <dd>{asesor}</dd>
             </div>
             <div>
               <dt>Sede</dt>
-              <dd>Palmira - Centro Interno</dd>
+              <dd>{sede}</dd>
             </div>
           </dl>
         </aside>

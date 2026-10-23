@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { ArrowLeft, ArrowRight, ArrowDown } from 'lucide-react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import { correoSchema, telefonoSchema } from '../schemas/persona'
+import { contextoRadicacion } from '../../../shared/lib/sesion'
+import { MODO_DEMO } from '../../../env'
 import './AutorizacionDatos.css'
 
 export interface DatosAutorizacion {
@@ -43,13 +45,15 @@ const finalidades = [
 ] as const
 
 function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
+  const { asesor, sede } = contextoRadicacion()
   const [marcaRegistro] = useState(marcaTiempoActual)
   const [autoriza, setAutoriza] = useState(false)
-  const [telefono, setTelefono] = useState('')
-  const [correo, setCorreo] = useState('')
+  const [telefono, setTelefono] = useState(MODO_DEMO ? '3001234567' : '')
+  const [correo, setCorreo] = useState(
+    MODO_DEMO ? 'carlos.restrepo@correo.com' : '',
+  )
   const [intentado, setIntentado] = useState(false)
   const [registrado, setRegistrado] = useState(false)
-  const [legalDesplegado, setLegalDesplegado] = useState(false)
 
   const error = intentado && !autoriza
   const errorTelefono = intentado
@@ -81,7 +85,7 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
       // En dev se muestra una IP de ejemplo para completar la demo; en
       // producción queda como no capturada hasta que el backend registre
       // la IP real del asesor.
-      ipAsesor: import.meta.env.DEV ? '186.154.43.12' : IP_NO_CAPTURADA,
+      ipAsesor: MODO_DEMO ? '186.154.43.12' : IP_NO_CAPTURADA,
     })
   }
 
@@ -110,11 +114,11 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
           <dl className="autorizacion__meta">
             <div>
               <dt>Asesor</dt>
-              <dd>Carlos Mendoza</dd>
+              <dd>{asesor}</dd>
             </div>
             <div>
               <dt>Sede</dt>
-              <dd>Palmira - Centro Interno</dd>
+              <dd>{sede}</dd>
             </div>
           </dl>
         </aside>
@@ -147,86 +151,58 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
         )}
 
         <div className="autorizacion__legal">
-          <button
-            type="button"
-            className="autorizacion__legal-toggle"
-            onClick={() => setLegalDesplegado((previo) => !previo)}
-            aria-expanded={legalDesplegado}
-          >
-            <strong>
-              {legalDesplegado
-                ? 'Ocultar Resumen y Documento Legal'
-                : 'Mostrar Resumen y Documento Legal'}
-            </strong>
-            <ArrowDown
-              className="autorizacion__legal-arrow"
-              size={16}
-              style={{
-                transform: legalDesplegado ? 'rotate(180deg)' : 'rotate(0deg)',
-                transition: 'transform 0.2s ease',
-                marginLeft: 8,
-              }}
-            />
-          </button>
-          {legalDesplegado && (
-            <>
-              <ol className="autorizacion__legal-list">
-                {finalidades.map((item) => (
-                  <li key={item.number} className="autorizacion__legal-item">
-                    <span
-                      className="autorizacion__legal-number"
-                      aria-hidden="true"
-                    >
-                      {item.number}
-                    </span>
-                    <div className="autorizacion__legal-body">
-                      <h3>{item.title}</h3>
-                      <p>{item.body}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
+          <ol className="autorizacion__legal-list">
+            {finalidades.map((item) => (
+              <li key={item.number} className="autorizacion__legal-item">
+                <span className="autorizacion__legal-number" aria-hidden="true">
+                  {item.number}
+                </span>
+                <div className="autorizacion__legal-body">
+                  <h3>{item.title}</h3>
+                  <p>{item.body}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
 
-              <a
-                className="autorizacion__legal-link"
-                href="/documentos/autorizacion-consulta-centrales-habeas-data.docx"
-                download="Autorizacion consulta centrales - Habeas Data - Inversiones Pacifico.docx"
-              >
-                <svg
-                  className="autorizacion__legal-icon"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                  focusable="false"
-                >
-                  <path
-                    d="M12 3v12"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="m7 10 5 5 5-5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M5 21h14"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                Descargar el documento legal completo de Habeas Data (DOCX)
-              </a>
-            </>
-          )}
+          <a
+            className="autorizacion__legal-link"
+            href="/documentos/autorizacion-consulta-centrales-habeas-data.docx"
+            download="Autorizacion consulta centrales - Habeas Data - Inversiones Pacifico.docx"
+          >
+            <svg
+              className="autorizacion__legal-icon"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path
+                d="M12 3v12"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="m7 10 5 5 5-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M5 21h14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Descargar el documento legal completo de Habeas Data (DOCX)
+          </a>
         </div>
 
         <fieldset className="autorizacion__contacto">
@@ -341,6 +317,36 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
               Debes marcar la autorización del cliente para continuar.
             </p>
           )}
+        </div>
+
+        <div className="autorizacion__audit" role="note">
+          <svg
+            className="autorizacion__audit-icon"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="9"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M12 7v5l3 2"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <p>
+            <span>Registro Auditoría:</span> {marcaRegistro} | IP del Nodo de
+            Solicitud Asesor: {IP_NO_CAPTURADA}
+          </p>
         </div>
 
         <div className="autorizacion__actions">

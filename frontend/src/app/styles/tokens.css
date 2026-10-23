@@ -1,0 +1,91 @@
+/* Tokens de diseño — fuente única.
+   Los literales hex viven SOLO aquí; el resto del CSS consume var(--*). */
+:root {
+  /* --- Marca: Inversiones Pacífico --- */
+  --brand: #099dd7;
+  --brand-light: #1cb6ea;
+  --brand-deep: #087ead;
+  --brand-press: #065f83;
+  --brand-ink: #11648a;
+  --navy: #000033;
+  --navy-panel: #001c48;
+  --navy-soft: #1d3557;
+
+  /* --- Neutros pizarra --- */
+  --ink: #1d2939;
+  --slate-strong: #344054;
+  --slate: #475467;
+  --slate-soft: #667085;
+  --slate-faint: #98a2b3;
+  --border: #d5dde5;
+  --border-soft: #eef1f6;
+  --surface-neutral: #f5f7f9;
+  --white: #ffffff;
+
+  /* --- Superficies tintadas azul-claro --- */
+  --surface-tint: #f3fbff;
+  --surface-tint-light: #f7fdff;
+  --surface-tint-deep: #eef8fe;
+  --border-tint: #b8ddeb;
+  --border-tint-soft: #d8eaf4;
+
+  /* --- Éxito --- */
+  --success: #0f7a4d;
+  --success-ink: #176b46;
+  --success-bright: #5ce099;
+  --success-border: #b8dfca;
+  --success-bg: #f2faf5;
+
+  /* --- Advertencia --- */
+  --warning-ink: #9b6412;
+  --warning: #e9c36b;
+  --warning-bg: #fffaf0;
+  --warning-bg-deep: #fef3c7;
+
+  /* --- Error --- */
+  --error: #d92d20;
+  --error-ink: #a4231a;
+  --error-strong: #b42318;
+  --error-press: #912018;
+  --error-border: #e8b4b0;
+  --error-bg: #fff5f4;
+
+  /* --- Canales RGB para transparencias ---
+     Cada canal replica el literal de arriba (mismo tono, otra sintaxis). */
+  --brand-rgb: 9 157 215;
+  --brand-light-rgb: 28 182 234;
+  --brand-deep-rgb: 8 126 173;
+  --brand-press-rgb: 6 95 131;
+  --brand-ink-rgb: 17 100 138;
+  --brand-50-rgb: 237 250 255;
+  --brand-100-rgb: 213 243 255;
+  --navy-rgb: 0 0 51;
+  --navy-panel-rgb: 0 28 72;
+  --navy-soft-rgb: 29 53 87;
+  --ink-rgb: 29 41 57;
+  --slate-strong-rgb: 52 64 84;
+  --slate-rgb: 71 84 103;
+  --slate-soft-rgb: 102 112 133;
+  --slate-faint-rgb: 152 162 179;
+  --border-rgb: 213 221 229;
+  --border-soft-rgb: 238 241 246;
+  --surface-neutral-rgb: 245 247 249;
+  --white-rgb: 255 255 255;
+  --surface-tint-rgb: 243 251 255;
+  --success-rgb: 15 122 77;
+  --success-ink-rgb: 23 107 70;
+  --success-bright-rgb: 92 224 153;
+  --success-border-rgb: 184 223 202;
+  --success-bg-rgb: 242 250 245;
+  --warning-rgb: 233 195 107;
+  --warning-ink-rgb: 155 100 18;
+  --warning-bg-rgb: 255 250 240;
+  --warning-bg-deep-rgb: 254 243 199;
+  --error-rgb: 217 45 32;
+  --error-ink-rgb: 164 35 26;
+  --error-strong-rgb: 180 35 24;
+  --error-border-rgb: 232 180 176;
+  --error-bg-rgb: 255 245 244;
+  --shadow-rgb: 25 46 76;
+  --shadow-ink-rgb: 15 23 42;
+}
