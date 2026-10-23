@@ -11,19 +11,17 @@ causales que disparen):
     1. Filtros duros: exclusión fallecido (score 3), políticas de la
        solicitud (persona natural, edad, nacionalidad, RUNT), 11
        políticas de buró y mora 30 vigente.
-    2. Exclusión de score 0 / 4: sin perfil de score; Estudio (E7) si
-       el ingreso SMMLV alcanza Ingreso_E_2 (Ingreso_I_2 si es
-       independiente), si no Requiere codeudor (RC3).
+    2. Exclusión de score 0 / 4: sin perfil de score; causal E7 si el
+       ingreso SMMLV alcanza Ingreso_E_2 (Ingreso_I_2 si es
+       independiente), si no RC3 — ambas rechazan (D185).
     3. Valor Ingreso e Ingreso Final.
     4. Perfil de score y perfil de ingreso.
     5. Matriz de decisión por ocupación.
     6. Capacidad de pago (siempre, para trazabilidad).
 
-Decisión interna = la de mayor prioridad entre las causales
-(Rechazo > Requiere codeudor > Estudio > Aprobado). La decisión
-PÚBLICA es binaria: Aprobado solo si no hay ninguna causal que decida;
-cualquier otro caso es Rechazado con sus causales ordenadas por
-prioridad. Las causales que la matriz anexa a un APROBADO (E4/E5/E6,
+Decisión estrictamente binaria (D185): Aprobado solo si no hay causal
+que decida; cualquier causal produce Rechazado, interna y públicamente.
+Las causales que la matriz anexa a un APROBADO (E4/E5/E6,
 perfil de ingreso bajo) son solo trazabilidad: se reportan en
 `causales` pero no alteran la decisión. Si el motor no puede
 justificar una aprobación y no hay causal explícita (p. ej. falta el
@@ -270,8 +268,6 @@ class MotorDecision:
         causales_decision = ordenar_causales(causales)
         if causales_decision:
             decision_interna = max((c.tipo for c in causales_decision), key=PRIORIDAD_DECISION.get)
-            # Conservar REQUIERE_CODEUDOR y ESTUDIO para trazabilidad interna
-            # La decisión pública continúa siendo binaria
             decision_publica = DecisionFinal.RECHAZADO
         else:
             decision_interna = Decision.APROBADO

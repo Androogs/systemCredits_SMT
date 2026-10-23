@@ -26,6 +26,7 @@ database/migraciones/001_motor_decision.sql.
 
 import uuid
 from datetime import date, datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     JSON,
@@ -47,6 +48,15 @@ from sqlalchemy.dialects.postgresql import INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.db_models.base import Base
+
+# Import real (no solo TYPE_CHECKING): las relaciones de
+# SolicitudCredito ('Asesor', 'Concesionario') se resuelven por nombre
+# en el registry — sin el módulo registrado, configure_mappers falla
+# en contextos que solo importan este archivo (tests unitarios).
+from backend.db_models import auth_models as _auth_models  # noqa: F401
+
+if TYPE_CHECKING:
+    from backend.db_models.auth_models import Asesor, Concesionario
 
 # JSONB en PostgreSQL, JSON genérico en otros motores.
 JSONPortable = JSON().with_variant(JSONB(), "postgresql")
@@ -135,6 +145,17 @@ class SolicitudCredito(Base):
     # Generado por la base de datos (secuencia en schema.sql).
     num_solicitud: Mapped[int | None] = mapped_column(unique=True, server_default=FetchedValue())
     id_cliente: Mapped[int] = mapped_column(ForeignKey("cliente.id_cliente"))
+    # Quién radió y desde qué sede: lo fija el backend desde el usuario
+    # autenticado (auth), nunca desde el payload del cliente.
+    id_asesor: Mapped[int | None] = mapped_column(ForeignKey("asesor.id_asesor"))
+    # Foto de quién radicó EN EL MOMENTO: la cuenta de asesor puede
+    # cambiar de persona (el correo corporativo es permanente) y la
+    # solicitud sigue atribuida a quien realmente la hizo, por cédula.
+    asesor_nombre: Mapped[str | None] = mapped_column(String(180))
+    asesor_cedula: Mapped[str | None] = mapped_column(String(40))
+    id_concesionario: Mapped[int | None] = mapped_column(
+        ForeignKey("concesionario.id_concesionario")
+    )
     fecha_hora: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora_utc)
     moneda: Mapped[str] = mapped_column(String(3), default="COP")
     decision: Mapped[str | None] = mapped_column(DECISION_DB)
@@ -151,6 +172,10 @@ class SolicitudCredito(Base):
     autenticacion: Mapped[str | None] = mapped_column(String(100))
 
     cliente: Mapped["Cliente"] = relationship(back_populates="solicitudes")
+    # Radicador y sede: los usa el alcance por asesor y el reporte de
+    # comisiones del aliado (quién colocó cada crédito).
+    asesor: Mapped["Asesor | None"] = relationship()
+    concesionario: Mapped["Concesionario | None"] = relationship()
     datos_laborales: Mapped["DatosLaborales"] = relationship(back_populates="solicitud", uselist=False)
     contacto_vivienda: Mapped["SolicitudContactoVivienda"] = relationship(back_populates="solicitud", uselist=False)
     cotizantes: Mapped[list["Cotizante"]] = relationship(back_populates="solicitud")
@@ -334,7 +359,8 @@ class EvaluacionCredito(Base):
     score_codigo_exclusion: Mapped[str | None] = mapped_column(String(5))
 
     # Agregados en el ensamble: perfiles asignados por el motor y
-    # decisión interna (Estudio / Requiere Codeudor) para trazabilidad.
+    # decisión interna (Estudio; "Requiere Codeudor" solo en
+    # evaluaciones históricas — D185 la convirtió en rechazo).
     perfil_score: Mapped[str | None] = mapped_column(String(10))
     perfil_ingreso: Mapped[str | None] = mapped_column(String(10))
     decision_interna: Mapped[str | None] = mapped_column(String(30))

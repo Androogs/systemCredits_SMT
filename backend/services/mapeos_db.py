@@ -49,7 +49,7 @@ DECISION_A_DB = {
 def estado_solicitud(resultado) -> str:
     """Estado de solicitud_credito tras una evaluación.
 
-    Sin comité: las causales internas Estudio / Requiere Codeudor ya no
-    dejan la solicitud 'en_revision'; siguen la decisión pública.
+    Sin comité ni estados internos: cualquier causal rechaza y la
+    solicitud sigue la decisión pública (D185).
     """
     return "aprobada" if resultado.decision == DecisionFinal.APROBADO else "rechazada"

@@ -105,15 +105,17 @@ POST /api/solicitudes/{id}/evaluar  o  /api/motor/evaluar
        ├─ HDC+ / Valor Ingreso (en línea | archivos | escenario_mock)
        ├─ parsers → RespuestaHDC / RespuestaValorIngreso (normalizados)
        └─ motor_decision_service.evaluar()
-            1. filtros_duros    → R1–R23
+            1. filtros_duros    → causales de rechazo (R*/RC*/E*)
             2. ingreso_final    → Valor Ingreso > Quanto > declarado
             3. perfil_score     → A/B/C/D (EP: 750/680/600/500, IF: 770/700/620/520)
             4. perfil_ingreso   → ALTO/MEDIO/BAJO/GRIS (+continuidad/cámara)
             5. matriz_decision  → por ocupación (Empleado+BAJO aprueba con
                                   causal traza; Pensionado/FFMM/Ind+BAJO rechaza)
             6. capacidad_pago   → endeudamiento, capacidad, cuota moto (E9…)
-            └─ Decisión pública BINARIA: Aprobado solo sin causales que decidan;
-               E4/E5/E6 son trazabilidad cuando la matriz aprueba
+            └─ Decisión BINARIA (interna y pública): Aprobado solo sin
+               causales que decidan; cualquier causal → Rechazado.
+               'Estudio'/'Requiere Codeudor' solo existen en
+               evaluaciones históricas (D185)
        └─ persistencia: evaluacion_credito + detalle + causales + auditoría
 ```
 
@@ -132,7 +134,7 @@ umbrales de score, perfiles de ingreso por ocupación, continuidad
 | `features/credit-origination/` | Flujo SOCIP completo: `api/originacionApi.ts` (cliente HTTP: timeout 30s/120s evaluar, reintentos solo GET), `model/` (borrador, etapas, mapeos-api, schemas Zod), `schemas/` (validación por paso), `ui/` (pantallas del wizard: ValidacionInicial, CapturaCedula, CrearSolicitud, EvaluacionYResultado, ResultadoCredito, DatosClienteFormalizacion, EvidenciaYDatos, RevisionDatos, AutorizacionDatos, SeguimientoOriginacion) |
 | `features/auth/` | Login (`autenticacionApi.ts`) |
 | `features/settings/` | `EditorParametros.tsx` — edita `parametros.json` vía API |
-| `entities/credit/` | Tipos/estado del crédito (`solicitudesPanel`, `underwritingEngine`), UI mínima (`InsigniaEstado`) |
+| `entities/credit/` | Tipos/estado del crédito (`solicitudesPanel`), UI mínima (`InsigniaEstado`) |
 | `shared/` | `lib/` (formatters, finanzas, sesión, toastBus, campoNumerico), `ui/` (UI kit: Boton, Alerta, CampoEntrada, CampoNumerico, Selector, Tarjeta, Toasts, Skeleton) |
 | `env.ts` | `VITE_API_URL` validada con Zod; vacío = `/api` mismo origen |
 
@@ -157,7 +159,7 @@ umbrales de score, perfiles de ingreso por ocupación, continuidad
 | `tests/integration/` | API con SQLite en memoria: `test_api.py` (escenarios mock con decisión+ causales esperadas), auth, documentos, evaluar_local, evidencias, experian en línea |
 | `tests/conftest.py`, `tests/modelos.py` | Fixtures compartidas (motor, solicitud, HDC, VI, parámetros demo) |
 | `scripts/` | `evaluar_local.py` (evaluar archivos JSON sin API), `probar_api.py`, `probar_hdc.py`, `probar_income.py` |
-| `reportes/caso_revision/` | Reportes Experian de prueba |
+| `reportes/caso_revision/` | Reportes Experian de prueba (local, no versionado) |
 | `docs/` | `manual_integracion_aliados.md`, `roles-y-alcance.md`, `openapi.{json,yaml}`, `motor_decision/` (BRD, reglas de negocio, parámetros, origen de cálculos, bitácora) |
 | Raíz | `parametros.json`, `alembic.ini`, `Dockerfile`, `docker-compose`, `package.json` (husky+lint-staged), `.env.example` |
 
@@ -260,6 +262,36 @@ Inicia el backend:
 ```powershell
 python -m uvicorn backend.main:app --reload
 ```
+
+#### Usuarios de prueba (seed `insert.sql`)
+
+El seed crea tres cuentas con rol distinto para recorrer el panel —
+las claves son de desarrollo, cámbialas antes de exponer el ambiente:
+
+| Correo | Clave | Rol y alcance |
+|---|---|---|
+| `admin@pacifico.co` | `Admin123!` | Admin: todo, con score y causales del motor |
+| `asesor@pacifico.co` | `Asesor123!` | Asesor: opera sobre `SUMOTO SA PALMIRA`, solo ve lo radicado por su cédula, vista binaria |
+| `aliado@pacifico.co` | `Aliado123!` | Aliado: solo lectura, solicitudes de su aliado |
+
+Otros roles creados desde Ajustes → Usuarios:
+
+- **concesionario** — administrador de UNA sede (vínculo
+  `concesionario_usuario`): ve todas las solicitudes de su sede, filtra
+  por asesor, radica a nombre de un asesor elegido y gestiona solo los
+  asesores de su sede.
+- **Asesor** — la cuenta (correo corporativo) es permanente; la persona
+  puede cambiar. La solicitud guarda foto del radicador
+  (`asesor_nombre`/`asesor_cedula`) y el alcance es por cédula +
+  `persona_desde`: al cambiar el titular, las radicaciones del
+  predecesor dejan de verse (historial en `asesor_historial`).
+
+La sesión es JWT (`POST /api/auth/login` → `Authorization: Bearer`).
+Fuera de `ENVIRONMENT=demo` el login exige `JWT_SECRETO` configurado
+(ver `.env.example`: `JWT_TTL_HORAS`, `AUTH_MAX_INTENTOS`,
+`AUTH_BLOQUEO_MINUTOS`, `AUTH_ROLES_PANEL`) y la documentación
+interactiva (`/api-docs`, `/redoc`, `/api/openapi.json`) queda
+deshabilitada.
 
 ### Frontend
 

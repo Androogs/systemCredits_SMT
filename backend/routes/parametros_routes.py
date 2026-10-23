@@ -5,11 +5,16 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, create_model
 
+from backend.auth.dependencies import requiere_roles
 from backend.routes.dependencies import get_store
 from backend.services.motor_exceptions import ValidacionError
 from backend.services.motor_parametros import MotorParametros, ParametrosStore
 
-router = APIRouter(prefix="/parametros", tags=["parametros"])
+router = APIRouter(
+    prefix="/parametros",
+    tags=["parametros"],
+    dependencies=[Depends(requiere_roles("admin"))],
+)
 
 # Modelo parcial: todos los campos de MotorParametros como opcionales.
 ParametrosUpdate: type[BaseModel] = create_model(  # type: ignore[call-overload]

@@ -5,19 +5,31 @@ import uuid
 import zipfile
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from backend.auth.dependencies import UsuarioActual, requiere_roles, usuario_actual
 from backend.db_models.evidencia_models import DocumentoEvidencia
 from backend.db_models.models import SolicitudCredito
 from backend.db_models.session import get_db
+from backend.routes.dependencies import auditar_acceso
 from backend.services.documento_service import _TIPO_ID
 from backend.services.evidencia_service import TIPOS_CEDULA, EvidenciaService, TIPOS_EVIDENCIA
 from backend.services.motor_exceptions import SolicitudNoEncontradaError
+from backend.services.solicitud_service import SolicitudService
 
 router = APIRouter(tags=["evidencias"])
+
+
+def _verificar_alcance(
+    db: Session, id_solicitud: uuid.UUID, usuario: UsuarioActual
+) -> None:
+    """Las evidencias heredan el alcance de su solicitud: radicaciones
+    propias del asesor, concesionarios vigentes del aliado, todo para
+    el admin."""
+    SolicitudService(db).verificar_alcance(id_solicitud, usuario)
 
 
 class SesionCapturaResponse(BaseModel):
@@ -64,6 +76,7 @@ def _evidencia_dict(e) -> dict[str, Any]:
 @router.post("/sesiones-captura", response_model=SesionCapturaResponse, status_code=201)
 def crear_sesion(
     payload: DatosEsperadosPayload | None = None,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
     db: Session = Depends(get_db),
 ) -> SesionCapturaResponse:
     """Genera el link/QR de captura. La sesión nace sin solicitud: se enlaza
@@ -77,7 +90,11 @@ def crear_sesion(
 
 
 @router.get("/sesiones-captura/{id_sesion}", response_model=dict)
-def estado_sesion(id_sesion: uuid.UUID, db: Session = Depends(get_db)) -> dict[str, Any]:
+def estado_sesion(
+    id_sesion: uuid.UUID,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
     """Polling del asesor: estado de la sesión, evidencias recibidas y OCR
     fusionado de anverso + reverso."""
     servicio = EvidenciaService(db)
@@ -94,7 +111,12 @@ def estado_sesion(id_sesion: uuid.UUID, db: Session = Depends(get_db)) -> dict[s
 
 
 @router.get("/solicitudes/{id_solicitud}/evidencias", response_model=list[dict])
-def evidencias_solicitud(id_solicitud: uuid.UUID, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+def evidencias_solicitud(
+    id_solicitud: uuid.UUID,
+    usuario: UsuarioActual = Depends(usuario_actual),
+    db: Session = Depends(get_db),
+) -> list[dict[str, Any]]:
+    _verificar_alcance(db, id_solicitud, usuario)
     return [
         _evidencia_dict(e)
         for e in EvidenciaService(db).evidencias_de_solicitud(id_solicitud)
@@ -102,19 +124,53 @@ def evidencias_solicitud(id_solicitud: uuid.UUID, db: Session = Depends(get_db))
 
 
 @router.get("/evidencias/{id_evidencia}/contenido")
-def contenido_evidencia(id_evidencia: int, db: Session = Depends(get_db)) -> FileResponse:
-    """Sirve el archivo de evidencia (lado del asesor; pendiente auth D101)."""
-    ruta, mime = EvidenciaService(db).archivo_evidencia(id_evidencia)
+def contenido_evidencia(
+    id_evidencia: int,
+    request: Request,
+    usuario: UsuarioActual = Depends(usuario_actual),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    """Sirve el archivo de evidencia (sesión requerida, acotada a la
+    sede de la solicitud dueña de la evidencia)."""
+    servicio = EvidenciaService(db)
+    evidencia = servicio.evidencia_por_id(id_evidencia)
+    try:
+        if evidencia.id_solicitud is not None:
+            _verificar_alcance(db, evidencia.id_solicitud, usuario)
+    except (HTTPException, SolicitudNoEncontradaError):
+        auditar_acceso(
+            db, usuario, "acceso_denegado",
+            f"evidencia {id_evidencia}", request,
+        )
+        db.commit()  # persiste aunque el request termine en rollback
+        raise
+    ruta, mime = servicio.archivo_evidencia(id_evidencia)
     if not ruta.exists():
         raise SolicitudNoEncontradaError("Archivo de evidencia no encontrado")
+    auditar_acceso(
+        db, usuario, "acceso_evidencia",
+        f"evidencia {id_evidencia} tipo {evidencia.tipo}", request,
+    )
     return FileResponse(ruta, media_type=mime)
 
 
 @router.get("/solicitudes/{id_solicitud}/legalizacion.zip")
 def paquete_legalizacion(
-    id_solicitud: uuid.UUID, db: Session = Depends(get_db)
+    id_solicitud: uuid.UUID,
+    request: Request,
+    usuario: UsuarioActual = Depends(usuario_actual),
+    db: Session = Depends(get_db),
 ) -> Response:
     """Todos los documentos del paquete de legalización (doc_*) en un .zip."""
+    try:
+        _verificar_alcance(db, id_solicitud, usuario)
+    except (HTTPException, SolicitudNoEncontradaError):
+        auditar_acceso(
+            db, usuario, "acceso_denegado",
+            f"legalizacion.zip solicitud {id_solicitud}", request,
+        )
+        db.commit()  # persiste aunque el request termine en rollback
+        raise
     servicio = EvidenciaService(db)
     documentos = [
         e
@@ -133,6 +189,10 @@ def paquete_legalizacion(
                 paquete.write(ruta, doc.nombre_original or f"{doc.tipo}.docx")
     solicitud = db.get(SolicitudCredito, id_solicitud)
     numero = solicitud.num_solicitud if solicitud else str(id_solicitud)[:8]
+    auditar_acceso(
+        db, usuario, "descarga_legalizacion",
+        f"zip legalizacion solicitud {numero}", request,
+    )
     return Response(
         content=buffer.getvalue(),
         media_type="application/zip",

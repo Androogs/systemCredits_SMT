@@ -6,11 +6,13 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from backend.auth.dependencies import UsuarioActual
 from backend.db_models.models import (
     ConsentimientoHabeas,
     DatosLaborales,
     ProductoVehiculo,
     SolicitudContactoVivienda,
+    SolicitudCredito,
 )
 from backend.models.enums import TIPOS_ID_PERSONA_JURIDICA
 from backend.models.solicitud_models import (
@@ -30,9 +32,10 @@ from backend.models.solicitud_models import (
     SolicitudResumenResponse,
 )
 from backend.repositories.solicitud_repository import SolicitudRepository, oferta_expirada
+from backend.repositories.usuario_repository import UsuarioRepository
 from backend.services.documento_service import DocumentoService
 from backend.services.mapeos_db import OCUPACION_A_DB, TIPO_CONTRATO_A_DB
-from backend.services.motor_exceptions import ConflictoEstadoError, SolicitudNoEncontradaError
+from backend.services.motor_exceptions import ConflictoEstadoError, SolicitudNoEncontradaError, ValidacionError
 from backend.services.textos_legales import VERSION_HABEAS_DATA, hash_habeas
 
 logger = logging.getLogger(__name__)
@@ -78,7 +81,9 @@ def _vigente(filas):
     return max(vigentes, key=lambda f: f.version)
 
 
-def _evaluacion_resumen(solicitud) -> EvaluacionResumenSolicitud | None:
+def _evaluacion_resumen(
+    solicitud, ver_detalle_interno: bool = True
+) -> EvaluacionResumenSolicitud | None:
     evaluacion = _vigente(solicitud.evaluaciones)
     if evaluacion is None:
         return None
@@ -86,12 +91,15 @@ def _evaluacion_resumen(solicitud) -> EvaluacionResumenSolicitud | None:
     return EvaluacionResumenSolicitud(
         id_evaluacion=evaluacion.id_evaluacion,
         version=evaluacion.version,
-        score=evaluacion.score,
-        perfil_score=evaluacion.perfil_score,
-        perfil_ingreso=evaluacion.perfil_ingreso,
-        decision_interna=evaluacion.decision_interna,
-        endeudamiento=evaluacion.endeudamiento,
-        capacidad_pago=evaluacion.capacidad_pago,
+        # Saneamiento por rol: score, perfiles, decisión interna y
+        # métricas de capacidad son del expediente del administrador;
+        # el asesor/aliado recibe decisión y capacidad de oferta.
+        score=evaluacion.score if ver_detalle_interno else None,
+        perfil_score=evaluacion.perfil_score if ver_detalle_interno else None,
+        perfil_ingreso=evaluacion.perfil_ingreso if ver_detalle_interno else None,
+        decision_interna=evaluacion.decision_interna if ver_detalle_interno else None,
+        endeudamiento=evaluacion.endeudamiento if ver_detalle_interno else None,
+        capacidad_pago=evaluacion.capacidad_pago if ver_detalle_interno else None,
         cupo_sugerido=(
             (capacidad.cupo_aprobado or capacidad.cupo_calculado)
             if capacidad is not None
@@ -101,7 +109,9 @@ def _evaluacion_resumen(solicitud) -> EvaluacionResumenSolicitud | None:
     )
 
 
-def _resumen(solicitud) -> SolicitudResumenResponse:
+def _resumen(
+    solicitud, ver_detalle_interno: bool = True
+) -> SolicitudResumenResponse:
     cliente = solicitud.cliente
     return SolicitudResumenResponse(
         id_solicitud=solicitud.id_solicitud,
@@ -112,13 +122,22 @@ def _resumen(solicitud) -> SolicitudResumenResponse:
         decision=solicitud.decision,
         nombre_cliente=cliente.nombre_completo if cliente else "",
         num_cedula=cliente.num_cedula if cliente else "",
+        # Radicador y sede: el aliado los usa para liquidar comisiones
+        # por asesor; para el asesor redundan (todo lo suyo es suyo).
+        # El nombre sale de la foto tomada al radicar — si la cuenta
+        # cambió de persona, la solicitud sigue diciendo quién la hizo.
+        nombre_asesor=solicitud.asesor_nombre
+        or (solicitud.asesor.nombre if solicitud.asesor else None),
+        nombre_concesionario=(
+            solicitud.concesionario.nombre if solicitud.concesionario else None
+        ),
         tipo_documento=cliente.tipo_documento if cliente else None,
         ocupacion=cliente.ocupacion if cliente else None,
         linea_credito=solicitud.linea_credito,
         destino_credito=solicitud.destino_credito,
         plazo_deseado_meses=solicitud.plazo_deseado_meses,
         fecha_hora_firma=solicitud.fecha_hora_firma,
-        evaluacion=_evaluacion_resumen(solicitud),
+        evaluacion=_evaluacion_resumen(solicitud, ver_detalle_interno),
     )
 
 
@@ -203,21 +222,73 @@ class SolicitudService:
         return datos_laborales
 
     def crear(
-        self, req: CrearSolicitudRequest, ip: str | None = None
+        self,
+        req: CrearSolicitudRequest,
+        ip: str | None = None,
+        usuario: UsuarioActual | None = None,
     ) -> CrearSolicitudResponse:
         datos_cliente = self._datos_cliente(req.cliente)
         cliente = self.repo.obtener_o_crear_cliente(req.cliente.num_cedula, datos_cliente)
         self._rellenar_cliente(cliente, datos_cliente)
+        datos_solicitud = {
+            "linea_credito": req.linea_credito,
+            "destino_credito": req.destino_credito,
+            "plazo_deseado_meses": req.plazo_deseado_meses,
+        }
+        # La titularidad sale de la sesión, jamás del payload del cliente:
+        # el asesor radica para su sede; el concesionario radica para su
+        # sede a nombre de un asesor propio (obligatorio); el admin puede
+        # radicar para otra sede (o sin sede, quedando visible solo para
+        # él).
+        radicador = None
+        if usuario is not None:
+            if usuario.es_admin():
+                datos_solicitud["id_concesionario"] = req.id_concesionario
+            elif "asesor" in usuario.roles:
+                if usuario.id_concesionario is None or usuario.id_asesor is None:
+                    raise ValidacionError(
+                        "Tu usuario de asesor no tiene un concesionario "
+                        "asignado; pide al administrador que lo configure."
+                    )
+                radicador = UsuarioRepository(self._db).asesor_de(
+                    usuario.id_usuario
+                )
+                datos_solicitud["id_asesor"] = usuario.id_asesor
+                datos_solicitud["id_concesionario"] = usuario.id_concesionario
+            elif usuario.es_concesionario():
+                if usuario.id_concesionario is None:
+                    raise ValidacionError(
+                        "Tu usuario no tiene un concesionario asignado; "
+                        "pide al administrador que lo configure."
+                    )
+                if req.id_asesor is None:
+                    raise ValidacionError(
+                        "Elige el asesor de tu sede a cuyo nombre queda "
+                        "la solicitud."
+                    )
+                radicador = UsuarioRepository(self._db).asesor_por_id(
+                    req.id_asesor
+                )
+                if (
+                    radicador is None
+                    or radicador.id_concesionario != usuario.id_concesionario
+                ):
+                    raise ValidacionError(
+                        "El asesor elegido no pertenece a tu sede."
+                    )
+                datos_solicitud["id_asesor"] = radicador.id_asesor
+                datos_solicitud["id_concesionario"] = usuario.id_concesionario
+        # Foto del radicador: la cuenta puede cambiar de persona y la
+        # solicitud sigue atribuida a quien la hizo, por cédula.
+        if radicador is not None:
+            datos_solicitud["asesor_nombre"] = radicador.nombre
+            datos_solicitud["asesor_cedula"] = radicador.num_cedula
         solicitud = self.repo.crear_solicitud(
             id_cliente=cliente.id_cliente,
             moneda=req.moneda,
             datos_laborales=self._datos_laborales_db(req.datos_laborales),
             contacto_vivienda=req.contacto_vivienda.model_dump(),
-            datos_solicitud={
-                "linea_credito": req.linea_credito,
-                "destino_credito": req.destino_credito,
-                "plazo_deseado_meses": req.plazo_deseado_meses,
-            },
+            datos_solicitud=datos_solicitud,
         )
         if req.sesion_captura:
             from backend.services.evidencia_service import EvidenciaService
@@ -317,7 +388,10 @@ class SolicitudService:
         return consentimiento
 
     def cancelar(
-        self, id_solicitud: uuid.UUID, motivo: str
+        self,
+        id_solicitud: uuid.UUID,
+        motivo: str,
+        ver_detalle_interno: bool = True,
     ) -> SolicitudResumenResponse:
         """Anula la solicitud. Válida en cualquier estado salvo
         `desembolsada` (el dinero ya giró) y `cancelada` (idempotente
@@ -337,7 +411,59 @@ class SolicitudService:
         solicitud.estado = "cancelada"
         solicitud.descripcion_estado = f"Cancelada: {motivo.strip()}"
         self._db.flush()
-        return _resumen(solicitud)
+        return _resumen(solicitud, ver_detalle_interno)
+
+    def verificar_alcance(
+        self, id_solicitud: uuid.UUID, usuario: UsuarioActual
+    ) -> None:
+        """404 cuando la solicitud queda fuera del alcance del usuario
+        (o no existe): no se revela ni su existencia. El alcance es la
+        intersección del eje sede y el eje radicador (el asesor solo
+        alcanza las que registró él)."""
+        concesionario_ids = usuario.concesionario_ids()
+        asesor_ids = usuario.asesor_ids()
+        if concesionario_ids is None and asesor_ids is None:
+            return
+        fila = (
+            self._db.query(
+                SolicitudCredito.id_concesionario,
+                SolicitudCredito.id_asesor,
+                SolicitudCredito.asesor_cedula,
+                SolicitudCredito.fecha_hora,
+            )
+            .filter(SolicitudCredito.id_solicitud == id_solicitud)
+            .first()
+        )
+        if fila is None or (
+            concesionario_ids is not None
+            and fila.id_concesionario not in concesionario_ids
+        ) or (
+            asesor_ids is not None
+            and (
+                fila.id_asesor not in asesor_ids
+                # Cuenta correcta pero otra persona: con ambas cédulas la
+                # radicó el predecesor; con foto NULL (legada) solo la
+                # ve quien estaba al crearla (corte `persona_desde`).
+                or (
+                    usuario.cedula_asesor is not None
+                    and (
+                        (
+                            fila.asesor_cedula is not None
+                            and fila.asesor_cedula != usuario.cedula_asesor
+                        )
+                        or (
+                            fila.asesor_cedula is None
+                            and usuario.persona_desde_asesor is not None
+                            and fila.fecha_hora
+                            < usuario.persona_desde_asesor
+                        )
+                    )
+                )
+            )
+        ):
+            raise SolicitudNoEncontradaError(
+                f"No existe la solicitud {id_solicitud}"
+            )
 
     def listar(
         self,
@@ -347,6 +473,14 @@ class SolicitudService:
         estado: str | None = None,
         decision: str | None = None,
         busqueda: str | None = None,
+        concesionario_ids: set[int] | None = None,
+        asesor_ids: set[int] | None = None,
+        asesor_cedula: str | None = None,
+        persona_desde: datetime | None = None,
+        filtro_id_concesionario: int | None = None,
+        filtro_id_asesor: int | None = None,
+        orden: str = "reciente",
+        ver_detalle_interno: bool = True,
     ) -> list[SolicitudResumenResponse]:
         filas = self.repo.listar(
             limite=limite,
@@ -354,18 +488,41 @@ class SolicitudService:
             estado=estado,
             decision=decision,
             busqueda=busqueda,
+            concesionario_ids=concesionario_ids,
+            asesor_ids=asesor_ids,
+            asesor_cedula=asesor_cedula,
+            persona_desde=persona_desde,
+            filtro_id_concesionario=filtro_id_concesionario,
+            filtro_id_asesor=filtro_id_asesor,
+            orden=orden,
         )
-        return [_resumen(s) for s in filas]
+        return [_resumen(s, ver_detalle_interno) for s in filas]
 
     def metricas_embudo(
         self,
         desde: datetime | None = None,
         hasta: datetime | None = None,
+        concesionario_ids: set[int] | None = None,
+        aliado_ids: set[int] | None = None,
+        asesor_ids: set[int] | None = None,
+        asesor_cedula: str | None = None,
+        persona_desde: datetime | None = None,
+        filtro_id_concesionario: int | None = None,
+        filtro_id_asesor: int | None = None,
     ) -> MetricasEmbudoResponse:
         """Conversión del embudo originación → desembolso. Las etapas se
         derivan de los hitos persistidos: decisión del motor, oferta
         seleccionada (aliado), firma OTP y estado desembolsada."""
-        c = self.repo.conteos_embudo(desde=desde, hasta=hasta)
+        c = self.repo.conteos_embudo(
+            desde=desde,
+            hasta=hasta,
+            concesionario_ids=concesionario_ids,
+            asesor_ids=asesor_ids,
+            asesor_cedula=asesor_cedula,
+            persona_desde=persona_desde,
+            filtro_id_concesionario=filtro_id_concesionario,
+            filtro_id_asesor=filtro_id_asesor,
+        )
         radicadas = c["radicadas"] or 1  # evita división por cero
         etapas = [
             ("radicadas", "Radicadas", c["radicadas"]),
@@ -390,15 +547,55 @@ class SolicitudService:
             por_estado=c["por_estado"],
             por_aliado=[
                 EmbudoAliadoResponse(**fila)
-                for fila in self.repo.conteos_por_aliado(desde=desde, hasta=hasta)
+                for fila in self.repo.conteos_por_aliado(
+                    desde=desde,
+                    hasta=hasta,
+                    concesionario_ids=concesionario_ids,
+                    aliado_ids=aliado_ids,
+                    asesor_ids=asesor_ids,
+                    asesor_cedula=asesor_cedula,
+                    persona_desde=persona_desde,
+                    filtro_id_concesionario=filtro_id_concesionario,
+                    filtro_id_asesor=filtro_id_asesor,
+                )
             ],
         )
 
-    def detalle(self, id_solicitud: uuid.UUID) -> SolicitudDetalleResponse:
+    def detalle(
+        self,
+        id_solicitud: uuid.UUID,
+        concesionario_ids: set[int] | None = None,
+        asesor_ids: set[int] | None = None,
+        asesor_cedula: str | None = None,
+        persona_desde: datetime | None = None,
+        ver_detalle_interno: bool = True,
+    ) -> SolicitudDetalleResponse:
         solicitud = self.repo.obtener_detalle(id_solicitud)
-        if solicitud is None:
+        if solicitud is None or (
+            concesionario_ids is not None
+            and solicitud.id_concesionario not in concesionario_ids
+        ) or (
+            asesor_ids is not None
+            and (
+                solicitud.id_asesor not in asesor_ids
+                or (
+                    asesor_cedula is not None
+                    and (
+                        (
+                            solicitud.asesor_cedula is not None
+                            and solicitud.asesor_cedula != asesor_cedula
+                        )
+                        or (
+                            solicitud.asesor_cedula is None
+                            and persona_desde is not None
+                            and solicitud.fecha_hora < persona_desde
+                        )
+                    )
+                )
+            )
+        ):
             raise SolicitudNoEncontradaError(f"No existe la solicitud {id_solicitud}")
-        resumen = _resumen(solicitud)
+        resumen = _resumen(solicitud, ver_detalle_interno)
         laborales = solicitud.datos_laborales
         contacto = solicitud.contacto_vivienda
         return SolicitudDetalleResponse(
@@ -472,14 +669,18 @@ class SolicitudService:
                 if contacto
                 else None
             ),
-            causales=[
-                CausalSolicitudResponse(
-                    codigo=c.codigo,
-                    descripcion=c.descripcion,
-                    activa=c.activa,
-                )
-                for c in solicitud.causales
-            ],
+            causales=(
+                [
+                    CausalSolicitudResponse(
+                        codigo=c.codigo,
+                        descripcion=c.descripcion,
+                        activa=c.activa,
+                    )
+                    for c in solicitud.causales
+                ]
+                if ver_detalle_interno
+                else []
+            ),
             ofertas=[_oferta_response(o) for o in solicitud.ofertas],
             consentimientos=[
                 ConsentimientoResponse(

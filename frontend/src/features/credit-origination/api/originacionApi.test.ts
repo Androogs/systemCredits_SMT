@@ -36,11 +36,11 @@ describe('listarSolicitudes', () => {
     const datos = await listarSolicitudes()
 
     expect(datos).toEqual([])
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${BASE}/api/solicitudes`,
-      expect.objectContaining({
-        headers: { 'Content-Type': 'application/json' },
-      }),
+    // Los headers viajan como instancia Headers desde fetchAutenticado
+    // (adjunta Bearer y rota el refresh ante 401).
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(new Headers(init.headers).get('Content-Type')).toBe(
+      'application/json',
     )
   })
 

@@ -10,29 +10,46 @@ import {
   Settings2,
   PanelLeftClose,
   PanelLeftOpen,
-  Briefcase,
   Calculator,
   X,
   UserCog,
   ShieldCheck,
 } from 'lucide-react'
-import { guardarRol, useRol } from '../../shared/lib/sesion'
+import { useRol, useUsuario, type RolSesion } from '../../shared/lib/sesion'
 
 interface ItemNav {
   to: string
   label: string
   icon: LucideIcon
+  /** Roles que ven la entrada; omitir = todos. */
+  roles?: RolSesion[]
   badge?: number
 }
 
 const nav: ItemNav[] = [
   { to: '/dashboard', label: 'Resumen', icon: LayoutDashboard },
-  { to: '/asesor', label: 'Panel asesor', icon: Briefcase },
   { to: '/solicitudes', label: 'Solicitudes', icon: ListChecks },
-  { to: '/nueva-solicitud', label: 'Nueva solicitud', icon: FilePlus2 },
-  { to: '/simulador', label: 'Simulador', icon: Calculator },
+  {
+    to: '/nueva-solicitud',
+    label: 'Nueva solicitud',
+    icon: FilePlus2,
+    roles: ['admin', 'asesor', 'concesionario'],
+  },
+  {
+    to: '/simulador',
+    label: 'Simulador',
+    icon: Calculator,
+    roles: ['admin', 'asesor', 'concesionario'],
+  },
   { to: '/ajustes', label: 'Ajustes', icon: Settings2 },
 ]
+
+const ROTULO_ROL: Record<RolSesion, string> = {
+  admin: 'Administrador',
+  asesor: 'Asesor',
+  aliado: 'Aliado',
+  concesionario: 'Administrador de sede',
+}
 
 export default function BarraLateral({
   onLogout,
@@ -52,7 +69,11 @@ export default function BarraLateral({
     () => window.matchMedia('(max-width: 767.98px)').matches,
   )
   const rol = useRol()
-  const itemsNav = useMemo<ItemNav[]>(() => [...nav], [])
+  const usuario = useUsuario()
+  const itemsNav = useMemo<ItemNav[]>(
+    () => nav.filter((item) => !item.roles || item.roles.includes(rol)),
+    [rol],
+  )
   const botonCerrarRef = useRef<HTMLButtonElement>(null)
   const asideRef = useRef<HTMLElement>(null)
   const menuEstabaAbierto = useRef(false)
@@ -214,7 +235,7 @@ export default function BarraLateral({
                   className={`ml-auto min-w-5 rounded-full bg-amber-400/90 px-1.5 py-0.5 text-center text-[11px] font-bold text-slate-900 ${
                     collapsed ? 'md:hidden' : ''
                   }`}
-                  aria-label={`${badge} casos pendientes del comité`}
+                  aria-label={`${badge} casos pendientes`}
                 >
                   {badge}
                 </span>
@@ -223,16 +244,15 @@ export default function BarraLateral({
           ))}
         </nav>
 
-        {/* ROL + LOGOUT - FIJO ABAJO, SIEMPRE VISIBLE */}
+        {/* USUARIO + LOGOUT - FIJO ABAJO, SIEMPRE VISIBLE */}
         <div className="shrink-0 p-3 border-t border-white/10 space-y-2">
-          <button
-            type="button"
-            onClick={() =>
-              guardarRol(rol === 'asesor' ? 'administrador' : 'asesor')
-            }
-            title={`Vista actual: ${rol === 'asesor' ? 'Asesor' : 'Administrador'} — alternar rol`}
-            className={`w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-white/70 hover:bg-white/10 hover:text-white transition ${
+          {/* Rol asignado en el backend: informativo, no seleccionable. */}
+          <div
+            className={`w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-white/70 ${
               collapsed ? 'md:justify-center md:px-0' : ''
+            }`}
+            title={`${usuario?.nombre ?? ''} · ${ROTULO_ROL[rol]}${
+              usuario?.concesionario ? ` · ${usuario.concesionario.nombre}` : ''
             }`}
           >
             {rol === 'asesor' ? (
@@ -241,18 +261,19 @@ export default function BarraLateral({
               <ShieldCheck size={18} className="shrink-0" />
             )}
             <span
-              className={`flex-1 text-left ${collapsed ? 'md:hidden' : ''}`}
+              className={`flex-1 min-w-0 text-left ${collapsed ? 'md:hidden' : ''}`}
             >
-              Vista: {rol === 'asesor' ? 'Asesor' : 'Administrador'}
+              <span className="block truncate text-white">
+                {usuario?.nombre ?? 'Usuario'}
+              </span>
+              <span className="block text-[11px] text-white/50">
+                {ROTULO_ROL[rol]}
+                {usuario?.concesionario
+                  ? ` · ${usuario.concesionario.nombre}`
+                  : ''}
+              </span>
             </span>
-            <span
-              className={`text-[10px] uppercase tracking-wide text-white/40 ${
-                collapsed ? 'md:hidden' : ''
-              }`}
-            >
-              cambiar
-            </span>
-          </button>
+          </div>
           <button
             onClick={() => {
               setMenuMovilAbierto(false)

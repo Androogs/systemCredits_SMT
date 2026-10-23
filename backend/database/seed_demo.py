@@ -15,35 +15,9 @@ from pathlib import Path
 from sqlalchemy import create_engine
 
 from backend.config import get_settings
-from backend.db_models.models import Base
+from backend.db_models.session import crear_tablas_engine
 
 INSERT_SQL = Path(__file__).with_name("insert.sql")
-
-# Tablas del esquema SUMOTO sin modelo ORM que insert.sql necesita.
-# En Postgres existen vía schema.sql; en SQLite (E2E/desarrollo) hay
-# que crearlas a mano porque create_all solo conoce los modelos.
-_SQLITE_SCHEMA_EXTRA = """
-CREATE TABLE IF NOT EXISTS rol (
-    id_rol INTEGER PRIMARY KEY AUTOINCREMENT,
-    nombre VARCHAR(30) NOT NULL UNIQUE,
-    descripcion VARCHAR(200)
-);
-CREATE TABLE IF NOT EXISTS concesionario (
-    id_concesionario INTEGER PRIMARY KEY AUTOINCREMENT,
-    nit VARCHAR(30) UNIQUE,
-    nombre VARCHAR(180) NOT NULL UNIQUE,
-    id_ciudad INTEGER
-);
-CREATE TABLE IF NOT EXISTS aliado_concesionario (
-    id_aliado INTEGER NOT NULL REFERENCES aliado_financiero(id_aliado),
-    id_concesionario INTEGER NOT NULL REFERENCES concesionario(id_concesionario),
-    comision_pct NUMERIC(8,4),
-    activo BOOLEAN NOT NULL DEFAULT 1,
-    fecha_inicio DATE,
-    fecha_fin DATE,
-    PRIMARY KEY (id_aliado, id_concesionario)
-);
-"""
 
 
 def main() -> None:
@@ -51,14 +25,21 @@ def main() -> None:
     if "://" not in url:
         url = f"sqlite:///{url}"
     engine = create_engine(url)
-    Base.metadata.create_all(engine)
+    crear_tablas_engine(engine)
     sql = INSERT_SQL.read_text(encoding="utf-8")
-    with engine.connect() as conn:
-        if engine.dialect.name == "sqlite":
-            conn.connection.executescript(_SQLITE_SCHEMA_EXTRA + sql)
-        else:
-            conn.connection.execute(sql)
-        conn.commit()
+    if engine.dialect.name == "sqlite":
+        with engine.connect() as conn:
+            conn.connection.executescript(sql)
+            conn.commit()
+    else:
+        # psycopg3 raw: soporta multi-statement sin binding de params;
+        # exec_driver_sql intentaría bindear y los '%' de comentarios romperían.
+        raw = engine.raw_connection()
+        try:
+            raw.cursor().execute(sql)
+            raw.commit()
+        finally:
+            raw.close()
     print(f"Catálogos sembrados en {url}")
 
 

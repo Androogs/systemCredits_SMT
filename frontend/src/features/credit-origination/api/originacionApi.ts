@@ -4,6 +4,7 @@
  */
 
 import { env } from '../../../env'
+import { fetchAutenticado } from '../../../shared/lib/fetchAutenticado'
 
 const API = env.VITE_API_URL.replace(/\/$/, '')
 
@@ -30,6 +31,8 @@ export interface PasoTrazaApi {
 export interface ResultadoMotorApi {
   evaluacion_id: string
   decision: 'Aprobado' | 'Rechazado'
+  /** También binaria (D185); 'Estudio' y 'Requiere Codeudor' solo
+   * llegan en evaluaciones históricas. */
   decision_interna: 'Aprobado' | 'Rechazado' | 'Estudio' | 'Requiere Codeudor'
   causales: CausalEvaluacionApi[]
   score_consultado: string | null
@@ -60,6 +63,28 @@ export interface ResultadoMotorApi {
   trazabilidad: PasoTrazaApi[]
   advertencias: string[]
   tiempo_ms: number
+}
+
+/** Vista operativa del resultado: lo que recibe el asesor y el aliado.
+ * El backend omite score, causales e indicadores de buró a roles sin
+ * acceso al expediente interno. */
+export interface ResultadoBinarioApi {
+  evaluacion_id: string
+  decision: 'Aprobado' | 'Rechazado'
+  cupo_sugerido: string
+  cuota_sugerida: string
+  cuota_moto: string
+  advertencias: string[]
+  tiempo_ms: number
+}
+
+export type ResultadoEvaluacionApi = ResultadoMotorApi | ResultadoBinarioApi
+
+/** Type guard: la respuesta trae expediente interno (rol admin). */
+export function esResultadoInterno(
+  resultado: ResultadoEvaluacionApi,
+): resultado is ResultadoMotorApi {
+  return 'decision_interna' in resultado
 }
 
 export interface OfertaApi {
@@ -109,6 +134,9 @@ export interface CrearSolicitudPayload {
   linea_credito?: string
   destino_credito?: string
   plazo_deseado_meses?: number
+  /** Solo para el concesionario: radica a nombre de un asesor de su
+      sede (obligatorio en ese rol; el asesor radica a su nombre). */
+  id_asesor?: number
   /** Aceptación Habeas Data del paso 2: el backend sella versión y hash. */
   consentimiento?: { aceptado: boolean }
   /** Token del link de captura (paso 3): enlaza las evidencias del cliente. */
@@ -164,12 +192,14 @@ async function request<T>(ruta: string, init?: OpcionesRequest): Promise<T> {
 
   for (let intento = 1; intento <= intentos; intento++) {
     try {
-      const respuesta = await fetch(`${API}${ruta}`, {
+      const respuesta = await fetchAutenticado(`${API}${ruta}`, {
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(timeoutMs),
         ...resto,
       })
       const cuerpo = await respuesta.json().catch(() => null)
+      // El helper ya rotó el refresh ante el 401 (o limpió la sesión y
+      // redirigió al login si ni con refresh el servidor la acepta).
       if (respuesta.ok) return cuerpo as T
       const detalleBase =
         cuerpo && typeof cuerpo === 'object'
@@ -232,13 +262,16 @@ export function evaluarSolicitud(
   idSolicitud: string,
   payload: EvaluarSolicitudPayload,
 ) {
-  return request<ResultadoMotorApi>(`/api/solicitudes/${idSolicitud}/evaluar`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-    // La evaluación consulta Experian en línea (token + HDC+ + Valor
-    // Ingreso + motor); puede tardar más que el default de 30s.
-    timeoutMs: 120_000,
-  })
+  return request<ResultadoEvaluacionApi>(
+    `/api/solicitudes/${idSolicitud}/evaluar`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      // La evaluación consulta Experian en línea (token + HDC+ + Valor
+      // Ingreso + motor); puede tardar más que el default de 30s.
+      timeoutMs: 120_000,
+    },
+  )
 }
 
 export function obtenerOfertas(idSolicitud: string) {
@@ -426,6 +459,10 @@ export interface SolicitudResumenApi {
   decision: string | null
   nombre_cliente: string
   num_cedula: string
+  /** Quién radicó y desde qué sede: base del reporte de comisiones
+      del aliado; el asesor ve siempre su propio nombre. */
+  nombre_asesor?: string | null
+  nombre_concesionario?: string | null
   tipo_documento: string | null
   ocupacion: string | null
   linea_credito: string | null
@@ -499,6 +536,11 @@ export interface FiltrosSolicitudes {
   busqueda?: string
   limite?: number
   offset?: number
+  /** Filtros dimensionales del panel (admin; intersectan el alcance). */
+  id_concesionario?: number
+  id_asesor?: number
+  /** 'prioridad' pone pendientes de evaluación primero (server-side). */
+  orden?: 'reciente' | 'prioridad'
 }
 
 export function listarSolicitudes(filtros: FiltrosSolicitudes = {}) {
@@ -542,16 +584,38 @@ export interface MetricasEmbudoApi {
   por_aliado: EmbudoAliadoApi[]
 }
 
+/** Catálogos de los filtros dimensionales del panel, acotados al
+    alcance del usuario: aliado → sus sedes y sus asesores, asesor →
+    solo él mismo, admin → todo. */
+export interface OpcionesFiltroApi {
+  concesionarios: { id_concesionario: number; nombre: string }[]
+  asesores: {
+    id_asesor: number
+    nombre: string
+    id_concesionario: number | null
+  }[]
+}
+
+export function obtenerOpcionesFiltro() {
+  return request<OpcionesFiltroApi>('/api/catalogos/opciones-filtro')
+}
+
 /** Conversión del embudo originación → desembolso (agregados en el
-    servidor; no depende del límite de la lista). `rango` acota por
-    fecha de radicación — lo usa el filtro de mes del panel. */
-export function obtenerMetricasEmbudo(rango?: {
+    servidor; no depende del límite de la lista). `desde`/`hasta`
+    acotan por fecha de radicación (filtro de mes del panel);
+    `id_concesionario`/`id_asesor` son los filtros dimensionales. */
+export function obtenerMetricasEmbudo(filtros?: {
   desde?: string
   hasta?: string
+  id_concesionario?: number
+  id_asesor?: number
 }) {
   const params = new URLSearchParams()
-  if (rango?.desde) params.set('desde', rango.desde)
-  if (rango?.hasta) params.set('hasta', rango.hasta)
+  if (filtros?.desde) params.set('desde', filtros.desde)
+  if (filtros?.hasta) params.set('hasta', filtros.hasta)
+  if (filtros?.id_concesionario)
+    params.set('id_concesionario', String(filtros.id_concesionario))
+  if (filtros?.id_asesor) params.set('id_asesor', String(filtros.id_asesor))
   const qs = params.toString()
   return request<MetricasEmbudoApi>(
     `/api/solicitudes/metricas/embudo${qs ? `?${qs}` : ''}`,

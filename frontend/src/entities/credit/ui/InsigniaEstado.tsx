@@ -1,5 +1,5 @@
 import { CheckCircle2, XCircle, Clock } from 'lucide-react'
-import type { EstadoSolicitud } from '../model/underwritingEngine'
+import type { EstadoSolicitud } from '../model/solicitudesPanel'
 
 const CONFIG: Record<
   EstadoSolicitud,

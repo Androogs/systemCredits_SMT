@@ -1,4 +1,5 @@
 import { env } from '../../../env'
+import { fetchAutenticado } from '../../../shared/lib/fetchAutenticado'
 
 const API = env.VITE_API_URL.replace(/\/$/, '')
 
@@ -28,7 +29,7 @@ async function request(
   ruta: string,
   init?: RequestInit,
 ): Promise<RespuestaParametros> {
-  const respuesta = await fetch(`${API}${ruta}`, {
+  const respuesta = await fetchAutenticado(`${API}${ruta}`, {
     headers: { 'Content-Type': 'application/json' },
     ...init,
   })

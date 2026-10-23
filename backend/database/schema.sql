@@ -1,7 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS citext;
 
-CREATE TYPE rol_usuario AS ENUM ('cliente', 'asesor', 'aliado', 'admin', 'contabilidad');
+CREATE TYPE rol_usuario AS ENUM ('cliente', 'asesor', 'aliado', 'admin', 'contabilidad', 'concesionario');
 CREATE TYPE estado_usuario AS ENUM ('pendiente_verificacion', 'activo', 'bloqueado', 'inactivo');
 CREATE TYPE ocupacion_cliente AS ENUM ('empleado', 'independiente', 'pensionado', 'fuerzas_militares');
 CREATE TYPE decision_credito AS ENUM ('aprobado', 'rechazado', 'perfil_gris');
@@ -43,6 +43,7 @@ CREATE TABLE usuario (
     id_usuario UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     correo CITEXT NOT NULL UNIQUE,
     hash_contrasena TEXT NOT NULL,
+    nombre_completo VARCHAR(180),
     estado estado_usuario NOT NULL DEFAULT 'pendiente_verificacion',
     fecha_verificacion TIMESTAMPTZ,
     fecha_ultimo_acceso TIMESTAMPTZ,
@@ -74,8 +75,28 @@ CREATE TABLE asesor (
     id_usuario UUID NOT NULL UNIQUE REFERENCES usuario(id_usuario),
     nombre VARCHAR(180) NOT NULL,
     telefono VARCHAR(40),
-    id_ciudad BIGINT REFERENCES ciudad(id_ciudad)
+    -- Cédula de la persona detrás de la cuenta (el correo corporativo
+    -- es permanente; la persona puede cambiar con historial).
+    num_cedula VARCHAR(40),
+    -- Desde cuándo el titular actual maneja la cuenta: las solicitudes
+    -- sin foto de cédula (legadas) solo las ve quien estaba al crearlas.
+    persona_desde TIMESTAMPTZ,
+    id_ciudad BIGINT REFERENCES ciudad(id_ciudad),
+    -- Sede del asesor: llave del alcance "solicitudes de su concesionario".
+    id_concesionario BIGINT REFERENCES concesionario(id_concesionario)
 );
+
+-- Historial de cambios de la ficha del asesor (la cuenta persiste, la
+-- persona puede cambiar; cada edición registra antes/después + autor).
+CREATE TABLE asesor_historial (
+    id_historial BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_asesor BIGINT NOT NULL REFERENCES asesor(id_asesor),
+    id_usuario_cambio UUID NOT NULL REFERENCES usuario(id_usuario),
+    fecha TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    cambios JSONB NOT NULL
+);
+
+CREATE INDEX idx_asesor_historial_asesor ON asesor_historial(id_asesor);
 
 CREATE TABLE concesionario (
     id_concesionario BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -83,6 +104,16 @@ CREATE TABLE concesionario (
     nombre VARCHAR(180) NOT NULL UNIQUE,
     id_ciudad BIGINT REFERENCES ciudad(id_ciudad)
 );
+
+-- Sede administrada por un usuario con rol `concesionario` (D122). No
+-- usa `asesor.id_concesionario`: el administrador no es radicador y no
+-- debe figurar en el catálogo de asesores de los filtros.
+CREATE TABLE concesionario_usuario (
+    id_usuario UUID PRIMARY KEY REFERENCES usuario(id_usuario),
+    id_concesionario BIGINT NOT NULL REFERENCES concesionario(id_concesionario)
+);
+
+CREATE INDEX idx_concesionario_usuario_sede ON concesionario_usuario(id_concesionario);
 
 CREATE TABLE aliado_financiero (
     id_aliado BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -175,6 +206,10 @@ CREATE TABLE solicitud_credito (
     num_solicitud BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,
     id_cliente BIGINT NOT NULL REFERENCES cliente(id_cliente),
     id_asesor BIGINT REFERENCES asesor(id_asesor),
+    -- Foto del radicador al crear: la cuenta puede cambiar de persona y
+    -- la solicitud sigue atribuida a quien la hizo, por cédula.
+    asesor_nombre VARCHAR(180),
+    asesor_cedula VARCHAR(40),
     id_concesionario BIGINT REFERENCES concesionario(id_concesionario),
     id_archivo BIGINT REFERENCES archivo_carga(id_archivo),
     id_aliado_origen BIGINT REFERENCES aliado_financiero(id_aliado),

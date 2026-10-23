@@ -9,11 +9,26 @@ const API = 'http://localhost:8010'
 const CEDULA = '1000000001'
 
 let idSolicitud: string
+let token: string
+let usuarioSesion: unknown
 
 test.beforeAll(async () => {
   const api = await request.newContext({ baseURL: API })
 
-  const crear = await api.post('/api/solicitudes', {
+  // Sesión real: el seed crea admin@pacifico.co (ve todo el panel).
+  const login = await api.post('/api/auth/login', {
+    data: { correo: 'admin@pacifico.co', contrasena: 'Admin123!' },
+  })
+  expect(login.status(), await login.text()).toBe(200)
+  const sesion = await login.json()
+  token = sesion.access_token
+  usuarioSesion = sesion.usuario
+  const autenticado = await request.newContext({
+    baseURL: API,
+    extraHTTPHeaders: { Authorization: `Bearer ${token}` },
+  })
+
+  const crear = await autenticado.post('/api/solicitudes', {
     data: {
       cliente: {
         tipo_documento: '1',
@@ -33,23 +48,30 @@ test.beforeAll(async () => {
   expect(crear.status(), await crear.text()).toBe(201)
   idSolicitud = (await crear.json()).id_solicitud
 
-  const evaluar = await api.post(`/api/solicitudes/${idSolicitud}/evaluar`, {
-    data: {
-      saldo_financiar: 5_000_000,
-      plazo: 36,
-      tasa: 2,
-      consultar_experian: false,
-      escenario_mock: 'aprobado',
+  const evaluar = await autenticado.post(
+    `/api/solicitudes/${idSolicitud}/evaluar`,
+    {
+      data: {
+        saldo_financiar: 5_000_000,
+        plazo: 36,
+        tasa: 2,
+        consultar_experian: false,
+        escenario_mock: 'aprobado',
+      },
     },
-  })
+  )
   expect(evaluar.ok(), await evaluar.text()).toBeTruthy()
 })
 
 test.beforeEach(async ({ page }) => {
-  // El panel exige sesión local (flag demo) antes de entrar a las rutas.
-  await page.addInitScript(() => {
-    window.localStorage.setItem('uw_auth', '1')
-  })
+  // Sesión del panel: token JWT + usuario devueltos por el login real.
+  await page.addInitScript(
+    ([t, u]) => {
+      window.localStorage.setItem('uw_token', t as string)
+      window.localStorage.setItem('uw_usuario', JSON.stringify(u))
+    },
+    [token, usuarioSesion] as const,
+  )
 })
 
 // La columna N° muestra num_solicitud o el prefijo del id — sirve de ancla
@@ -101,4 +123,45 @@ test('el resumen carga KPIs con datos reales', async ({ page }) => {
   // Banda KPI: cada celda es un botón de filtro; el lateral usa enlaces.
   await expect(page.getByRole('button', { name: /Solicitudes/ })).toBeVisible()
   await expect(filaSembrada(page)).toBeVisible()
+})
+
+test('el admin ve los filtros dimensionales y /asesor redirige al panel', async ({
+  page,
+}) => {
+  await page.goto('/dashboard')
+  await expect(page.getByLabel('Filtrar por concesionario')).toBeVisible()
+  await expect(page.getByLabel('Filtrar por asesor')).toBeVisible()
+  await page.goto('/asesor')
+  await expect(page).toHaveURL(/\/dashboard$/)
+  await expect(page.getByLabel('Filtrar por concesionario')).toBeVisible()
+})
+
+test('el asesor ve acciones rápidas y su tabla completa, sin filtros de admin', async ({
+  page,
+}) => {
+  const api = await request.newContext({ baseURL: API })
+  const login = await api.post('/api/auth/login', {
+    data: { correo: 'asesor@pacifico.co', contrasena: 'Asesor123!' },
+  })
+  expect(login.status(), await login.text()).toBe(200)
+  const sesion = await login.json()
+  await page.addInitScript(
+    ([t, u]) => {
+      window.localStorage.setItem('uw_token', t as string)
+      window.localStorage.setItem('uw_usuario', JSON.stringify(u))
+    },
+    [sesion.access_token, sesion.usuario] as const,
+  )
+  await page.goto('/dashboard')
+  await expect(
+    page.getByRole('heading', { name: 'Acciones rápidas' }),
+  ).toBeVisible()
+  await expect(page.getByLabel('Filtrar por concesionario')).not.toBeVisible()
+  // La tabla del asesor trae pendientes primero (orden del servidor) y
+  // es la tabla completa paginada, no la cola corta — el encabezado
+  // cuenta los resultados del alcance aunque la página inicial esté vacía.
+  await expect(
+    page.getByRole('region', { name: 'Tabla de solicitudes' }),
+  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Solicitudes/ })).toBeVisible()
 })

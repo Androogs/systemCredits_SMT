@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
 import CampoNumerico from '../../../shared/ui/CampoNumerico'
@@ -11,6 +12,7 @@ import {
   ApiError,
   actualizarSolicitud,
   crearSolicitud,
+  obtenerOpcionesFiltro,
 } from '../api/originacionApi'
 import { erroresSolicitud } from '../model/solicitud-schema'
 import {
@@ -21,7 +23,7 @@ import {
   INSTITUCIONES_FUERZAS,
 } from '../schemas/laboral'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
-import { contextoRadicacion } from '../../../shared/lib/sesion'
+import { contextoRadicacion, useRol } from '../../../shared/lib/sesion'
 import { MODO_DEMO } from '../../../env'
 import './CrearSolicitud.css'
 
@@ -188,6 +190,18 @@ function CrearSolicitud({
   idSolicitud,
 }: CrearSolicitudProps) {
   const { asesor, sede } = contextoRadicacion()
+  const rol = useRol()
+  // El concesionario radica a nombre de un asesor de su sede: elige a
+  // quién se le atribuye la solicitud (obligatorio — el backend lo
+  // valida contra la sede de la sesión).
+  const eligeAsesor = rol === 'concesionario'
+  const [idAsesorRadica, setIdAsesorRadica] = useState<number | ''>('')
+  const { data: opcionesRadicacion } = useQuery({
+    queryKey: ['opciones-filtro'],
+    queryFn: obtenerOpcionesFiltro,
+    staleTime: 60_000,
+    enabled: eligeAsesor,
+  })
   const [datos, setDatos] = useState<DatosSolicitud>({
     ...valoresIniciales,
     ...normalizarOcupacion(inicial),
@@ -238,6 +252,13 @@ function CrearSolicitud({
       return
     }
 
+    if (eligeAsesor && idAsesorRadica === '') {
+      setErrorApi(
+        'Elige el asesor de tu sede a cuyo nombre queda la solicitud.',
+      )
+      return
+    }
+
     if (!identidad) {
       continuarDemo()
       return
@@ -249,6 +270,7 @@ function CrearSolicitud({
       identidad,
       datos,
       sesionCapturaToken,
+      idAsesorRadica === '' ? undefined : idAsesorRadica,
     )
     // Solicitud retomada: actualiza el registro persistido; una nueva
     // radicación la crearía duplicada.
@@ -294,7 +316,30 @@ function CrearSolicitud({
           <dl className="solicitud__meta">
             <div>
               <dt>Asesor</dt>
-              <dd>{asesor}</dd>
+              <dd>
+                {eligeAsesor ? (
+                  <select
+                    className="input-base"
+                    value={idAsesorRadica}
+                    onChange={(e) =>
+                      setIdAsesorRadica(
+                        e.target.value ? Number(e.target.value) : '',
+                      )
+                    }
+                    aria-label="Asesor a cuyo nombre queda la solicitud"
+                    required
+                  >
+                    <option value="">Seleccionar…</option>
+                    {(opcionesRadicacion?.asesores ?? []).map((a) => (
+                      <option key={a.id_asesor} value={a.id_asesor}>
+                        {a.nombre}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  asesor
+                )}
+              </dd>
             </div>
             <div>
               <dt>Sede</dt>

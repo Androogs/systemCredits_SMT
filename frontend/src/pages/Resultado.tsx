@@ -15,7 +15,7 @@ import {
 } from '../entities/credit/model/solicitudesPanel'
 import { currency, dateShort } from '../shared/lib/formatters'
 import { useRol } from '../shared/lib/sesion'
-import type { EstadoSolicitud } from '../entities/credit/model/underwritingEngine'
+import type { EstadoSolicitud } from '../entities/credit/model/solicitudesPanel'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -97,7 +97,7 @@ export default function Resultado() {
     retry: (count, err) =>
       !(err instanceof ApiError && err.status === 404) && count < 1,
   })
-  const esAsesor = useRol() === 'asesor'
+  const vistaBinaria = useRol() !== 'admin'
   const datos = consulta.data ?? null
   const cargando = consulta.isPending
   const noExiste =
@@ -169,7 +169,7 @@ export default function Resultado() {
   const visual = estadoParaVista(datos)
   const evaluacion = datos.evaluacion
   // El asesor ve la decisión pero no el score ni las causales (dato
-  // sensible del cliente); la resolución de comité es del administrador.
+  // sensible del cliente); esos detalles son solo del administrador.
   const oferta =
     datos.ofertas.find((o) => o.seleccionada) ??
     datos.ofertas.find((o) => o.elegible)
@@ -246,7 +246,7 @@ export default function Resultado() {
                         : '—'
                     }
                   />
-                  {!esAsesor && (
+                  {!vistaBinaria && (
                     <Fila
                       k="Score crediticio"
                       v={
@@ -293,7 +293,7 @@ export default function Resultado() {
 
           {visual === 'RECHAZADO' && (
             <>
-              {!esAsesor && (
+              {!vistaBinaria && (
                 <Tarjeta className="border-red-200">
                   <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">
                     <FileSearch size={18} /> Causales de rechazo

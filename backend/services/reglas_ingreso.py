@@ -68,7 +68,7 @@ def calcular_ingreso_final(
     return ResultadoIngresoFinal(
         ingreso_final=Decimal(0),
         fuente=FUENTE_NINGUNA,
-        decision_forzada=Decision.ESTUDIO,
+        decision_forzada=Decision.RECHAZADO,
         causal_forzada=Causal.E3,
         razon="Sin valor ingreso, sin Quanto y sin ingresos declarados",
     )

@@ -12,23 +12,35 @@ from backend.models.motor_models import (
     EvaluarRequest,
     IngresoPropioRequest,
     IngresoPropioResponse,
+    ResultadoBinarioResponse,
     ResultadoMotorResponse,
     Solicitud,
 )
+from backend.auth.dependencies import UsuarioActual, requiere_roles
 from backend.routes.dependencies import get_evaluacion_service
 from backend.services.evaluacion_service import EvaluacionService
 
-router = APIRouter(prefix="/motor", tags=["motor"])
+router = APIRouter(
+    prefix="/motor",
+    tags=["motor"],
+    dependencies=[Depends(requiere_roles("admin", "asesor", "concesionario"))],
+)
 
 
-@router.post("/evaluar", response_model=ResultadoMotorResponse)
+@router.post(
+    "/evaluar",
+    response_model=ResultadoMotorResponse | ResultadoBinarioResponse,
+)
 def evaluar(
     payload: EvaluarRequest,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
     servicio: EvaluacionService = Depends(get_evaluacion_service),
-) -> ResultadoMotorResponse:
+) -> ResultadoMotorResponse | ResultadoBinarioResponse:
     """Evalúa una solicitud enviada completa en el payload y la registra en auditoría."""
     resultado = servicio.evaluar_payload(payload)
-    return ResultadoMotorResponse.desde_resultado(resultado, incluir_detalle_buro=True)
+    if usuario.es_admin():
+        return ResultadoMotorResponse.desde_resultado(resultado, incluir_detalle_buro=True)
+    return ResultadoBinarioResponse.desde_resultado(resultado)
 
 
 @router.post("/ingreso", response_model=IngresoPropioResponse)
@@ -46,7 +58,10 @@ def escenarios() -> dict[str, str]:
     return ESCENARIOS
 
 
-@router.post("/evaluar-con-archivos", response_model=ResultadoMotorResponse)
+@router.post(
+    "/evaluar-con-archivos",
+    response_model=ResultadoMotorResponse | ResultadoBinarioResponse,
+)
 def evaluar_con_archivos(
     hdc_file: UploadFile = File(..., description="JSON o PDF de Historia de Crédito+"),
     income_file: UploadFile = File(None, description="JSON o PDF de Valor Ingreso (opcional)"),
@@ -63,8 +78,9 @@ def evaluar_con_archivos(
     saldo_financiar: float = Form(...),
     plazo: int = Form(...),
     tasa: float = Form(...),
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
     servicio: EvaluacionService = Depends(get_evaluacion_service),
-) -> ResultadoMotorResponse:
+) -> ResultadoMotorResponse | ResultadoBinarioResponse:
     """Evalúa una solicitud con reportes de Experian cargados como archivos."""
     # Leer archivos
     hdc_content = hdc_file.file.read()
@@ -98,7 +114,9 @@ def evaluar_con_archivos(
 
     # Evaluar
     resultado = servicio.evaluar_con_reportes(solicitud, hdc, vi)
-    return ResultadoMotorResponse.desde_resultado(resultado, incluir_detalle_buro=True)
+    if usuario.es_admin():
+        return ResultadoMotorResponse.desde_resultado(resultado, incluir_detalle_buro=True)
+    return ResultadoBinarioResponse.desde_resultado(resultado)
 
 
 def leer_reporte_from_bytes(content: bytes, filename: str) -> dict[str, Any]:

@@ -106,6 +106,7 @@ export function construirCrearSolicitudPayload(
   identidad: IdentidadSolicitante,
   solicitud: DatosSolicitud,
   sesionCaptura?: string,
+  idAsesor?: number,
 ): CrearSolicitudPayload {
   const { ocupacion, tipoContrato } = ocupacionApi(
     solicitud.ocupacion,
@@ -147,6 +148,7 @@ export function construirCrearSolicitudPayload(
     destino_credito: solicitud.destinoCredito,
     plazo_deseado_meses: solicitud.plazoMeses,
     ...(sesionCaptura ? { sesion_captura: sesionCaptura } : {}),
+    ...(idAsesor ? { id_asesor: idAsesor } : {}),
   }
 }
 

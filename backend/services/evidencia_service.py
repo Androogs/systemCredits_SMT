@@ -186,6 +186,12 @@ class EvidenciaService:
     def evidencias_de_solicitud(self, id_solicitud: uuid.UUID) -> list[DocumentoEvidencia]:
         return self.repo.listar_por_solicitud(id_solicitud)
 
+    def evidencia_por_id(self, id_evidencia: int) -> DocumentoEvidencia:
+        evidencia = self.repo.obtener_evidencia(id_evidencia)
+        if evidencia is None:
+            raise SolicitudNoEncontradaError("Evidencia no encontrada")
+        return evidencia
+
     def archivo_evidencia(self, id_evidencia: int) -> tuple[Path, str]:
         evidencia = self.repo.obtener_evidencia(id_evidencia)
         if evidencia is None:

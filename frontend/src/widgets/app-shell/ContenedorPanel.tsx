@@ -3,7 +3,8 @@ import { Suspense, useEffect, useRef, useState } from 'react'
 import { Menu } from 'lucide-react'
 import BarraLateral from './BarraLateral'
 import CargandoPagina from '../../shared/ui/CargandoPagina'
-import { limpiarUsuario } from '../../shared/lib/sesion'
+import { cerrarSesionApi } from '../../features/auth/api/autenticacionApi'
+import { limpiarSesion, obtenerRefresh } from '../../shared/lib/sesion'
 
 export default function ContenedorPanel() {
   const navigate = useNavigate()
@@ -31,8 +32,10 @@ export default function ContenedorPanel() {
         onMobileMenuChange={setMobileMenuOpen}
         botonMenuRef={botonMenuRef}
         onLogout={() => {
-          localStorage.removeItem('uw_auth')
-          limpiarUsuario()
+          // Revoca el refresh en servidor (logout efectivo, D125); la
+          // limpieza local no espera la respuesta.
+          void cerrarSesionApi(obtenerRefresh())
+          limpiarSesion()
           navigate('/login')
         }}
       />

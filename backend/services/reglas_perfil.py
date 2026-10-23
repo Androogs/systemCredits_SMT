@@ -198,7 +198,7 @@ def cruzar_perfiles_empleado(
     if perfil_score == PerfilScore.D:
         return ResultadoDecision(Decision.RECHAZADO, Causal.R25, "Perfil Score D")
     if perfil_score is None or perfil_ingreso is None:
-        return ResultadoDecision(Decision.ESTUDIO, None, "Perfil incompleto")
+        return ResultadoDecision(Decision.RECHAZADO, None, "Perfil incompleto")
     if perfil_ingreso in (PerfilIngreso.ALTO, PerfilIngreso.MEDIO):
         return ResultadoDecision(Decision.APROBADO, None, f"Score {perfil_score} con ingreso {perfil_ingreso}")
     if perfil_ingreso == PerfilIngreso.BAJO:
@@ -217,7 +217,7 @@ def cruzar_perfiles_pensionado(
     if perfil_score == PerfilScore.D:
         return ResultadoDecision(Decision.RECHAZADO, Causal.R25, "Perfil Score D")
     if perfil_score is None or perfil_ingreso is None:
-        return ResultadoDecision(Decision.ESTUDIO, None, "Perfil incompleto")
+        return ResultadoDecision(Decision.RECHAZADO, None, "Perfil incompleto")
     if perfil_ingreso in (PerfilIngreso.ALTO, PerfilIngreso.MEDIO):
         return ResultadoDecision(Decision.APROBADO, None, f"Score {perfil_score} con ingreso {perfil_ingreso}")
     if perfil_ingreso == PerfilIngreso.BAJO:
@@ -236,7 +236,7 @@ def cruzar_perfiles_ffmm(
     if perfil_score == PerfilScore.D:
         return ResultadoDecision(Decision.RECHAZADO, Causal.R25, "Perfil Score D")
     if perfil_score is None or perfil_ingreso is None:
-        return ResultadoDecision(Decision.ESTUDIO, None, "Perfil incompleto")
+        return ResultadoDecision(Decision.RECHAZADO, None, "Perfil incompleto")
     if perfil_ingreso in (PerfilIngreso.ALTO, PerfilIngreso.MEDIO):
         return ResultadoDecision(Decision.APROBADO, None, f"Score {perfil_score} con ingreso {perfil_ingreso}")
     if perfil_ingreso == PerfilIngreso.BAJO:
@@ -255,7 +255,7 @@ def cruzar_perfiles_independiente(
 ) -> ResultadoDecision:
     """Matriz para Independiente."""
     if perfil_score is None or perfil_ingreso is None:
-        return ResultadoDecision(Decision.ESTUDIO, None, "Perfil incompleto")
+        return ResultadoDecision(Decision.RECHAZADO, None, "Perfil incompleto")
 
     if perfil_score == PerfilScore.D:
         minimo = params.anios_cam_4
@@ -304,4 +304,4 @@ def decidir_por_ocupacion(
         return cruzar_perfiles_ffmm(perfil_score, perfil_ingreso)
     if solicitud.ocupacion == Ocupacion.INDEPENDIENTE:
         return cruzar_perfiles_independiente(perfil_score, perfil_ingreso, solicitud.anios_camara_comercio, params)
-    return ResultadoDecision(Decision.ESTUDIO, None, "Ocupación no reconocida")
+    return ResultadoDecision(Decision.RECHAZADO, None, "Ocupación no reconocida")

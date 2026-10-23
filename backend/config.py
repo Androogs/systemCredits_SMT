@@ -36,12 +36,44 @@ class Settings(BaseSettings):
     demo_user_email: str = "demo@underwriting.io"
     demo_user_password: str = "demo1234"
 
+    # --- Autenticación JWT de la plataforma ---
+    # Secreto de firma HS256. Obligatorio fuera del entorno demo: sin él
+    # el login responde 503 (fail-closed, no se emiten tokens). En demo
+    # cae a un valor de desarrollo documentado.
+    jwt_secreto: str = ""
+    # Vigencia del token: una jornada laboral (decisión del usuario).
+    jwt_ttl_horas: int = 8
+    # Lockout de login: N fallos seguidos → bloqueo temporal.
+    auth_max_intentos: int = 5
+    auth_bloqueo_minutos: int = 15
+    # Sesión con refresh token (D125): el access JWT sigue siendo corto;
+    # el refresh persiste la sesión y se rota en cada uso.
+    refresh_token_dias: int = 30
+    # Token de "olvidé mi clave" (D124): un solo uso, ventana corta.
+    recuperacion_token_minutos: int = 30
+    # Roles con acceso al panel (cliente/contabilidad quedan fuera).
+    # El orden es la prioridad cuando el usuario acumula roles: un
+    # concesionario que también radica conserva la vista de su sede.
+    auth_roles_panel: str = "admin,concesionario,asesor,aliado"
+
     def cors_origin_list(self) -> list[str]:
         return [
             origin.strip()
             for origin in self.cors_origins.split(",")
             if origin.strip()
         ]
+
+    def jwt_secreto_efectivo(self) -> str:
+        """Secreto real usado para firmar: en demo hay un valor de
+        desarrollo para no exigir .env; en producción vacío = sin auth."""
+        if self.jwt_secreto:
+            return self.jwt_secreto
+        if self.environment == "demo":
+            return "dev-jwt-secreto-solo-demo-32bytes!"
+        return ""
+
+    def roles_panel_list(self) -> list[str]:
+        return [r.strip() for r in self.auth_roles_panel.split(",") if r.strip()]
 
     # --- Motor ---
     # SMMLV vigente en COP. Cambia cada año: actualizar en .env.
@@ -125,6 +157,13 @@ class Settings(BaseSettings):
     # Nombre de la plantilla de autenticación aprobada para el OTP.
     wati_plantilla_otp: str = "otp_verificacion"
     wati_timeout_segundos: float = 15.0
+    # --- Twilio (OTP por SMS via Verify API + mensajes directos) ---
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_verify_sid: str = ""  # VAxxxx del servicio Verify
+    twilio_from_number: str = ""  # +57... para SMS directos
+    twilio_messaging_service_sid: str = ""  # MGxxxx alternativo
+    twilio_timeout_segundos: float = 15.0
     # --- OTP ---
     otp_ttl_minutos: int = 10
     otp_max_intentos: int = 3
@@ -252,3 +291,4 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+

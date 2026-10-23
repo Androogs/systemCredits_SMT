@@ -7,12 +7,17 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from backend.auth.dependencies import requiere_roles
 from backend.db_models.session import get_db
 from backend.models.enums import DecisionFinal
 from backend.repositories.auditoria_repository import AuditoriaRepository
 from backend.services.motor_exceptions import SolicitudNoEncontradaError
 
-router = APIRouter(prefix="/auditoria", tags=["auditoria"])
+router = APIRouter(
+    prefix="/auditoria",
+    tags=["auditoria"],
+    dependencies=[Depends(requiere_roles("admin"))],
+)
 
 
 class EvaluacionResumen(BaseModel):

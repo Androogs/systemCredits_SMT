@@ -145,11 +145,8 @@ class ResultadoCapacidadPago:
 
     @property
     def decision_forzada(self) -> Decision | None:
-        if any(c.tipo == Decision.RECHAZADO for c in self.causales):
-            return Decision.RECHAZADO
-        if self.causales:
-            return Decision.ESTUDIO
-        return None
+        # Todas las causales deciden Rechazado (decisión binaria, D185).
+        return Decision.RECHAZADO if self.causales else None
 
 
 def _cuota_mensual_obligacion(cuenta, es_rotativo: bool, params: MotorParametros) -> Decimal:

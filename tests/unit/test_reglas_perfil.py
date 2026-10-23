@@ -87,7 +87,7 @@ def test_perfil_ingreso_independiente(solicitud_empleado, parametros_demo, smmlv
         (PerfilScore.C, PerfilIngreso.BAJO, Decision.APROBADO, Causal.E6),
         (PerfilScore.B, PerfilIngreso.GRIS, Decision.RECHAZADO, Causal.RC1),
         (PerfilScore.D, PerfilIngreso.ALTO, Decision.RECHAZADO, Causal.R25),
-        (None, PerfilIngreso.ALTO, Decision.ESTUDIO, None),
+        (None, PerfilIngreso.ALTO, Decision.RECHAZADO, None),
     ],
 )
 def test_matriz_empleado(score, ingreso, decision, causal):
@@ -138,8 +138,8 @@ def test_independiente_con_camara_sin_antiguedad_minima(parametros_demo):
         (PerfilScore.C, PerfilIngreso.BAJO, Decision.RECHAZADO, Causal.E6),
         (PerfilScore.B, PerfilIngreso.GRIS, Decision.RECHAZADO, Causal.RC1),
         (PerfilScore.D, PerfilIngreso.ALTO, Decision.RECHAZADO, Causal.R25),
-        (None, PerfilIngreso.ALTO, Decision.ESTUDIO, None),
-        (PerfilScore.A, None, Decision.ESTUDIO, None),
+        (None, PerfilIngreso.ALTO, Decision.RECHAZADO, None),
+        (PerfilScore.A, None, Decision.RECHAZADO, None),
     ],
 )
 def test_matriz_pensionado(score, ingreso, decision, causal):
@@ -157,8 +157,8 @@ def test_matriz_pensionado(score, ingreso, decision, causal):
         (PerfilScore.C, PerfilIngreso.BAJO, Decision.RECHAZADO, Causal.E6),
         (PerfilScore.B, PerfilIngreso.GRIS, Decision.RECHAZADO, Causal.R15),
         (PerfilScore.D, PerfilIngreso.ALTO, Decision.RECHAZADO, Causal.R25),
-        (None, PerfilIngreso.ALTO, Decision.ESTUDIO, None),
-        (PerfilScore.A, None, Decision.ESTUDIO, None),
+        (None, PerfilIngreso.ALTO, Decision.RECHAZADO, None),
+        (PerfilScore.A, None, Decision.RECHAZADO, None),
     ],
 )
 def test_matriz_ffmm(score, ingreso, decision, causal):
@@ -169,7 +169,7 @@ def test_matriz_ffmm(score, ingreso, decision, causal):
 def test_independiente_perfil_incompleto(parametros_demo):
     for score, ingreso in [(None, PerfilIngreso.ALTO), (PerfilScore.A, None)]:
         r = cruzar_perfiles_independiente(score, ingreso, 5, parametros_demo)
-        assert r.decision == Decision.ESTUDIO and r.causal is None
+        assert r.decision == Decision.RECHAZADO and r.causal is None
 
 
 def test_decidir_por_ocupacion_enruta_pensionado_y_ffmm(solicitud_empleado, parametros_demo):

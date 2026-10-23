@@ -66,6 +66,13 @@ class CrearSolicitudRequest(BaseModel):
     # Token de la sesión de captura remota (paso 3): enlaza las evidencias
     # documentales subidas por el cliente a esta solicitud.
     sesion_captura: str | None = Field(default=None, max_length=64)
+    # Solo lo usa el admin al radicar para otra sede; el asesor hereda la
+    # suya de la sesión y este campo se ignora en su caso.
+    id_concesionario: int | None = Field(default=None, ge=1)
+    # Solo lo usa el concesionario: radica a nombre de un asesor de su
+    # sede (obligatorio para él). El asesor radica a su propio nombre y
+    # este campo se ignora en su caso.
+    id_asesor: int | None = Field(default=None, ge=1)
 
 
 class CrearSolicitudResponse(BaseModel):
@@ -189,6 +196,8 @@ class SolicitudResumenResponse(BaseModel):
     decision: str | None
     nombre_cliente: str
     num_cedula: str
+    nombre_asesor: str | None = None
+    nombre_concesionario: str | None = None
     tipo_documento: str | None
     ocupacion: str | None
     linea_credito: str | None
@@ -276,19 +285,20 @@ class CancelarSolicitudRequest(BaseModel):
 class GenerarOtpRequest(BaseModel):
     """Emisión de un OTP para la acción indicada (firma del pagaré).
 
-    canal='whatsapp' envía por plantilla WATI al celular del cliente;
+    canal='whatsapp' envía por SMS (Twilio) o plantilla WATI al celular
+    del cliente; canal='sms' fuerza solo SMS;
     sin teléfono válido o si el envío falla se cae a email."""
 
     accion: str = Field(default="firma_pagare", max_length=100)
-    canal: Literal["email", "whatsapp"] = "whatsapp"
+    canal: Literal["email", "whatsapp", "sms"] = "whatsapp"
 
 
 class GenerarOtpResponse(BaseModel):
     id_otp: int
     expira_en_segundos: int
-    # Canal por el que realmente salió el código (whatsapp cayó a email
-    # cuando el teléfono no era válido o WATI falló).
-    canal: Literal["email", "whatsapp"]
+    # Canal por el que realmente salió el código (whatsapp cayó a sms o
+    # email cuando el teléfono no era válido o el proveedor falló).
+    canal: Literal["email", "whatsapp", "sms"]
     destino: str | None
     estado_envio: str
     # Solo en environment='demo': el código viaja en la respuesta para

@@ -8,7 +8,8 @@ import {
   cuotaAnualidad,
   valorPresenteAnualidad,
 } from '../../../shared/lib/finanzas'
-import type { ResultadoMotorApi } from '../api/originacionApi'
+import type { ResultadoEvaluacionApi } from '../api/originacionApi'
+import { esResultadoInterno } from '../api/originacionApi'
 
 /** Alineada con `cupo_sugerido_tasa_pct` de parametros.json (motor). */
 export const TASA_MENSUAL_REFERENCIA = 2
@@ -41,7 +42,8 @@ export interface CausalEvaluacion {
 
 export interface ResultadoEvaluacionCredito {
   decision: DecisionCredito
-  /** Decisión interna del motor (Estudio / Requiere Codeudor → perfil gris). */
+  /** Decisión interna del motor: también binaria (D185); 'Estudio' y
+   * 'Requiere Codeudor' solo aparecen en evaluaciones históricas. */
   decisionInterna?: string
   /** Cupo máximo sugerido por el motor según la capacidad de pago. */
   montoSugerido: number
@@ -77,47 +79,52 @@ const num = (valor: string | number | null | undefined): number | undefined =>
   valor === null || valor === undefined ? undefined : Number(valor)
 
 /**
- * Traduce la respuesta del motor al modelo del flujo. La decisión
- * pública es binaria; Estudio / Requiere Codeudor se presentan como
- * revisión manual (perfil gris) para el comité.
+ * Traduce la respuesta del motor al modelo del flujo. La decisión es
+ * estrictamente binaria — interna y pública (D185); 'Estudio' y
+ * 'Requiere Codeudor' solo llegan en evaluaciones históricas.
+ *
+ * Acepta la respuesta interna (admin) o la binaria (asesor/aliado): en
+ * esta última el backend omite score, causales e indicadores de buró.
  */
 export function resultadoDesdeApi(
-  api: ResultadoMotorApi,
+  api: ResultadoEvaluacionApi,
   plazoMeses: number,
 ): ResultadoEvaluacionCredito {
-  const interna = api.decision_interna
-  // Sin comité: las decisiones internas de estudio / codeudor se
-  // presentan como rechazo; el detalle sensible es solo admin.
+  const interno = esResultadoInterno(api)
   const decision: DecisionCredito =
     api.decision === 'Aprobado' ? 'APROBADO' : 'RECHAZADO'
   return {
     decision,
-    decisionInterna: interna,
+    decisionInterna: interno ? api.decision_interna : undefined,
     montoSugerido: Number(api.cupo_sugerido),
     cuotaSugerida: Number(api.cuota_sugerida),
     plazoMeses,
     tasaMensual: TASA_MENSUAL_REFERENCIA,
-    causales: api.causales.map((c) => ({
-      codigo: c.codigo,
-      descripcion: c.descripcion,
-    })),
+    causales: interno
+      ? api.causales.map((c) => ({
+          codigo: c.codigo,
+          descripcion: c.descripcion,
+        }))
+      : [],
     advertencias: api.advertencias,
-    scoreConsultado: num(api.score_consultado),
-    scoreTipo: api.score_tipo ?? undefined,
-    perfilScore: api.perfil_score ?? undefined,
-    perfilIngreso: api.perfil_ingreso ?? undefined,
-    endeudamiento: num(api.endeudamiento),
-    capacidadPago: num(api.capacidad_pago),
-    disponible: num(api.disponible),
-    ingresoFinal: num(api.ingreso_final),
-    fuenteIngreso: api.fuente_ingreso_final,
-    ingresoFinalSmmlv: num(api.ingreso_final_smmlv),
-    indicadoresBuro: api.indicadores_buro,
-    trazabilidad: api.trazabilidad.map((p) => ({
-      etapa: p.etapa,
-      resultado: p.resultado,
-      detalle: p.detalle,
-    })),
+    scoreConsultado: interno ? num(api.score_consultado) : undefined,
+    scoreTipo: interno ? (api.score_tipo ?? undefined) : undefined,
+    perfilScore: interno ? (api.perfil_score ?? undefined) : undefined,
+    perfilIngreso: interno ? (api.perfil_ingreso ?? undefined) : undefined,
+    endeudamiento: interno ? num(api.endeudamiento) : undefined,
+    capacidadPago: interno ? num(api.capacidad_pago) : undefined,
+    disponible: interno ? num(api.disponible) : undefined,
+    ingresoFinal: interno ? num(api.ingreso_final) : undefined,
+    fuenteIngreso: interno ? api.fuente_ingreso_final : undefined,
+    ingresoFinalSmmlv: interno ? num(api.ingreso_final_smmlv) : undefined,
+    indicadoresBuro: interno ? api.indicadores_buro : undefined,
+    trazabilidad: interno
+      ? api.trazabilidad.map((p) => ({
+          etapa: p.etapa,
+          resultado: p.resultado,
+          detalle: p.detalle,
+        }))
+      : [],
     evaluacionId: api.evaluacion_id,
     auditoria: api.evaluacion_id,
     versionPolitica: 'PPT v4 / BRD',

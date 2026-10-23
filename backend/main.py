@@ -22,6 +22,7 @@ from backend.routes import (
     motor_routes,
     parametros_routes,
     solicitud_routes,
+    usuario_routes,
     webhook_routes,
 )
 from backend.routes.dependencies import get_store
@@ -56,9 +57,13 @@ def crear_app() -> FastAPI:
         ),
         version=settings.app_version,
         lifespan=lifespan,
-        docs_url="/api-docs",
-        redoc_url="/redoc",
-        openapi_url="/api/openapi.json",
+        # Docs y esquema solo en demo: en producción la superficie de
+        # la API no se publicita (hallazgo del reporte OWASP).
+        docs_url="/api-docs" if settings.environment == "demo" else None,
+        redoc_url="/redoc" if settings.environment == "demo" else None,
+        openapi_url=(
+            "/api/openapi.json" if settings.environment == "demo" else None
+        ),
     )
 
     from backend.middlewares.access_log_middleware import AccessLogMiddleware
@@ -92,6 +97,7 @@ def crear_app() -> FastAPI:
         parametros_routes,
         catalogo_routes,
         evidencia_routes,
+        usuario_routes,
     ):
         app.include_router(modulo.router, prefix="/api")
     # El webhook vive fuera de /api: es una puerta externa del emisor

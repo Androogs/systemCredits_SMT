@@ -7,12 +7,13 @@ Catálogo único de causales: combina la codificación de la PPT v4
 
 Cada causal pertenece a un TIPO de decisión interna:
     R*  -> Rechazado
-    RC* -> Requiere Codeudor
-    E*  -> Estudio
+    RC* -> Rechazado (antes "Requiere Codeudor")
+    E*  -> Rechazado (antes "Estudio")
 
-La salida pública del motor es siempre binaria (Aprobado / Rechazado):
-cualquier causal, sea del tipo que sea, produce "Rechazado". El tipo
-se conserva en la respuesta para trazabilidad (decision_interna).
+La decisión del sistema es estrictamente binaria (Aprobado / Rechazado):
+no hay comité ni estados intermedios — cualquier causal produce
+"Rechazado". Los tipos históricos (Estudio, Requiere Codeudor) solo
+aparecen en evaluaciones anteriores al cambio.
 """
 
 from enum import StrEnum
@@ -50,7 +51,10 @@ class TipoContrato(StrEnum):
 
 
 class Decision(StrEnum):
-    """Estados de trabajo internos (prioridad Rechazo > Codeudor > Estudio > Aprobado)."""
+    """Estados de trabajo internos. El sistema decide solo
+    Aprobado/Rechazado: `ESTUDIO` y `REQUIERE_CODEUDOR` son valores
+    históricos que ya no se emiten (D185) — solo aparecen en
+    `decision_interna` de evaluaciones antiguas."""
 
     APROBADO = "Aprobado"
     RECHAZADO = "Rechazado"
@@ -117,8 +121,10 @@ class Causal(StrEnum):
     R24 = "No cumple años mínimos de Cámara de Comercio"
     R25 = "Perfil Score D"
     RC1 = "No cumple continuidad"
-    RC2 = "Perfil Score D (requiere codeudor)"
-    RC3 = "Validación de exclusiones (requiere codeudor)"
+    # RC2 y RC4 no se emiten hoy; el texto debe ser único (StrEnum
+    # convierte valores repetidos en alias del primero).
+    RC2 = "Perfil Score D (RC2)"
+    RC3 = "Validación de exclusiones"
     RC4 = "Ingreso en zona gris para independiente"
     E1 = "Clientes diferentes a persona natural"
     E2 = "Mora 30 días vigentes"
@@ -140,15 +146,9 @@ class Causal(StrEnum):
 
 
 def _tipo_por_codigo(codigo: str) -> Decision:
-    # RC1 ("No cumple continuidad") es rechazo directo
-    # (GRIS -> Rechazado), a diferencia de RC2-RC4 que son codeudor.
-    if codigo == "RC1":
-        return Decision.RECHAZADO
-    if codigo.startswith("RC"):
-        return Decision.REQUIERE_CODEUDOR
-    if codigo.startswith("R"):
-        return Decision.RECHAZADO
-    return Decision.ESTUDIO
+    # D185: decisión estrictamente binaria — cualquier causal (R*, RC*,
+    # E*) es Rechazado; los tipos Estudio/Codeudor quedaron históricos.
+    return Decision.RECHAZADO
 
 
 _TIPO_CAUSAL = {c.name: _tipo_por_codigo(c.name) for c in Causal}

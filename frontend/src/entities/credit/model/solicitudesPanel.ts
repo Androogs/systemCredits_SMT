@@ -10,7 +10,14 @@ import {
   type FiltrosSolicitudes,
   type SolicitudResumenApi,
 } from '../../../features/credit-origination/api/originacionApi'
-import type { EstadoSolicitud } from './underwritingEngine'
+
+/**
+ * Estados visuales de una solicitud en el panel. La decisión del motor
+ * es binaria; `REQUIERE_REVISION` queda solo para evaluaciones/estados
+ * legados (ya no se emite).
+ */
+export type EstadoSolicitud =
+  'APROBADO' | 'RECHAZADO' | 'REQUIERE_REVISION' | 'PENDIENTE'
 
 export type EstadoVisual = EstadoSolicitud
 
@@ -20,8 +27,7 @@ const ESTADOS_NEGATIVOS = new Set(['rechazada', 'cancelada'])
 /**
  * La decisión del motor manda; si aún no hay evaluación se usa el
  * estado del ciclo de vida de la solicitud. `creada`/`en_evaluacion`
- * sin decisión son pendientes de evaluación (no "requieren revisión",
- * que es el perfil gris decidido por el motor).
+ * sin decisión son pendientes de evaluación.
  */
 export function estadoVisual(s: SolicitudResumenApi): EstadoVisual {
   if (s.decision === 'aprobado' || ESTADOS_POSITIVOS.has(s.estado)) {

@@ -103,7 +103,7 @@ def test_mora_30_vigente_es_estudio_y_telcos_bajo_umbral_no_cuenta(solicitud_emp
     hdc1 = RespuestaHDC(persona=PersonaBasica(numero_id="1", estado_documento="00"), cuentas_cartera=[normal])
     hdc2 = RespuestaHDC(persona=PersonaBasica(numero_id="1", estado_documento="00"), cuentas_cartera=[telco_bajo])
     c1 = _causales(solicitud_empleado, parametros_demo, hdc1)
-    assert c1 == [Causal.E2] and Causal.E2.tipo == Decision.ESTUDIO
+    assert c1 == [Causal.E2] and Causal.E2.tipo == Decision.RECHAZADO
     assert _causales(solicitud_empleado, parametros_demo, hdc2) == []
 
 

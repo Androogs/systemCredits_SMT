@@ -1,8 +1,10 @@
-"""Notificaciones al cliente: WhatsApp (WATI) y email SMTP estándar.
+"""Notificaciones al cliente: SMS (Twilio), WhatsApp (WATI) y email SMTP.
 
-El OTP va por WhatsApp como plantilla de autenticación; sin credenciales
-WATI el envío se registra en log y se reporta como 'simulado', igual que
-SMTP. Si no hay teléfono válido o WATI rechaza el envío, se cae a email.
+El OTP va primero por SMS vía Twilio cuando está configurado (WATI quedó
+descartado en la práctica), luego WhatsApp como plantilla de autenticación
+y por último email. Sin credenciales el envío se registra en log y se
+reporta como 'simulado'. Si no hay teléfono válido o el envío falla, se
+cae al siguiente canal.
 """
 
 import logging
@@ -13,6 +15,11 @@ from pathlib import Path
 
 from backend.config import get_settings
 from backend.db_models.models import SolicitudCredito
+from backend.integrations.twilio.client import (
+    TwilioClient,
+    TwilioError,
+    normalizar_telefono_e164,
+)
 from backend.integrations.wati.client import (
     WatiClient,
     WatiError,
@@ -47,6 +54,16 @@ PLANTILLAS = {
         "{nombre}, el desembolso de tu crédito {numero} fue registrado. "
         "La entrega del vehículo se coordina en el concesionario.",
     ),
+    # Recuperación de clave (D124): va al correo del usuario de la
+    # plataforma, no al cliente — `notificar` la usa con `destino` y sin
+    # solicitud asociada.
+    "recuperacion_clave": (
+        "Restablece tu contraseña - Inversiones Pacífico",
+        "{nombre}, recibimos una solicitud para restablecer tu "
+        "contraseña. Ingresa a {enlace} para definir una nueva. "
+        "El enlace vence en {minutos} minutos y solo se puede usar una "
+        "vez. Si no fuiste tú, ignora este correo.",
+    ),
     "legalizacion": (
         "Documentos de tu crédito - Inversiones Pacífico",
         "{nombre}, tu crédito {numero} quedó firmado. Adjuntamos el "
@@ -61,6 +78,57 @@ class NotificacionService:
     def __init__(self) -> None:
         self._settings = get_settings()
         self._wati = WatiClient(self._settings)
+        self._twilio = TwilioClient(self._settings)
+
+    def _contexto(
+        self, solicitud: SolicitudCredito | None, datos: dict
+    ) -> dict:
+        return {
+            "nombre": (
+                solicitud.cliente.nombre_completo.split(" ")[0]
+                if solicitud and solicitud.cliente
+                else "Cliente"
+            ),
+            "numero": (
+                f"#{solicitud.num_solicitud:06d}"
+                if solicitud and solicitud.num_solicitud
+                else ""
+            ),
+            **datos,
+        }
+
+    def _intentar_sms(
+        self,
+        evento: str,
+        solicitud: SolicitudCredito | None,
+        datos: dict,
+    ) -> dict | None:
+        """SMS vía Twilio Messages API. None = continuar por otro canal."""
+        if not self._twilio.configurado:
+            return None
+        contacto = solicitud.contacto_vivienda if solicitud else None
+        telefono = normalizar_telefono_e164(
+            contacto.telefono if contacto else None
+        )
+        if not telefono:
+            logger.info(
+                "[sms %s] sin teléfono válido del cliente; cae a email",
+                evento,
+            )
+            return None
+        _, plantilla = PLANTILLAS[evento]
+        try:
+            cuerpo = plantilla.format(**self._contexto(solicitud, datos))
+        except KeyError:
+            cuerpo = plantilla
+        try:
+            self._twilio.enviar_sms(telefono, cuerpo)
+        except TwilioError:
+            logger.exception(
+                "Falló el envío SMS a %s; cae a email", telefono
+            )
+            return None
+        return {"canal": "sms", "estado": "enviado", "destino": telefono}
 
     def _plantilla_whatsapp(
         self, evento: str, datos: dict
@@ -187,12 +255,20 @@ class NotificacionService:
 
         Devuelve {canal, estado, destino}; sin contacto registrado el
         evento queda 'sin_destino' y no bloquea la operación principal.
-        Con canal='whatsapp' intenta WATI primero y cae a email cuando
-        el evento no tiene plantilla, el teléfono no es válido o el
-        envío falla.
+        Con canal='sms' intenta Twilio y cae a email. Con canal='whatsapp'
+        intenta primero SMS (Twilio es el canal OTP vigente), luego WATI
+        y por último email; en ambos casos se cae a email cuando el
+        teléfono no es válido o el envío falla.
         """
-        if canal == "whatsapp":
-            envio = self._intentar_whatsapp(evento, solicitud, datos or {})
+        datos = datos or {}
+        if canal == "sms":
+            envio = self._intentar_sms(evento, solicitud, datos)
+            if envio is not None:
+                return envio
+        elif canal == "whatsapp":
+            envio = self._intentar_sms(evento, solicitud, datos)
+            if envio is None:
+                envio = self._intentar_whatsapp(evento, solicitud, datos)
             if envio is not None:
                 return envio
         if solicitud is not None and destino is None:
@@ -202,19 +278,7 @@ class NotificacionService:
             logger.info("[notificación %s] sin correo del cliente", evento)
             return {"canal": "email", "estado": "sin_destino", "destino": None}
         asunto, plantilla = PLANTILLAS[evento]
-        contexto = {
-            "nombre": (
-                solicitud.cliente.nombre_completo.split(" ")[0]
-                if solicitud and solicitud.cliente
-                else "Cliente"
-            ),
-            "numero": (
-                f"#{solicitud.num_solicitud:06d}"
-                if solicitud and solicitud.num_solicitud
-                else ""
-            ),
-            **(datos or {}),
-        }
+        contexto = self._contexto(solicitud, datos)
         try:
             cuerpo = plantilla.format(**contexto)
         except KeyError:

@@ -2,9 +2,10 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import String, cast, func, or_
+from sqlalchemy import String, and_, case, cast, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from backend.db_models.auth_models import Asesor
 from backend.db_models.models import (
     AliadoFinanciero,
     AliadoProducto,
@@ -26,6 +27,56 @@ from backend.services.motor_exceptions import (
     SolicitudNoEncontradaError,
     ValidacionError,
 )
+
+
+def _predicado_radicador(
+    asesor_ids: set[int],
+    asesor_cedula: str | None,
+    persona_desde: datetime | None = None,
+):
+    """Eje radicador por cuenta Y por persona: `id_asesor` en las
+    cuentas alcanzables y, cuando el usuario tiene cédula en su ficha,
+    la solicitud debe llevar esa cédula (foto del radicador) o ninguna.
+    La foto NULL (legada) solo la ve quien estaba al crearla: si la
+    cuenta cambió de titular (`persona_desde`), exige fecha posterior
+    al corte."""
+    base = SolicitudCredito.id_asesor.in_(asesor_ids)
+    if asesor_cedula is not None:
+        legado = SolicitudCredito.asesor_cedula.is_(None)
+        if persona_desde is not None:
+            legado = and_(
+                legado, SolicitudCredito.fecha_hora >= persona_desde
+            )
+        return and_(
+            base,
+            or_(
+                SolicitudCredito.asesor_cedula == asesor_cedula,
+                legado,
+            ),
+        )
+    return base
+
+
+def _predicado_filtro_asesor(db: Session, filtro_id_asesor: int):
+    """Filtro de panel por asesor = por PERSONA: cuando el asesor tiene
+    cédula en su ficha solo cuenta su producción (foto igual, o legada
+    posterior al corte `persona_desde`). Sin cédula no hay cómo
+    discriminar titulares y se filtra solo por la cuenta."""
+    base = SolicitudCredito.id_asesor == filtro_id_asesor
+    fila = (
+        db.query(Asesor.num_cedula, Asesor.persona_desde)
+        .filter(Asesor.id_asesor == filtro_id_asesor)
+        .first()
+    )
+    if fila is None or not fila.num_cedula:
+        return base
+    legado = SolicitudCredito.asesor_cedula.is_(None)
+    if fila.persona_desde is not None:
+        legado = and_(legado, SolicitudCredito.fecha_hora >= fila.persona_desde)
+    return and_(
+        base,
+        or_(SolicitudCredito.asesor_cedula == fila.num_cedula, legado),
+    )
 
 
 def oferta_expirada(oferta: OfertaCredito, ahora: datetime | None = None) -> bool:
@@ -77,18 +128,55 @@ class SolicitudRepository:
         estado: str | None = None,
         decision: str | None = None,
         busqueda: str | None = None,
+        concesionario_ids: set[int] | None = None,
+        asesor_ids: set[int] | None = None,
+        asesor_cedula: str | None = None,
+        persona_desde: datetime | None = None,
+        filtro_id_concesionario: int | None = None,
+        filtro_id_asesor: int | None = None,
+        orden: str = "reciente",
     ) -> list[SolicitudCredito]:
         """Listado del panel: más recientes primero, con cliente y
-        evaluación vigente precargadas."""
+        evaluación vigente precargadas. `concesionario_ids` y
+        `asesor_ids` son el alcance del usuario autenticado por eje
+        (sede / radicador): None = sin filtro en ese eje; un set
+        —incluso vacío— limita a esos ids.
+        `asesor_cedula` refina el eje radicador a la persona: la cuenta
+        de asesor puede cambiar de dueño y cada solicitud queda ligada
+        a la cédula de quien la hizo (NULL = legado, visible para
+        quien herede la cuenta).
+        `filtro_id_concesionario`/`filtro_id_asesor` son filtros de
+        panel: se intersectan con el alcance (nunca lo amplían).
+        `orden="prioridad"` pone las pendientes de evaluación primero
+        — el ORDER BY corre antes del LIMIT, así la ventana siempre
+        contiene la cola de trabajo."""
         query = (
             self.db.query(SolicitudCredito)
             .join(SolicitudCredito.cliente)
             .options(
                 joinedload(SolicitudCredito.cliente),
+                joinedload(SolicitudCredito.asesor),
+                joinedload(SolicitudCredito.concesionario),
                 selectinload(SolicitudCredito.evaluaciones),
                 selectinload(SolicitudCredito.capacidades_pago),
             )
         )
+        if concesionario_ids is not None:
+            query = query.filter(
+                SolicitudCredito.id_concesionario.in_(concesionario_ids)
+            )
+        if asesor_ids is not None:
+            query = query.filter(
+                _predicado_radicador(asesor_ids, asesor_cedula, persona_desde)
+            )
+        if filtro_id_concesionario is not None:
+            query = query.filter(
+                SolicitudCredito.id_concesionario == filtro_id_concesionario
+            )
+        if filtro_id_asesor is not None:
+            query = query.filter(
+                _predicado_filtro_asesor(self.db, filtro_id_asesor)
+            )
         if estado:
             query = query.filter(SolicitudCredito.estado == estado)
         if decision:
@@ -102,8 +190,27 @@ class SolicitudRepository:
                     cast(SolicitudCredito.num_solicitud, String).ilike(like),
                 )
             )
+        ordenamiento = (
+            [
+                case(
+                    (
+                        and_(
+                            SolicitudCredito.decision.is_(None),
+                            SolicitudCredito.estado.in_(
+                                ["creada", "en_evaluacion"]
+                            ),
+                        ),
+                        0,
+                    ),
+                    else_=1,
+                ),
+                SolicitudCredito.fecha_hora.desc(),
+            ]
+            if orden == "prioridad"
+            else [SolicitudCredito.fecha_hora.desc()]
+        )
         return (
-            query.order_by(SolicitudCredito.fecha_hora.desc())
+            query.order_by(*ordenamiento)
             .offset(offset)
             .limit(limite)
             .all()
@@ -114,6 +221,8 @@ class SolicitudRepository:
             self.db.query(SolicitudCredito)
             .options(
                 joinedload(SolicitudCredito.cliente),
+                joinedload(SolicitudCredito.asesor),
+                joinedload(SolicitudCredito.concesionario),
                 joinedload(SolicitudCredito.datos_laborales),
                 joinedload(SolicitudCredito.contacto_vivienda),
                 selectinload(SolicitudCredito.evaluaciones),
@@ -342,10 +451,17 @@ class SolicitudRepository:
         self,
         desde: datetime | None = None,
         hasta: datetime | None = None,
+        concesionario_ids: set[int] | None = None,
+        asesor_ids: set[int] | None = None,
+        asesor_cedula: str | None = None,
+        persona_desde: datetime | None = None,
+        filtro_id_concesionario: int | None = None,
+        filtro_id_asesor: int | None = None,
     ) -> dict:
         """Agregados del embudo en una sola pasada sobre
         solicitud_credito (FILTER WHERE: Postgres 9.4+ y SQLite 3.30+).
-        `desde`/`hasta` acotan por fecha_hora de radicación."""
+        `desde`/`hasta` acotan por fecha_hora de radicación;
+        `filtro_*` son los filtros dimensionales del panel."""
         q = self.db.query(
             func.count(SolicitudCredito.id_solicitud),
             func.count().filter(SolicitudCredito.decision.isnot(None)),
@@ -361,6 +477,26 @@ class SolicitudRepository:
         q_estado = self.db.query(
             SolicitudCredito.estado, func.count()
         ).group_by(SolicitudCredito.estado)
+        if concesionario_ids is not None:
+            q = q.filter(SolicitudCredito.id_concesionario.in_(concesionario_ids))
+            q_estado = q_estado.filter(
+                SolicitudCredito.id_concesionario.in_(concesionario_ids)
+            )
+        if asesor_ids is not None:
+            predicado = _predicado_radicador(asesor_ids, asesor_cedula, persona_desde)
+            q = q.filter(predicado)
+            q_estado = q_estado.filter(predicado)
+        if filtro_id_concesionario is not None:
+            q = q.filter(
+                SolicitudCredito.id_concesionario == filtro_id_concesionario
+            )
+            q_estado = q_estado.filter(
+                SolicitudCredito.id_concesionario == filtro_id_concesionario
+            )
+        if filtro_id_asesor is not None:
+            predicado = _predicado_filtro_asesor(self.db, filtro_id_asesor)
+            q = q.filter(predicado)
+            q_estado = q_estado.filter(predicado)
         if desde is not None:
             q = q.filter(SolicitudCredito.fecha_hora >= desde)
             q_estado = q_estado.filter(SolicitudCredito.fecha_hora >= desde)
@@ -383,6 +519,13 @@ class SolicitudRepository:
         self,
         desde: datetime | None = None,
         hasta: datetime | None = None,
+        concesionario_ids: set[int] | None = None,
+        aliado_ids: set[int] | None = None,
+        asesor_ids: set[int] | None = None,
+        asesor_cedula: str | None = None,
+        persona_desde: datetime | None = None,
+        filtro_id_concesionario: int | None = None,
+        filtro_id_asesor: int | None = None,
     ) -> list[dict]:
         """Conversión por aliado financiero. La solicitud solo conoce a su
         aliado cuando el cliente selecciona la oferta (post-aprobación);
@@ -414,12 +557,26 @@ class SolicitudRepository:
                 AliadoProducto.id_aliado == AliadoFinanciero.id_aliado,
             )
         )
+        if concesionario_ids is not None:
+            q = q.filter(SolicitudCredito.id_concesionario.in_(concesionario_ids))
+        if asesor_ids is not None:
+            q = q.filter(
+                _predicado_radicador(asesor_ids, asesor_cedula, persona_desde)
+            )
+        if filtro_id_concesionario is not None:
+            q = q.filter(
+                SolicitudCredito.id_concesionario == filtro_id_concesionario
+            )
+        if filtro_id_asesor is not None:
+            q = q.filter(_predicado_filtro_asesor(self.db, filtro_id_asesor))
+        if aliado_ids is not None:
+            q = q.filter(AliadoFinanciero.id_aliado.in_(aliado_ids))
         if desde is not None:
             q = q.filter(SolicitudCredito.fecha_hora >= desde)
         if hasta is not None:
             q = q.filter(SolicitudCredito.fecha_hora < hasta)
         filas = q.group_by(AliadoFinanciero.nombre).all()
-        capital_por_aliado = dict(
+        q_capital = (
             self.db.query(
                 AliadoFinanciero.nombre,
                 func.coalesce(func.sum(Desembolso.capital), 0),
@@ -433,9 +590,32 @@ class SolicitudRepository:
                 CreditoFinanciacion.id_aliado_financiero
                 == AliadoFinanciero.id_aliado,
             )
+            .join(
+                SolicitudCredito,
+                CreditoFinanciacion.id_solicitud == SolicitudCredito.id_solicitud,
+            )
             .filter(Desembolso.estado == "confirmado")
-            .group_by(AliadoFinanciero.nombre)
-            .all()
+        )
+        if concesionario_ids is not None:
+            q_capital = q_capital.filter(
+                SolicitudCredito.id_concesionario.in_(concesionario_ids)
+            )
+        if asesor_ids is not None:
+            q_capital = q_capital.filter(
+                _predicado_radicador(asesor_ids, asesor_cedula, persona_desde)
+            )
+        if filtro_id_concesionario is not None:
+            q_capital = q_capital.filter(
+                SolicitudCredito.id_concesionario == filtro_id_concesionario
+            )
+        if filtro_id_asesor is not None:
+            q_capital = q_capital.filter(
+                _predicado_filtro_asesor(self.db, filtro_id_asesor)
+            )
+        if aliado_ids is not None:
+            q_capital = q_capital.filter(AliadoFinanciero.id_aliado.in_(aliado_ids))
+        capital_por_aliado = dict(
+            q_capital.group_by(AliadoFinanciero.nombre).all()
         )
         return [
             {

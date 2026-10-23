@@ -2,13 +2,15 @@
 
 import uuid
 from datetime import UTC, datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from backend.auth.dependencies import UsuarioActual, requiere_roles, usuario_actual
 from backend.config import get_settings
 from backend.db_models.session import get_db
-from backend.models.motor_models import EvaluarSolicitudRequest, ResultadoMotorResponse
+from backend.models.motor_models import EvaluarSolicitudRequest, ResultadoBinarioResponse, ResultadoMotorResponse
 from backend.models.solicitud_models import (
     CancelarSolicitudRequest,
     CrearSolicitudRequest,
@@ -28,13 +30,18 @@ from backend.models.solicitud_models import (
 )
 from backend.repositories.solicitud_repository import SolicitudRepository
 from backend.routes.dependencies import (
+    auditar_acceso,
     get_evaluacion_service,
     get_tasa_mercado_service,
 )
 from backend.services.desembolso_service import DesembolsoService
 from backend.services.documento_service import DocumentoService
 from backend.services.evaluacion_service import EvaluacionService
-from backend.services.motor_exceptions import DataCreditoError, ValidacionError
+from backend.services.motor_exceptions import (
+    DataCreditoError,
+    SolicitudNoEncontradaError,
+    ValidacionError,
+)
 from backend.services.notificacion_service import NotificacionService
 from backend.services.otp_service import OtpError, OtpService
 from backend.services.solicitud_service import SolicitudService
@@ -115,14 +122,29 @@ def listar(
     busqueda: str | None = None,
     limite: int = 50,
     offset: int = 0,
+    id_concesionario: int | None = None,
+    id_asesor: int | None = None,
+    orden: Literal["reciente", "prioridad"] = "reciente",
+    usuario: UsuarioActual = Depends(usuario_actual),
     db: Session = Depends(get_db),
 ) -> list[SolicitudResumenResponse]:
+    """`id_concesionario`/`id_asesor` son filtros del panel (admin):
+    se intersectan con el alcance de la sesión — nunca lo amplían.
+    `orden=prioridad` pone las pendientes de evaluación primero."""
     return SolicitudService(db).listar(
         limite=min(limite, 200),
         offset=offset,
         estado=estado,
         decision=decision,
         busqueda=busqueda,
+        concesionario_ids=usuario.concesionario_ids(),
+        asesor_ids=usuario.asesor_ids(),
+        asesor_cedula=usuario.cedula_asesor,
+        persona_desde=usuario.persona_desde_asesor,
+        filtro_id_concesionario=id_concesionario,
+        filtro_id_asesor=id_asesor,
+        orden=orden,
+        ver_detalle_interno=usuario.es_admin(),
     )
 
 
@@ -130,31 +152,72 @@ def listar(
 def metricas_embudo(
     desde: datetime | None = None,
     hasta: datetime | None = None,
+    id_concesionario: int | None = None,
+    id_asesor: int | None = None,
+    usuario: UsuarioActual = Depends(usuario_actual),
     db: Session = Depends(get_db),
 ) -> MetricasEmbudoResponse:
     """Conversión del embudo originación → desembolso: conteos por etapa,
     distribución por estado y desglose por aliado financiero. `desde`/
     `hasta` acotan el rango por fecha de radicación (ej: mes del filtro
-    del panel)."""
-    return SolicitudService(db).metricas_embudo(desde=desde, hasta=hasta)
+    del panel); `id_concesionario`/`id_asesor` son los filtros
+    dimensionales del panel (intersectados con el alcance)."""
+    return SolicitudService(db).metricas_embudo(
+        desde=desde,
+        hasta=hasta,
+        concesionario_ids=usuario.concesionario_ids(),
+        asesor_ids=usuario.asesor_ids(),
+        asesor_cedula=usuario.cedula_asesor,
+        persona_desde=usuario.persona_desde_asesor,
+        # El desglose por aliado nunca expone competidores: el usuario
+        # aliado solo ve el suyo; admin y asesor ven el completo.
+        aliado_ids=usuario.aliado_ids() if "aliado" in usuario.roles else None,
+        filtro_id_concesionario=id_concesionario,
+        filtro_id_asesor=id_asesor,
+    )
 
 
 @router.get("/{id_solicitud}", response_model=SolicitudDetalleResponse)
 def detalle(
     id_solicitud: uuid.UUID,
+    request: Request,
+    usuario: UsuarioActual = Depends(usuario_actual),
     db: Session = Depends(get_db),
 ) -> SolicitudDetalleResponse:
-    return SolicitudService(db).detalle(id_solicitud)
+    try:
+        resultado = SolicitudService(db).detalle(
+            id_solicitud,
+            concesionario_ids=usuario.concesionario_ids(),
+            asesor_ids=usuario.asesor_ids(),
+            asesor_cedula=usuario.cedula_asesor,
+            persona_desde=usuario.persona_desde_asesor,
+            ver_detalle_interno=usuario.es_admin(),
+        )
+    except (HTTPException, SolicitudNoEncontradaError):
+        auditar_acceso(
+            db, usuario, "acceso_denegado",
+            f"detalle solicitud {id_solicitud}", request,
+        )
+        db.commit()  # persiste aunque el request termine en rollback
+        raise
+    auditar_acceso(
+        db, usuario, "acceso_solicitud",
+        f"detalle solicitud {resultado.num_solicitud}", request,
+    )
+    return resultado
 
 
 @router.post("", response_model=CrearSolicitudResponse, status_code=status.HTTP_201_CREATED)
 def crear(
     payload: CrearSolicitudRequest,
     request: Request,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
     db: Session = Depends(get_db),
 ) -> CrearSolicitudResponse:
     return SolicitudService(db).crear(
-        payload, ip=request.client.host if request.client else None
+        payload,
+        ip=request.client.host if request.client else None,
+        usuario=usuario,
     )
 
 
@@ -163,27 +226,41 @@ def actualizar(
     id_solicitud: uuid.UUID,
     payload: CrearSolicitudRequest,
     request: Request,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
     db: Session = Depends(get_db),
 ) -> CrearSolicitudResponse:
     """Re-diligencia la radicación al retomar pasos pendientes (Habeas
     Data, evidencias, perfil económico): upsert sobre el mismo registro,
     no duplica. 409 si la solicitud ya tiene decisión."""
-    return SolicitudService(db).actualizar(
+    servicio = SolicitudService(db)
+    servicio.verificar_alcance(id_solicitud, usuario)
+    return servicio.actualizar(
         id_solicitud, payload, ip=request.client.host if request.client else None
     )
 
 
-@router.post("/{id_solicitud}/evaluar", response_model=ResultadoMotorResponse)
+@router.post(
+    "/{id_solicitud}/evaluar",
+    response_model=ResultadoMotorResponse | ResultadoBinarioResponse,
+)
 def evaluar(
     id_solicitud: uuid.UUID,
     payload: EvaluarSolicitudRequest,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
     servicio: EvaluacionService = Depends(get_evaluacion_service),
     tasas: TasaMercadoService = Depends(get_tasa_mercado_service),
     db: Session = Depends(get_db),
 ) -> ResultadoMotorResponse:
     _rechazar_tasa_sobre_usura(payload, tasas)
+    SolicitudService(db).verificar_alcance(id_solicitud, usuario)
     resultado = servicio.evaluar_solicitud_db(id_solicitud, payload)
-    respuesta = ResultadoMotorResponse.desde_resultado(resultado, str(id_solicitud))
+    # El asesor recibe la decisión y la oferta; el expediente interno
+    # (score, causales, buró, traza) es solo del administrador.
+    respuesta = (
+        ResultadoMotorResponse.desde_resultado(resultado, str(id_solicitud))
+        if usuario.es_admin()
+        else ResultadoBinarioResponse.desde_resultado(resultado, str(id_solicitud))
+    )
     aprobado = getattr(resultado.decision, "value", resultado.decision) == "Aprobado"
     _notificar(
         db,
@@ -197,17 +274,26 @@ def evaluar(
 
 
 @router.get("/{id_solicitud}/ofertas", response_model=list[OfertaResponse])
-def ofertas(id_solicitud: uuid.UUID, db: Session = Depends(get_db)) -> list[OfertaResponse]:
-    return SolicitudService(db).ofertas(id_solicitud)
+def ofertas(
+    id_solicitud: uuid.UUID,
+    usuario: UsuarioActual = Depends(usuario_actual),
+    db: Session = Depends(get_db),
+) -> list[OfertaResponse]:
+    servicio = SolicitudService(db)
+    servicio.verificar_alcance(id_solicitud, usuario)
+    return servicio.ofertas(id_solicitud)
 
 
 @router.post("/{id_solicitud}/ofertas/seleccionar", response_model=OfertaResponse)
 def seleccionar_oferta(
     id_solicitud: uuid.UUID,
     payload: SeleccionarOfertaRequest,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
     db: Session = Depends(get_db),
 ) -> OfertaResponse:
-    oferta = SolicitudService(db).seleccionar_oferta(id_solicitud, payload)
+    servicio = SolicitudService(db)
+    servicio.verificar_alcance(id_solicitud, usuario)
+    oferta = servicio.seleccionar_oferta(id_solicitud, payload)
     _notificar(
         db,
         id_solicitud,
@@ -225,22 +311,30 @@ def seleccionar_oferta(
 def cancelar(
     id_solicitud: uuid.UUID,
     payload: CancelarSolicitudRequest,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
     db: Session = Depends(get_db),
 ) -> SolicitudResumenResponse:
     """Anula la solicitud con motivo obligatorio. 409 si ya está
     desembolsada o cancelada; el historial lo escribe el trigger de BD."""
-    return SolicitudService(db).cancelar(id_solicitud, payload.motivo)
+    servicio = SolicitudService(db)
+    servicio.verificar_alcance(id_solicitud, usuario)
+    return servicio.cancelar(
+        id_solicitud, payload.motivo, usuario.es_admin()
+    )
 
 
 @router.put("/{id_solicitud}/datos-formalizacion", status_code=status.HTTP_204_NO_CONTENT)
 def datos_formalizacion(
     id_solicitud: uuid.UUID,
     payload: DatosFormalizacionRequest,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
     db: Session = Depends(get_db),
 ) -> None:
     """Información adicional del cliente (residencia, personal, financiera
     y laboral) capturada en la formalización, antes de la firma OTP."""
-    SolicitudService(db).guardar_datos_formalizacion(id_solicitud, payload)
+    servicio = SolicitudService(db)
+    servicio.verificar_alcance(id_solicitud, usuario)
+    servicio.guardar_datos_formalizacion(id_solicitud, payload)
 
 
 @router.post("/{id_solicitud}/otp", response_model=GenerarOtpResponse, status_code=status.HTTP_201_CREATED)
@@ -248,9 +342,11 @@ def generar_otp(
     id_solicitud: uuid.UUID,
     payload: GenerarOtpRequest,
     request: Request,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
     db: Session = Depends(get_db),
 ) -> GenerarOtpResponse:
     """Emite un OTP por el canal pedido (tabla `otp`, solo hash)."""
+    SolicitudService(db).verificar_alcance(id_solicitud, usuario)
     solicitud = SolicitudRepository(db).obtener_detalle(id_solicitud)
     if solicitud is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Solicitud no encontrada")
@@ -284,9 +380,11 @@ def verificar_otp(
     id_solicitud: uuid.UUID,
     payload: VerificarOtpRequest,
     request: Request,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
     db: Session = Depends(get_db),
 ) -> VerificarOtpResponse:
     """Valida el OTP; al aprobar la acción 'firma_pagare' firma la solicitud."""
+    SolicitudService(db).verificar_alcance(id_solicitud, usuario)
     try:
         otp = OtpService(db).verificar(id_solicitud, payload.accion, payload.codigo)
     except OtpError as exc:
@@ -320,11 +418,13 @@ def verificar_otp(
 def registrar_desembolso(
     id_solicitud: uuid.UUID,
     payload: RegistrarDesembolsoRequest,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
     db: Session = Depends(get_db),
 ) -> DesembolsoResponse:
     """Formaliza el crédito sobre la oferta seleccionada y confirma el
     desembolso a la cuenta de ahorros del cliente. Idempotente: si el
     crédito ya tiene desembolso confirmado devuelve el existente."""
+    SolicitudService(db).verificar_alcance(id_solicitud, usuario)
     desembolso = DesembolsoService(db).registrar(id_solicitud, payload)
     _notificar(db, id_solicitud, "desembolso")
     return desembolso

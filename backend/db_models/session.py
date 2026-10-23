@@ -31,10 +31,15 @@ def configurar_engine(url: str) -> None:
     SessionLocal.configure(bind=engine)
 
 
-def crear_tablas() -> None:
-    from backend.db_models import auditoria_models, evidencia_models, models  # noqa: F401  (registra tablas)
+def crear_tablas_engine(engine_obj: Engine) -> None:
+    """Crea todas las tablas registradas en el engine indicado."""
+    from backend.db_models import auth_models, auditoria_models, evidencia_models, models  # noqa: F401  (registra tablas)
 
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine_obj)
+
+
+def crear_tablas() -> None:
+    crear_tablas_engine(engine)
 
 
 def get_db() -> Iterator[Session]:

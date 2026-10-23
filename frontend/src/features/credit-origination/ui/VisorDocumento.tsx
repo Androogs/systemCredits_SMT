@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { renderAsync } from 'docx-preview'
 import { Download, X } from 'lucide-react'
+import {
+  bufferAutenticado,
+  descargarArchivoAutenticado,
+} from '../../../shared/lib/archivoAutenticado'
 
 interface VisorDocumentoProps {
-  /** URL del .docx a previsualizar. */
+  /** URL protegida del .docx a previsualizar. */
   url: string
   nombre: string
   onCerrar: () => void
@@ -24,11 +28,7 @@ export default function VisorDocumento({
   useEffect(() => {
     let vivo = true
     setEstado('cargando')
-    fetch(url)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.arrayBuffer()
-      })
+    bufferAutenticado(url)
       .then((buf) =>
         vivo && contenedor.current
           ? renderAsync(buf, contenedor.current, undefined, {
@@ -67,13 +67,13 @@ export default function VisorDocumento({
             {nombre}
           </h3>
           <div className="flex items-center gap-2">
-            <a
-              href={url}
-              download={nombre}
+            <button
+              type="button"
+              onClick={() => descargarArchivoAutenticado(url, nombre)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50"
             >
               <Download size={14} /> Descargar
-            </a>
+            </button>
             <button
               type="button"
               onClick={onCerrar}

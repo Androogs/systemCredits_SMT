@@ -16,12 +16,12 @@ def test_ingreso_final_usa_valor_ingreso(solicitud_empleado):
     assert r.decision_forzada is None
 
 
-def test_ingreso_final_sin_datos_fuerza_estudio(solicitud_empleado):
+def test_ingreso_final_sin_datos_fuerza_rechazo(solicitud_empleado):
     # Para que se dispare la regla, TODOS los ingresos deben ser 0
     solicitud = solicitud_empleado.model_copy(update={"ingresos_mensuales": Decimal("0")})
     r = calcular_ingreso_final(solicitud, Decimal("0"), Decimal("0"))
     assert r.ingreso_final == Decimal("0")
-    assert r.decision_forzada == Decision.ESTUDIO
+    assert r.decision_forzada == Decision.RECHAZADO
     assert r.causal_forzada == Causal.E3  # Sin Valor Ingreso, Quanto ni declarado
 
 
@@ -101,7 +101,7 @@ def test_motor_aprobado(solicitud_empleado, hdc_basico, parametros_demo):
 
     motor = MotorDecision(smmlv=1300000)
     r = motor.evaluar(solicitud_empleado, hdc_basico, vi, parametros_demo)
-    assert r.decision in (Decision.APROBADO, Decision.ESTUDIO)
+    assert r.decision == Decision.APROBADO
     assert r.evaluacion_id
     assert r.tiempo_ms >= 0
 

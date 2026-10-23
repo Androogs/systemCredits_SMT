@@ -36,9 +36,9 @@ Políticas de la solicitud:
 Exclusiones de score (Acierta / Advance):
      score 3      -> R1 fallecido
      score 0 ó 4  -> exclusión: no se asigna perfil de score; la
-                     decisión depende del ingreso (E7 Estudio si
-                     ingreso SMMLV >= Ingreso_E_2 / Ingreso_I_2, si no
-                     RC3 Requiere codeudor). Se resuelve en el motor.
+                     causal depende del ingreso (E7 si ingreso SMMLV >=
+                     Ingreso_E_2 / Ingreso_I_2, si no RC3) — ambas
+                     rechazan (D185). Se resuelve en el motor.
 
 PENDIENTE DE CONFIRMAR CON EL MANUAL HDC+ DE LA VERSIÓN CONTRATADA: el
 vector de comportamiento se lee asumiendo que el carácter 0 es el mes

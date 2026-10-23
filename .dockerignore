@@ -15,6 +15,15 @@ node_modules/
 .env
 .env.*
 !.env.example
+# Herramientas de agentes IA / diseño (solo en la máquina del dev)
+.devin/
+.agents/
+.claude/
+.cursor/
+.vibe/
+.impeccable/
+.superpowers/
+.husky/
 uploads/
 tests/
 docs/

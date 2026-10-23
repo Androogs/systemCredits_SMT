@@ -3,19 +3,25 @@ import { Link } from 'react-router-dom'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
 import Sparkline from '../shared/ui/Sparkline'
-import Skeleton, { FilasSkeleton } from '../shared/ui/Skeleton'
-import InsigniaEstado from '../entities/credit/ui/InsigniaEstado'
-import { currency, number, dateShort } from '../shared/lib/formatters'
+import Skeleton from '../shared/ui/Skeleton'
+import { currency, number } from '../shared/lib/formatters'
 import { useCuentaAscendente } from '../shared/lib/useCuentaAscendente'
 import { useRol } from '../shared/lib/sesion'
 import {
   estadoParaVista,
-  etiquetaSolicitud,
   numero,
   OCUPACION_LABELS,
   useSolicitudes,
 } from '../entities/credit/model/solicitudesPanel'
-import type { SolicitudResumenApi } from '../features/credit-origination/api/originacionApi'
+import type {
+  FiltrosSolicitudes,
+  SolicitudResumenApi,
+} from '../features/credit-origination/api/originacionApi'
+import TablaSolicitudesPanel from '../widgets/dashboard/TablaSolicitudesPanel'
+import BarraFiltrosDimensionales, {
+  type DimensionesPanel,
+} from '../widgets/dashboard/BarraFiltrosDimensionales'
+import AccionesRapidas from '../widgets/dashboard/AccionesRapidas'
 import {
   CircleCheck,
   Clock3,
@@ -85,6 +91,20 @@ const FILTRO_POR_ETAPA: Record<string, FiltroPanel | null> = {
 }
 
 export default function Resumen() {
+  const rol = useRol()
+  const vistaBinaria = rol !== 'admin'
+  // Filtros dimensionales (concesionario/asesor): viajan al servidor y
+  // recalculan KPIs, gráficas, embudo y tabla a la vez. Los tiene el
+  // admin (todo) y el aliado (sus sedes, para comisiones); el asesor
+  // no — su alcance ya es solo lo que radicó él.
+  // Filtros de sede/asesor: admin los cruza, el aliado reporta
+  // comisiones por radicador y el concesionario filtra su propia sede.
+  const conDimensiones =
+    rol === 'admin' || rol === 'aliado' || rol === 'concesionario'
+  const [dimensiones, setDimensiones] = useState<DimensionesPanel>({})
+  const filtrosLista: FiltrosSolicitudes = conDimensiones
+    ? { limite: 200, ...dimensiones }
+    : { limite: 200, orden: 'prioridad' }
   const {
     datos: solicitudes,
     cargando,
@@ -92,9 +112,7 @@ export default function Resumen() {
     recargar,
     actualizadoEn,
     sincronizando,
-  } = useSolicitudes({ limite: 200 }, { refetchIntervalMs: REFRESCO_MS })
-  const rol = useRol()
-  const esAsesor = rol === 'asesor'
+  } = useSolicitudes(filtrosLista, { refetchIntervalMs: REFRESCO_MS })
   const [filtro, setFiltro] = useState<FiltroPanel | null>(null)
   const alternarFiltro = (f: FiltroPanel) =>
     setFiltro((actual) =>
@@ -371,7 +389,7 @@ export default function Resumen() {
       <Encabezado
         title={saludoDelDia()}
         subtitle={
-          esAsesor
+          vistaBinaria
             ? 'Prioridades comerciales y solicitudes asignadas'
             : 'Resumen general de solicitudes y decisiones'
         }
@@ -406,8 +424,8 @@ export default function Resumen() {
                 <>
                   Filtro activo: <strong>{filtro.etiqueta}</strong> —{' '}
                   {solicitudesFiltradas.length} solicitud
-                  {solicitudesFiltradas.length === 1 ? '' : 'es'} en la tabla;
-                  las gráficas se atenúan.
+                  {solicitudesFiltradas.length === 1 ? '' : 'es'} en la tabla
+                  {vistaBinaria ? '.' : '; las gráficas se atenúan.'}
                 </>
               )}
             </span>
@@ -420,6 +438,15 @@ export default function Resumen() {
             </button>
           </div>
         )}
+
+        {conDimensiones && (
+          <BarraFiltrosDimensionales
+            dimensiones={dimensiones}
+            onCambiar={setDimensiones}
+          />
+        )}
+
+        {rol === 'asesor' && <AccionesRapidas />}
 
         <BandaKpis
           cargando={cargando}
@@ -439,292 +466,200 @@ export default function Resumen() {
           setFiltro={setFiltro}
         />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Suspense
-            fallback={
-              <>
-                {[1, 2].map((i) => (
-                  <Tarjeta key={i}>
-                    <Skeleton className="h-56 w-full rounded-xl" />
-                  </Tarjeta>
-                ))}
-                <Tarjeta className="lg:col-span-2">
-                  <Skeleton className="h-64 w-full rounded-xl" />
-                </Tarjeta>
-              </>
-            }
-          >
-            <GraficasResumen
-              cargando={cargando}
-              byStatus={byStatus}
-              monthBuckets={monthBuckets}
-              totalAnimado={totalAnimado}
-              filtro={filtro}
-              alternarFiltro={alternarFiltro}
-            />
-          </Suspense>
-
-          <Tarjeta>
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-              <h3 className="font-semibold text-slate-900">
-                Aprobación por ocupación
-              </h3>
-              <div className="flex gap-3 text-xs text-slate-600">
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                  Aprobadas
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-                  Rechazadas
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-slate-300" />
-                  Otras
-                </span>
-              </div>
-            </div>
-            <div
-              className="space-y-3"
-              aria-busy={cargando}
-              role="img"
-              aria-label={`Aprobación por ocupación: ${porOcupacion.map((g) => `${g.label}: ${g.aprobadas} aprobadas de ${g.total}`).join(', ')}`}
-            >
-              {cargando ? (
-                <div className="space-y-3" aria-hidden="true">
-                  {[100, 85, 70].map((w) => (
-                    <div
-                      key={w}
-                      className="h-9 animate-pulse rounded-lg bg-slate-200"
-                      style={{ width: `${w}%` }}
-                    />
-                  ))}
-                </div>
-              ) : porOcupacion.length === 0 ? (
-                <p className="py-10 text-center text-sm text-slate-500">
-                  Aún no hay solicitudes registradas.
-                </p>
-              ) : (
-                porOcupacion.map((g) => {
-                  const tasa = Math.round((g.aprobadas / g.total) * 100)
-                  const activo =
-                    filtro?.campo === 'ocupacion' && filtro.valor === g.tipo
-                  return (
-                    <button
-                      key={g.tipo}
-                      type="button"
-                      onClick={() =>
-                        alternarFiltro({
-                          campo: 'ocupacion',
-                          valor: g.tipo,
-                          etiqueta: g.label,
-                        })
-                      }
-                      aria-pressed={activo}
-                      className={`relative flex w-full items-center gap-x-3 rounded-lg px-3 pb-3 pt-2 text-sm transition hover:bg-slate-50 ${
-                        activo
-                          ? 'bg-brand-500/[.07] ring-1 ring-inset ring-brand-500/25'
-                          : ''
-                      } ${
-                        filtro?.campo === 'ocupacion' && !activo
-                          ? 'opacity-40'
-                          : ''
-                      }`}
-                    >
-                      <span className="min-w-0 flex-1 truncate text-left text-slate-700">
-                        {g.label}
-                      </span>
-                      <span className="hidden shrink-0 text-xs text-slate-400 tabular-nums sm:inline">
-                        {g.aprobadas} apr · {g.rechazadas} rec
-                      </span>
-                      <span className="w-20 shrink-0 text-right tabular-nums">
-                        <span className="font-semibold text-slate-900">
-                          {g.total}
-                        </span>
-                        <span className="text-xs text-slate-500">
-                          {' '}
-                          · {tasa}%
-                        </span>
-                      </span>
-                      {/* Composición como track delgado al borde inferior:
-                          aprobadas / rechazadas / otras en su proporción. */}
-                      <span
-                        aria-hidden="true"
-                        className="absolute inset-x-3 bottom-1 flex h-[3px] overflow-hidden rounded-full bg-slate-100"
-                      >
-                        <span
-                          className="bg-emerald-500"
-                          style={{
-                            width: `${(g.aprobadas / g.total) * 100}%`,
-                          }}
-                        />
-                        <span
-                          className="bg-red-400"
-                          style={{
-                            width: `${(g.rechazadas / g.total) * 100}%`,
-                          }}
-                        />
-                      </span>
-                    </button>
-                  )
-                })
-              )}
-            </div>
-          </Tarjeta>
-
-          <div className="lg:col-span-2">
-            <EmbudoOriginacion
-              esAsesor={esAsesor}
-              rango={rangoEmbudo}
-              filtro={filtro}
-              onFiltrar={filtrarPorEtapa}
-            />
-          </div>
-
-          <PanelRanking
-            titulo="Plazo preferido"
-            cargando={cargando}
-            items={porPlazo}
-            total={total}
-            vacio="Aún no hay solicitudes registradas."
+        {vistaBinaria ? (
+          /* Vista operativa (asesor/aliado): embudo de su alcance +
+             tabla completa con pendientes primero. La analítica de
+             gestión (dona, tendencia, ocupación, rankings) queda para
+             el administrador. */
+          <EmbudoOriginacion
+            vistaBinaria={rol === 'asesor'}
+            rango={rangoEmbudo}
+            concesionarioId={dimensiones.id_concesionario}
+            asesorId={dimensiones.id_asesor}
+            filtro={filtro}
+            onFiltrar={filtrarPorEtapa}
           />
-          {/* El score es dato de administrador; el asesor ve el destino
-              del crédito, igual de útil para operación en vitrina. */}
-          {esAsesor ? (
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Suspense
+              fallback={
+                <>
+                  {[1, 2].map((i) => (
+                    <Tarjeta key={i}>
+                      <Skeleton className="h-56 w-full rounded-xl" />
+                    </Tarjeta>
+                  ))}
+                  <Tarjeta className="lg:col-span-2">
+                    <Skeleton className="h-64 w-full rounded-xl" />
+                  </Tarjeta>
+                </>
+              }
+            >
+              <GraficasResumen
+                cargando={cargando}
+                byStatus={byStatus}
+                monthBuckets={monthBuckets}
+                totalAnimado={totalAnimado}
+                filtro={filtro}
+                alternarFiltro={alternarFiltro}
+              />
+            </Suspense>
+
+            <Tarjeta>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <h3 className="font-semibold text-slate-900">
+                  Aprobación por ocupación
+                </h3>
+                <div className="flex gap-3 text-xs text-slate-600">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                    Aprobadas
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                    Rechazadas
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full bg-slate-300" />
+                    Otras
+                  </span>
+                </div>
+              </div>
+              <div
+                className="space-y-3"
+                aria-busy={cargando}
+                role="img"
+                aria-label={`Aprobación por ocupación: ${porOcupacion.map((g) => `${g.label}: ${g.aprobadas} aprobadas de ${g.total}`).join(', ')}`}
+              >
+                {cargando ? (
+                  <div className="space-y-3" aria-hidden="true">
+                    {[100, 85, 70].map((w) => (
+                      <div
+                        key={w}
+                        className="h-9 animate-pulse rounded-lg bg-slate-200"
+                        style={{ width: `${w}%` }}
+                      />
+                    ))}
+                  </div>
+                ) : porOcupacion.length === 0 ? (
+                  <p className="py-10 text-center text-sm text-slate-500">
+                    Aún no hay solicitudes registradas.
+                  </p>
+                ) : (
+                  porOcupacion.map((g) => {
+                    const tasa = Math.round((g.aprobadas / g.total) * 100)
+                    const activo =
+                      filtro?.campo === 'ocupacion' && filtro.valor === g.tipo
+                    return (
+                      <button
+                        key={g.tipo}
+                        type="button"
+                        onClick={() =>
+                          alternarFiltro({
+                            campo: 'ocupacion',
+                            valor: g.tipo,
+                            etiqueta: g.label,
+                          })
+                        }
+                        aria-pressed={activo}
+                        className={`relative flex w-full items-center gap-x-3 rounded-lg px-3 pb-3 pt-2 text-sm transition hover:bg-slate-50 ${
+                          activo
+                            ? 'bg-brand-500/[.07] ring-1 ring-inset ring-brand-500/25'
+                            : ''
+                        } ${
+                          filtro?.campo === 'ocupacion' && !activo
+                            ? 'opacity-40'
+                            : ''
+                        }`}
+                      >
+                        <span className="min-w-0 flex-1 truncate text-left text-slate-700">
+                          {g.label}
+                        </span>
+                        <span className="hidden shrink-0 text-xs text-slate-400 tabular-nums sm:inline">
+                          {g.aprobadas} apr · {g.rechazadas} rec
+                        </span>
+                        <span className="w-20 shrink-0 text-right tabular-nums">
+                          <span className="font-semibold text-slate-900">
+                            {g.total}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            {' '}
+                            · {tasa}%
+                          </span>
+                        </span>
+                        {/* Composición como track delgado al borde inferior:
+                          aprobadas / rechazadas / otras en su proporción. */}
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-x-3 bottom-1 flex h-[3px] overflow-hidden rounded-full bg-slate-100"
+                        >
+                          <span
+                            className="bg-emerald-500"
+                            style={{
+                              width: `${(g.aprobadas / g.total) * 100}%`,
+                            }}
+                          />
+                          <span
+                            className="bg-red-400"
+                            style={{
+                              width: `${(g.rechazadas / g.total) * 100}%`,
+                            }}
+                          />
+                        </span>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </Tarjeta>
+
+            <div className="lg:col-span-2">
+              <EmbudoOriginacion
+                vistaBinaria={vistaBinaria}
+                rango={rangoEmbudo}
+                concesionarioId={dimensiones.id_concesionario}
+                asesorId={dimensiones.id_asesor}
+                filtro={filtro}
+                onFiltrar={filtrarPorEtapa}
+              />
+            </div>
+
             <PanelRanking
-              titulo="Destino del crédito"
+              titulo="Plazo preferido"
               cargando={cargando}
-              items={porDestino}
+              items={porPlazo}
               total={total}
               vacio="Aún no hay solicitudes registradas."
             />
-          ) : (
-            <PanelRanking
-              titulo="Perfil de score"
-              cargando={cargando}
-              items={porScore}
-              total={porScore.reduce((a, i) => a + i.valor, 0)}
-              vacio="Aún no hay evaluaciones registradas."
-            />
-          )}
-        </div>
+            {/* El score es dato de administrador; el asesor ve el destino
+              del crédito, igual de útil para operación en vitrina. */}
+            {vistaBinaria ? (
+              <PanelRanking
+                titulo="Destino del crédito"
+                cargando={cargando}
+                items={porDestino}
+                total={total}
+                vacio="Aún no hay solicitudes registradas."
+              />
+            ) : (
+              <PanelRanking
+                titulo="Perfil de score"
+                cargando={cargando}
+                items={porScore}
+                total={porScore.reduce((a, i) => a + i.valor, 0)}
+                vacio="Aún no hay evaluaciones registradas."
+              />
+            )}
+          </div>
+        )}
 
-        <Tarjeta>
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-            <h3 className="font-semibold text-slate-900">
-              Últimas solicitudes
-              {filtro && (
-                <span className="ml-2 text-xs font-normal text-slate-500">
-                  {solicitudesFiltradas.length} resultado
-                  {solicitudesFiltradas.length === 1 ? '' : 's'}
-                </span>
-              )}
-            </h3>
-            <Link
-              to="/solicitudes"
-              className="text-sm font-medium text-brand-600 hover:text-brand-700"
-            >
-              Ver todas →
-            </Link>
-          </div>
-          <div
-            className="overflow-x-auto"
-            role="region"
-            aria-label="Tabla de últimas solicitudes"
-            tabIndex={0}
-          >
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs uppercase text-slate-500 border-b border-slate-200">
-                  <th scope="col" className="py-3 pr-4">
-                    N°
-                  </th>
-                  <th scope="col" className="py-3 pr-4">
-                    Solicitante
-                  </th>
-                  <th scope="col" className="py-3 pr-4">
-                    Fecha
-                  </th>
-                  <th scope="col" className="hidden py-3 pr-4 sm:table-cell">
-                    Ocupación
-                  </th>
-                  {!esAsesor && (
-                    <th scope="col" className="py-3 pr-4 text-right">
-                      Score
-                    </th>
-                  )}
-                  <th scope="col" className="py-3 pr-4 text-right">
-                    Cupo sugerido
-                  </th>
-                  <th scope="col" className="py-3 pr-4">
-                    Estado
-                  </th>
-                </tr>
-              </thead>
-              <tbody aria-busy={cargando}>
-                {solicitudesFiltradas.slice(0, filtro ? 15 : 6).map((s) => {
-                  const cupo = numero(s.evaluacion?.cupo_sugerido)
-                  return (
-                    <tr
-                      key={s.id_solicitud}
-                      className="border-b border-slate-100 hover:bg-slate-50"
-                    >
-                      <td className="py-3 pr-4 font-medium">
-                        <Link
-                          to={`/solicitudes/${s.id_solicitud}`}
-                          className="text-brand-600 hover:underline"
-                        >
-                          {etiquetaSolicitud(s)}
-                        </Link>
-                      </td>
-                      <td className="py-3 pr-4 whitespace-nowrap">
-                        {s.nombre_cliente}
-                      </td>
-                      <td className="py-3 pr-4 text-slate-600">
-                        {dateShort(s.fecha_hora)}
-                      </td>
-                      <td className="hidden py-3 pr-4 sm:table-cell">
-                        {s.ocupacion
-                          ? (OCUPACION_LABELS[s.ocupacion] ?? s.ocupacion)
-                          : '—'}
-                      </td>
-                      {!esAsesor && (
-                        <td className="py-3 pr-4 text-right tabular-nums">
-                          {s.evaluacion?.score != null
-                            ? Number(s.evaluacion.score)
-                            : '—'}
-                        </td>
-                      )}
-                      <td className="py-3 pr-4 text-right tabular-nums">
-                        {cupo != null && estadoParaVista(s) === 'APROBADO'
-                          ? currency(cupo)
-                          : '—'}
-                      </td>
-                      <td className="py-3 pr-4">
-                        <InsigniaEstado status={estadoParaVista(s)} />
-                      </td>
-                    </tr>
-                  )
-                })}
-                {!cargando && solicitudesFiltradas.length === 0 && !error && (
-                  <tr>
-                    <td
-                      colSpan={esAsesor ? 6 : 7}
-                      className="py-10 text-center text-slate-500"
-                    >
-                      {filtro
-                        ? 'Ninguna solicitud coincide con el filtro.'
-                        : 'Aún no hay solicitudes registradas.'}
-                    </td>
-                  </tr>
-                )}
-                {cargando && (
-                  <FilasSkeleton filas={4} columnas={esAsesor ? 6 : 7} />
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Tarjeta>
+        <TablaSolicitudesPanel
+          titulo={vistaBinaria ? 'Solicitudes' : 'Últimas solicitudes'}
+          solicitudes={solicitudesFiltradas}
+          cargando={cargando}
+          mostrarScore={!vistaBinaria}
+          mostrarAsesor={conDimensiones}
+        />
       </div>
     </>
   )

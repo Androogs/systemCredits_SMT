@@ -495,3 +495,38 @@ class ResultadoMotorResponse(BaseModel):
             }
 
         return cls(**datos, causales=r.causales_detalle, id_solicitud=id_solicitud)
+
+
+class ResultadoBinarioResponse(BaseModel):
+    """Vista operativa de la evaluación para asesor y aliado: la
+    decisión del motor y lo que sostiene la oferta. Nunca incluye score,
+    causales, trazabilidad, indicadores de buró ni métricas internas —
+    eso es exclusivo del expediente del administrador."""
+
+    evaluacion_id: str
+    fecha_evaluacion: datetime
+    ambiente: str
+    id_solicitud: str | None = None
+    decision: DecisionFinal
+    cupo_sugerido: Decimal
+    cuota_sugerida: Decimal
+    cuota_moto: Decimal
+    advertencias: list[str]
+    tiempo_ms: int
+
+    @classmethod
+    def desde_resultado(
+        cls, r: ResultadoMotor, id_solicitud: str | None = None
+    ) -> "ResultadoBinarioResponse":
+        return cls(
+            evaluacion_id=r.evaluacion_id,
+            fecha_evaluacion=r.fecha_evaluacion,
+            ambiente=r.ambiente,
+            id_solicitud=id_solicitud,
+            decision=r.decision,
+            cupo_sugerido=r.cupo_sugerido,
+            cuota_sugerida=r.cuota_sugerida,
+            cuota_moto=r.cuota_moto,
+            advertencias=r.advertencias,
+            tiempo_ms=r.tiempo_ms,
+        )

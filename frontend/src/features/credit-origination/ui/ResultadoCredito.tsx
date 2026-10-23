@@ -15,7 +15,6 @@ import { currency } from '../../../shared/lib/formatters'
 import { cuotaAnualidad } from '../../../shared/lib/finanzas'
 import { useCuentaAscendente } from '../../../shared/lib/useCuentaAscendente'
 import {
-  guardarConcesionario,
   marcaDeConcesionario,
   obtenerConcesionario,
   useRol,
@@ -105,7 +104,7 @@ function ResultadoCredito({
   const aprobado = resultado.decision === 'APROBADO'
   const rechazado = resultado.decision === 'RECHAZADO'
   // Las causales de la decisión son dato sensible: solo el administrador.
-  const esAsesor = useRol() === 'asesor'
+  const vistaBinaria = useRol() !== 'admin'
 
   const [ofertas, setOfertas] = useState<OfertaApi[]>([])
   const [errorOfertas, setErrorOfertas] = useState<string | null>(null)
@@ -297,7 +296,6 @@ function ResultadoCredito({
 
   const cambiarConcesionario = (nombre: string) => {
     setConcesionario(nombre)
-    guardarConcesionario(nombre)
     setMarca(marcaDeConcesionario(nombre))
   }
 
@@ -1043,7 +1041,7 @@ function ResultadoCredito({
       ) : (
         <>
           {/* Las causales del rechazo son sensibles: solo administrador. */}
-          {!esAsesor && (
+          {!vistaBinaria && (
             <Alerta variante="error" titulo="Detalle del motor (administrador)">
               {resultado.causales.length ? (
                 <ul>

@@ -40,7 +40,11 @@ import {
 } from '../entities/credit/model/solicitudesPanel'
 import { currency, dateShort, dateTime } from '../shared/lib/formatters'
 import { cuotaAnualidad } from '../shared/lib/finanzas'
-import { useRol } from '../shared/lib/sesion'
+import { puedeOperar, useRol } from '../shared/lib/sesion'
+import {
+  descargarArchivoAutenticado,
+  useUrlObjetoAutenticado,
+} from '../shared/lib/archivoAutenticado'
 import VisorDocumento from '../features/credit-origination/ui/VisorDocumento'
 import {
   ArrowLeft,
@@ -146,10 +150,14 @@ export default function DetalleSolicitud() {
   )
   // El asesor gestiona la solicitud pero no ve score, causales ni la
   // auditoría del motor (dato sensible); esa vista es del administrador.
-  const esAsesor = useRol() === 'asesor'
+  // El aliado además es solo lectura: no ve la pestaña Gestión.
+  const rol = useRol()
+  const vistaBinaria = rol !== 'admin'
+  const operativo = puedeOperar(rol)
   useEffect(() => {
-    if (esAsesor && vista === 'evaluacion') setVista('solicitud')
-  }, [esAsesor, vista])
+    if (vistaBinaria && vista === 'evaluacion') setVista('solicitud')
+    if (!operativo && vista === 'gestion') setVista('solicitud')
+  }, [vistaBinaria, operativo, vista])
 
   const consultaSolicitud = useQuery<SolicitudDetalleApi>({
     queryKey: ['solicitud', id],
@@ -191,7 +199,9 @@ export default function DetalleSolicitud() {
   // el administrador re-evaluó con otros parámetros).
   const { data: auditorias = [] } = useQuery({
     queryKey: ['auditorias-solicitud', datos?.id_solicitud],
-    enabled: datos != null && idEvaluacion != null,
+    // La auditoría es del administrador; para los demás el endpoint
+    // responde 403 y esta consulta solo ensuciaría la consola.
+    enabled: datos != null && idEvaluacion != null && !vistaBinaria,
     queryFn: () => listarAuditoriaSolicitud(datos!.id_solicitud),
   })
   const { data: auditoria = null } = useQuery({
@@ -504,7 +514,7 @@ export default function DetalleSolicitud() {
               <div>
                 <p className="text-xs uppercase text-slate-500">Resultado</p>
                 <p className="font-semibold text-slate-900 capitalize">
-                  {esAsesor
+                  {vistaBinaria
                     ? visual === 'APROBADO'
                       ? 'Aprobado'
                       : visual === 'RECHAZADO'
@@ -526,7 +536,7 @@ export default function DetalleSolicitud() {
             </p>
           </div>
           <dl className="flex flex-wrap gap-x-10 gap-y-4 border-t border-slate-100 pt-4">
-            {!esAsesor && (
+            {!vistaBinaria && (
               <Campo
                 k="Score"
                 v={evaluacion?.score != null ? Number(evaluacion.score) : '—'}
@@ -559,7 +569,7 @@ export default function DetalleSolicitud() {
           >
             Solicitud
           </TabDetalle>
-          {!esAsesor && (
+          {!vistaBinaria && (
             <TabDetalle
               activo={vista === 'evaluacion'}
               onClick={() => setVista('evaluacion')}
@@ -567,12 +577,14 @@ export default function DetalleSolicitud() {
               Evaluación
             </TabDetalle>
           )}
-          <TabDetalle
-            activo={vista === 'gestion'}
-            onClick={() => setVista('gestion')}
-          >
-            Gestión
-          </TabDetalle>
+          {operativo && (
+            <TabDetalle
+              activo={vista === 'gestion'}
+              onClick={() => setVista('gestion')}
+            >
+              Gestión
+            </TabDetalle>
+          )}
         </div>
 
         {vista === 'solicitud' && (
@@ -823,10 +835,8 @@ export default function DetalleSolicitud() {
                         <Video size={14} /> Video de prueba de vida
                       </p>
                       <div className="rounded-xl overflow-hidden border border-slate-200 bg-black">
-                        <video
-                          controls
-                          className="w-full h-48 object-cover"
-                          src={urlEvidenciaContenido(
+                        <EvidenciaVideo
+                          url={urlEvidenciaContenido(
                             evidenciaVideo.id_evidencia,
                           )}
                         />
@@ -857,13 +867,18 @@ export default function DetalleSolicitud() {
                 resumen={`${documentosFirmados.length} documentos`}
                 acciones={
                   datos?.id_solicitud ? (
-                    <a
-                      href={urlPaqueteLegalizacion(datos.id_solicitud)}
-                      download
+                    <button
+                      type="button"
+                      onClick={() =>
+                        descargarArchivoAutenticado(
+                          urlPaqueteLegalizacion(datos.id_solicitud),
+                          `legalizacion_${datos.num_solicitud ?? ''}.zip`,
+                        )
+                      }
                       className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
                     >
                       <Download size={14} /> Descargar todo (.zip)
-                    </a>
+                    </button>
                   ) : null
                 }
               >
@@ -888,13 +903,18 @@ export default function DetalleSolicitud() {
                         >
                           <Eye size={14} /> Ver
                         </button>
-                        <a
-                          href={urlEvidenciaContenido(doc.id_evidencia)}
-                          download={doc.nombre_original ?? undefined}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            descargarArchivoAutenticado(
+                              urlEvidenciaContenido(doc.id_evidencia),
+                              doc.nombre_original ?? undefined,
+                            )
+                          }
                           className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-800"
                         >
                           <Download size={14} /> Descargar
-                        </a>
+                        </button>
                       </span>
                     </li>
                   ))}
@@ -904,7 +924,7 @@ export default function DetalleSolicitud() {
           </>
         )}
 
-        {vista === 'evaluacion' && !esAsesor && (
+        {vista === 'evaluacion' && !vistaBinaria && (
           <>
             {evaluacion && (
               <Tarjeta>
@@ -1569,7 +1589,7 @@ export default function DetalleSolicitud() {
                 </Tarjeta>
               )}
 
-            {!esAsesor && (datos.consentimientos?.length ?? 0) > 0 && (
+            {!vistaBinaria && (datos.consentimientos?.length ?? 0) > 0 && (
               <TarjetaColapsable
                 titulo={
                   <>
@@ -1881,7 +1901,7 @@ export default function DetalleSolicitud() {
             quedaron registradas en evaluaciones anteriores (p. ej. un
             rechazo que el administrador re-evaluó y logró aprobar). */}
         {vista === 'evaluacion' &&
-          !esAsesor &&
+          !vistaBinaria &&
           datos.causales.some((c) => c.activa) && (
             <Tarjeta className="border-amber-200 bg-amber-50/40">
               <h3 className="font-semibold text-amber-900 mb-3 flex items-center gap-2">
@@ -1908,7 +1928,7 @@ export default function DetalleSolicitud() {
           )}
 
         {vista === 'evaluacion' &&
-          !esAsesor &&
+          !vistaBinaria &&
           datos.causales.some((c) => !c.activa) && (
             <TarjetaColapsable
               titulo={
@@ -1947,7 +1967,7 @@ export default function DetalleSolicitud() {
 
         {/* Cada re-evaluación crea una versión nueva: el historial deja
             constancia de cuántas hubo y con qué decisión terminaron. */}
-        {vista === 'evaluacion' && !esAsesor && auditorias.length > 1 && (
+        {vista === 'evaluacion' && !vistaBinaria && auditorias.length > 1 && (
           <TarjetaColapsable
             titulo={
               <>
@@ -2036,11 +2056,11 @@ export default function DetalleSolicitud() {
             en solicitudes rechazadas — sirve para encontrar con qué
             monto, plazo y tasa sí pasaría. */}
         {vista === 'gestion' &&
-          !esAsesor &&
+          !vistaBinaria &&
           evaluacion &&
           /* Retomables: rechazadas por el motor. Cubre también las
-             'en_revision' legadas (decisión vieja que quedaba pendiente
-             de comité); canceladas y desembolsadas son estados finales. */
+             'en_revision' legadas (estado viejo ya no emitido);
+             canceladas y desembolsadas son estados finales. */
           datos.decision === 'rechazado' &&
           datos.estado !== 'cancelada' &&
           datos.estado !== 'desembolsada' && (
@@ -2394,21 +2414,41 @@ function TabDetalle({
 }
 
 function EvidenciaImagen({ titulo, url }: { titulo: string; url: string }) {
+  const objUrl = useUrlObjetoAutenticado(url)
   return (
     <div className="space-y-2">
       <p className="text-xs uppercase text-slate-500 font-medium">{titulo}</p>
       <div className="group relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
-        <img src={url} alt={titulo} className="w-full h-48 object-cover" />
-        <a
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-sm gap-2 transition"
-        >
-          <Eye size={16} /> Ver ampliado
-        </a>
+        {objUrl ? (
+          <>
+            <img
+              src={objUrl}
+              alt={titulo}
+              className="w-full h-48 object-cover"
+            />
+            <a
+              href={objUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-sm gap-2 transition"
+            >
+              <Eye size={16} /> Ver ampliado
+            </a>
+          </>
+        ) : (
+          <div className="h-48 animate-pulse bg-slate-100" aria-hidden />
+        )}
       </div>
     </div>
+  )
+}
+
+function EvidenciaVideo({ url }: { url: string }) {
+  const objUrl = useUrlObjetoAutenticado(url)
+  return objUrl ? (
+    <video controls className="w-full h-48 object-cover" src={objUrl} />
+  ) : (
+    <div className="h-48 animate-pulse bg-slate-800" aria-hidden />
   )
 }
 

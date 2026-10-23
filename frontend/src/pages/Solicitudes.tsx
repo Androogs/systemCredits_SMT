@@ -28,7 +28,12 @@ const TAMANOS_PAGINA = [10, 25, 50] as const
 export default function Solicitudes() {
   const navigate = useNavigate()
   const rol = useRol()
-  const esAsesor = rol === 'asesor'
+  const vistaBinaria = rol !== 'admin'
+  // Columna "Asesor" para admin, aliado (reporte de comisiones por
+  // radicador) y concesionario (administra los asesores de su sede);
+  // para el asesor es redundante — todo es suyo.
+  const mostrarAsesor =
+    rol === 'admin' || rol === 'aliado' || rol === 'concesionario'
   const {
     datos: solicitudes,
     cargando,
@@ -59,7 +64,7 @@ export default function Solicitudes() {
   const paginaActual = Math.min(pagina, totalPaginas)
   const desde = (paginaActual - 1) * porPagina
   const visibles = filtradas.slice(desde, desde + porPagina)
-  const columnas = esAsesor ? 8 : 9
+  const columnas = (vistaBinaria ? 8 : 9) + (mostrarAsesor ? 1 : 0)
 
   const cambiarFiltro = (accion: () => void) => {
     accion()
@@ -166,7 +171,12 @@ export default function Solicitudes() {
                   <th scope="col" className="px-5 py-3">
                     Fecha de solicitud
                   </th>
-                  {!esAsesor && (
+                  {mostrarAsesor && (
+                    <th scope="col" className="px-5 py-3">
+                      Asesor
+                    </th>
+                  )}
+                  {!vistaBinaria && (
                     <th scope="col" className="px-5 py-3 text-right">
                       Score
                     </th>
@@ -212,7 +222,12 @@ export default function Solicitudes() {
                       <td className="px-5 py-3 text-slate-600 whitespace-nowrap">
                         {dateShort(s.fecha_hora)}
                       </td>
-                      {!esAsesor && (
+                      {mostrarAsesor && (
+                        <td className="px-5 py-3 text-slate-600 whitespace-nowrap">
+                          {s.nombre_asesor ?? '—'}
+                        </td>
+                      )}
+                      {!vistaBinaria && (
                         <td className="px-5 py-3 text-right font-medium tabular-nums">
                           {s.evaluacion?.score != null
                             ? Number(s.evaluacion.score)
@@ -226,9 +241,9 @@ export default function Solicitudes() {
                         <span className="inline-flex items-center gap-2">
                           <InsigniaEstado status={estadoParaVista(s)} />
                           {/* La decisión interna del motor solo la ve el
-                              administrador, y solo cuando aporta algo
-                              distinto a la insignia (perfil gris). */}
-                          {!esAsesor &&
+                              administrador, y solo cuando difiere de la
+                              insignia (evaluaciones históricas). */}
+                          {!vistaBinaria &&
                             s.decision != null &&
                             s.decision.toLowerCase() !==
                               estadoParaVista(s).toLowerCase() && (

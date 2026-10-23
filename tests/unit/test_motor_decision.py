@@ -69,19 +69,22 @@ def test_causales_ordenadas_por_prioridad(motor, solicitud_empleado, hdc_basico,
 
 
 def test_ordenar_causales_deduplica():
+    # D185: todas las causales son tipo Rechazo — el sort estable
+    # conserva el orden de llegada (y deduplica).
     assert ordenar_causales([Causal.E4, Causal.RC2, Causal.R2, Causal.E4, Causal.R14]) == [
+        Causal.E4,
+        Causal.RC2,
         Causal.R2,
         Causal.R14,
-        Causal.RC2,
-        Causal.E4,
     ]
 
 
 @pytest.mark.parametrize(
     "ingreso,causal,tipo",
     [
-        (Decimal("5000000"), Causal.E7, Decision.ESTUDIO),  # >= 1.4 SMMLV
-        (Decimal("1300000"), Causal.RC3, Decision.REQUIERE_CODEUDOR),
+        (Decimal("5000000"), Causal.E7, Decision.RECHAZADO),  # >= 1.4 SMMLV
+        # D185: las RC (antes "Requiere Codeudor") rechazan directo.
+        (Decimal("1300000"), Causal.RC3, Decision.RECHAZADO),
     ],
 )
 def test_exclusion_score_depende_del_ingreso(

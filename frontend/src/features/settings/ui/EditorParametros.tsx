@@ -36,7 +36,7 @@ const GRUPOS_RIESGO: GrupoParametros[] = [
       },
       {
         key: 'activar_exclusion_score_4_codeudor',
-        label: 'Excluir score 4 (requiere codeudor)',
+        label: 'Excluir score con código de exclusión 4',
       },
       {
         key: 'scores_exclusion',
@@ -268,7 +268,7 @@ const GRUPOS_MOTOR: GrupoParametros[] = [
       },
       {
         key: 'activar_exclusion_score_4_codeudor',
-        label: 'Excluir score 4 (requiere codeudor)',
+        label: 'Excluir score con código de exclusión 4',
       },
       {
         key: 'scores_exclusion',

@@ -121,6 +121,7 @@ DESIGN.md
 .cursor/
 .vibe/
 .impeccable/
+.superpowers/
 
 # Entorno virtual alterno de CI local (el normal es .venv/)
 .venv-ci/
@@ -137,6 +138,7 @@ frontend/playwright-report/
 frontend/blob-report/
 e2e_playwright.db
 motor_decision.db
+pentest_d108.db
 
 # Evidencias de captura remota (storage local del MVP)
 uploads/
@@ -147,5 +149,15 @@ nul
 # Artefacto de redirección mal expandida en shells de Windows (%TEMP%...)
 %TEMP%*
 
-# Herramientas locales de trabajo del negocio (no versionar)
-Calculadora Solicitudes Retoma.xlsx
+# Herramientas locales de trabajo del negocio (no versionar).
+# El cronograma sí va en el repo: es el plan de proyecto versionado.
+*.xlsx
+!Cronograma_Gestion_Proyecto.xlsx
+
+# Estado mutable de parametros del motor: la app lo regenera desde
+# PARAMETROS_DEFAULT si no existe; versionarlo ensucia el diff en
+# cada ajuste del admin (PUT /api/parametros).
+parametros.json
+
+# Documentos de trabajo de las skills (specs/planes locales)
+docs/superpowers/

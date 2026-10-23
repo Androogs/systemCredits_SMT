@@ -21,9 +21,12 @@ const TONOS_ETAPA = [
 ]
 
 interface PropsEmbudo {
-  esAsesor: boolean
+  vistaBinaria: boolean
   /** Rango de radicación (filtro de mes del panel); undefined = global. */
   rango?: { desde: string; hasta: string } | null
+  /** Filtros dimensionales del panel (solo admin los envía). */
+  concesionarioId?: number
+  asesorId?: number
   filtro: FiltroPanel | null
   /** Click en una etapa → la lista se filtra a ese hito. */
   onFiltrar: (claveEtapa: string) => void
@@ -159,14 +162,28 @@ function TablaAliados({ metricas }: { metricas: MetricasEmbudoApi }) {
     acota al mes del filtro global y cada etapa filtra la tabla. La
     tabla por aliado es de negocio: solo la ve el administrador. */
 export default function EmbudoOriginacion({
-  esAsesor,
+  vistaBinaria,
   rango,
+  concesionarioId,
+  asesorId,
   filtro,
   onFiltrar,
 }: PropsEmbudo) {
   const { data, isPending, error } = useQuery({
-    queryKey: ['metricas-embudo', rango?.desde ?? null, rango?.hasta ?? null],
-    queryFn: () => obtenerMetricasEmbudo(rango ?? undefined),
+    queryKey: [
+      'metricas-embudo',
+      rango?.desde ?? null,
+      rango?.hasta ?? null,
+      concesionarioId ?? null,
+      asesorId ?? null,
+    ],
+    queryFn: () =>
+      obtenerMetricasEmbudo({
+        desde: rango?.desde,
+        hasta: rango?.hasta,
+        id_concesionario: concesionarioId,
+        id_asesor: asesorId,
+      }),
     refetchInterval: REFRESCO_MS,
   })
 
@@ -199,7 +216,7 @@ export default function EmbudoOriginacion({
       ) : data ? (
         <>
           <BarrasEmbudo metricas={data} filtro={filtro} onFiltrar={onFiltrar} />
-          {!esAsesor && <TablaAliados metricas={data} />}
+          {!vistaBinaria && <TablaAliados metricas={data} />}
         </>
       ) : null}
     </Tarjeta>

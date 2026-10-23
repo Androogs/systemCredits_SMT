@@ -17,23 +17,29 @@ function mockRespuesta(cuerpo: unknown, status = 200) {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('API de autenticación', () => {
-  it('envía las credenciales al backend y devuelve el usuario', async () => {
-    const usuario = {
-      correo: 'demo@underwriting.io',
-      nombre: 'Usuario de demostración',
-      rol: 'Administrador',
+  it('envía las credenciales al backend y devuelve token + usuario', async () => {
+    const respuesta = {
+      access_token: 'jwt.de.prueba',
+      token_type: 'bearer',
+      usuario: {
+        correo: 'admin@pacifico.co',
+        nombre: 'Administrador',
+        rol: 'admin',
+        roles: ['admin'],
+        concesionario: null,
+      },
     }
-    const fetchMock = mockRespuesta({ usuario })
+    const fetchMock = mockRespuesta(respuesta)
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(
-      iniciarSesion('demo@underwriting.io', 'demo1234'),
-    ).resolves.toEqual({ usuario })
+      iniciarSesion('admin@pacifico.co', 'demo1234'),
+    ).resolves.toEqual(respuesta)
     expect(fetchMock).toHaveBeenCalledWith(`${API}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        correo: 'demo@underwriting.io',
+        correo: 'admin@pacifico.co',
         contrasena: 'demo1234',
       }),
     })

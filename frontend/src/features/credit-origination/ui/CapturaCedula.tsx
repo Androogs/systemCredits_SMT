@@ -13,6 +13,7 @@ import {
   type TipoEvidencia,
 } from '../api/originacionApi'
 import { env, MODO_DEMO } from '../../../env'
+import { useUrlObjetoAutenticado } from '../../../shared/lib/archivoAutenticado'
 import './CapturaCedula.css'
 
 const API = env.VITE_API_URL.replace(/\/$/, '')
@@ -510,34 +511,22 @@ function CapturaCedula({
               </span>
               <div className="captura__evidencia-chips">
                 {resultado.evidencia.anverso && (
-                  <a
-                    className="captura__evidencia-chip"
-                    href={resultado.evidencia.anverso}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Cédula frontal
-                  </a>
+                  <ChipEvidencia
+                    url={resultado.evidencia.anverso}
+                    label="Cédula frontal"
+                  />
                 )}
                 {resultado.evidencia.reverso && (
-                  <a
-                    className="captura__evidencia-chip"
-                    href={resultado.evidencia.reverso}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Cédula posterior
-                  </a>
+                  <ChipEvidencia
+                    url={resultado.evidencia.reverso}
+                    label="Cédula posterior"
+                  />
                 )}
                 {resultado.evidencia.video && (
-                  <a
-                    className="captura__evidencia-chip"
-                    href={resultado.evidencia.video}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Video de verificación
-                  </a>
+                  <ChipEvidencia
+                    url={resultado.evidencia.video}
+                    label="Video de verificación"
+                  />
                 )}
               </div>
             </div>
@@ -604,6 +593,25 @@ function CapturaCedula({
         </div>
       </div>
     </div>
+  )
+}
+
+/** Chip que abre una evidencia en pestaña nueva. La URL de la API exige
+ * Bearer, así que se resuelve a un objectURL local antes de enlazar. */
+function ChipEvidencia({ url, label }: { url: string; label: string }) {
+  const objUrl = useUrlObjetoAutenticado(url)
+  if (!objUrl) {
+    return <span className="captura__evidencia-chip">{label}…</span>
+  }
+  return (
+    <a
+      className="captura__evidencia-chip"
+      href={objUrl}
+      target="_blank"
+      rel="noreferrer"
+    >
+      {label}
+    </a>
   )
 }
 
