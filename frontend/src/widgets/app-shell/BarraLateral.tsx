@@ -198,7 +198,7 @@ export default function BarraLateral({
               title={label}
               onClick={() => setMenuMovilAbierto(false)}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-xl px-3 py-2.5 max-md:py-3 text-sm font-medium transition ${
+                `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
                   collapsed ? 'md:justify-center md:px-0' : ''
                 } ${
                   isActive

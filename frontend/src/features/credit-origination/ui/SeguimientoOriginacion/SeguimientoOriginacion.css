@@ -1,13 +1,13 @@
 .seguimiento {
-  --seguimiento-acento: var(--brand-deep);
-  --seguimiento-texto: var(--ink);
-  --seguimiento-suave: var(--slate-soft);
+  --seguimiento-acento: #087ead;
+  --seguimiento-texto: #1d2939;
+  --seguimiento-suave: #667085;
   display: grid;
   gap: 1rem;
   padding: 0.7rem 1.15rem 0.8rem;
-  border: 1px solid var(--border);
+  border: 1px solid #dfe7eb;
   border-radius: 0.8rem;
-  background: var(--white);
+  background: #fff;
 }
 
 .seguimiento__resumen {
@@ -43,9 +43,9 @@
   align-items: center;
   gap: 0.3rem;
   padding: 0.28rem 0.55rem;
-  border: 1px solid var(--border);
+  border: 1px solid #dfe7eb;
   border-radius: 0.45rem;
-  background: var(--surface-neutral);
+  background: #f8fafb;
   color: var(--seguimiento-suave);
   cursor: pointer;
   font: inherit;
@@ -55,12 +55,12 @@
 }
 
 .seguimiento__toggle:hover {
-  border-color: var(--slate-faint);
+  border-color: #b9cbd8;
   color: var(--seguimiento-acento);
 }
 
 .seguimiento__toggle:focus-visible {
-  outline: 3px solid var(--brand-light);
+  outline: 3px solid #9ddcf0;
   outline-offset: 2px;
 }
 
@@ -69,7 +69,7 @@
   height: 0.25rem;
   overflow: hidden;
   border-radius: 99px;
-  background: var(--border-soft);
+  background: #edf1f3;
 }
 
 .seguimiento__progreso span {
@@ -90,7 +90,7 @@
   align-items: center;
   gap: 0.5rem;
   margin: 0 0 0.5rem;
-  color: var(--slate);
+  color: #596979;
   font-size: 0.68rem;
   font-weight: 700;
   line-height: 1.2;
@@ -127,7 +127,7 @@
   right: 0;
   left: 2.15rem;
   height: 1px;
-  background: var(--border);
+  background: #dce4e8;
   content: '';
 }
 
@@ -138,30 +138,30 @@
   width: 1.8rem;
   aspect-ratio: 1;
   place-items: center;
-  border: 1px solid var(--border);
+  border: 1px solid #dce4e8;
   border-radius: 50%;
-  background: var(--white);
-  color: var(--slate-soft);
+  background: #fff;
+  color: #84919b;
   font-size: 0.58rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .seguimiento__etapa--completada .seguimiento__marcador {
-  border-color: var(--success-border);
-  background: var(--success-bg);
-  color: var(--success-ink);
+  border-color: #aadac4;
+  background: #eaf7f0;
+  color: #18734c;
 }
 
 .seguimiento__etapa--actual .seguimiento__marcador {
   border: 2px solid var(--seguimiento-acento);
   background: var(--seguimiento-acento);
-  color: var(--white);
-  box-shadow: 0 0 0 3px var(--surface-tint-deep);
+  color: #fff;
+  box-shadow: 0 0 0 3px #dff2f8;
 }
 
 .seguimiento__etapa--completada::after {
-  background: var(--success-border);
+  background: #8cc9aa;
 }
 
 .seguimiento__texto {
@@ -183,12 +183,12 @@
 }
 
 .seguimiento__etapa--pendiente .seguimiento__texto strong {
-  color: var(--slate-soft);
+  color: #697783;
   font-weight: 550;
 }
 
 .seguimiento__texto small {
-  color: var(--slate-soft);
+  color: #87939c;
   font-size: 0.61rem;
   line-height: 1.3;
 }

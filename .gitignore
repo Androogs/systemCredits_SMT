@@ -110,24 +110,6 @@ frontend/.vite/
 
 # Notas locales del proyecto (no versionar)
 AGENTS.md
-PRODUCT.md
-DESIGN.md
-
-# Herramientas de agentes IA (skills, caches de diseño, historial):
-# viven solo en la máquina del desarrollador, no en el repo.
-.devin/
-.agents/
-.claude/
-.cursor/
-.vibe/
-.impeccable/
-
-# Entorno virtual alterno de CI local (el normal es .venv/)
-.venv-ci/
-
-# Respaldos automáticos de archivos editados (cronograma, etc.)
-*.bak
-*.bak.*
 
 # ─────────────────────────────────────────────
 # Playwright E2E
@@ -143,9 +125,3 @@ uploads/
 
 # Artefacto de `> nul` en Git Bash (Windows)
 nul
-
-# Artefacto de redirección mal expandida en shells de Windows (%TEMP%...)
-%TEMP%*
-
-# Herramientas locales de trabajo del negocio (no versionar)
-Calculadora Solicitudes Retoma.xlsx

@@ -25,7 +25,6 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.1",
-    "docx-preview": "^0.4.1",
     "lucide-react": "^0.454.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.8",

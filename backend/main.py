@@ -22,7 +22,6 @@ from backend.routes import (
     motor_routes,
     parametros_routes,
     solicitud_routes,
-    webhook_routes,
 )
 from backend.routes.dependencies import get_store
 from backend.utils.loggers import get_logger
@@ -61,13 +60,6 @@ def crear_app() -> FastAPI:
         openapi_url="/api/openapi.json",
     )
 
-    from backend.middlewares.access_log_middleware import AccessLogMiddleware
-    from backend.middlewares.security_headers_middleware import (
-        SecurityHeadersMiddleware,
-    )
-
-    app.add_middleware(SecurityHeadersMiddleware)
-    app.add_middleware(AccessLogMiddleware)
     if settings.rate_limit_habilitado:
         app.add_middleware(
             RateLimitMiddleware,
@@ -94,9 +86,6 @@ def crear_app() -> FastAPI:
         evidencia_routes,
     ):
         app.include_router(modulo.router, prefix="/api")
-    # El webhook vive fuera de /api: es una puerta externa del emisor
-    # (POST /webhook/desembolso), no un recurso del panel.
-    app.include_router(webhook_routes.router)
     return app
 
 

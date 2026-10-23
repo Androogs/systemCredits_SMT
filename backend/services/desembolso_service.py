@@ -45,20 +45,7 @@ class DesembolsoService:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def registrar(
-        self,
-        id_solicitud: uuid.UUID,
-        req: RegistrarDesembolsoRequest,
-        *,
-        estado_desembolso: str = "confirmado",
-    ) -> DesembolsoResponse:
-        """Formaliza el crédito y registra el desembolso.
-
-        `estado_desembolso="pendiente"` deja el giro en tránsito (el
-        webhook del emisor anuncia que la transferencia salió pero aún
-        no confirma): la solicitud no pasa a 'desembolsada' hasta que
-        llegue la confirmación.
-        """
+    def registrar(self, id_solicitud: uuid.UUID, req: RegistrarDesembolsoRequest) -> DesembolsoResponse:
         solicitud = (
             self.db.query(SolicitudCredito)
             .filter(SolicitudCredito.id_solicitud == id_solicitud)
@@ -82,21 +69,17 @@ class DesembolsoService:
             if desembolso is not None:
                 # Idempotente: un crédito ya formalizado devuelve su
                 # desembolso; si quedó pendiente, se confirma aquí.
-                if desembolso.estado == "pendiente" and estado_desembolso == "confirmado":
+                if desembolso.estado == "pendiente":
                     desembolso.estado = "confirmado"
                     desembolso.fecha_desembolso = datetime.now(timezone.utc)
                     if req.referencia_pago:
                         desembolso.referencia_pago = req.referencia_pago
-                    self._marcar_desembolsada(solicitud)
                     self.db.flush()
                 return self._response(desembolso)
             emisor = self._cuenta_emisora()
             receptor = self._cuenta_receptora(solicitud, req)
-            desembolso = self._crear_desembolso(
-                credito, emisor, receptor, req.referencia_pago, estado_desembolso
-            )
-            if estado_desembolso == "confirmado":
-                self._marcar_desembolsada(solicitud)
+            desembolso = self._crear_desembolso(credito, emisor, receptor, req.referencia_pago)
+            self._marcar_desembolsada(solicitud)
             self.db.flush()
             return self._response(desembolso)
 
@@ -122,11 +105,8 @@ class DesembolsoService:
         receptor = self._cuenta_receptora(solicitud, req)
         vehiculo = self._crear_vehiculo(solicitud, req)
         credito = self._crear_credito(solicitud, oferta, vehiculo)
-        desembolso = self._crear_desembolso(
-            credito, emisor, receptor, req.referencia_pago, estado_desembolso
-        )
-        if estado_desembolso == "confirmado":
-            self._marcar_desembolsada(solicitud)
+        desembolso = self._crear_desembolso(credito, emisor, receptor, req.referencia_pago)
+        self._marcar_desembolsada(solicitud)
         self.db.flush()
         return self._response(desembolso)
 
@@ -274,7 +254,6 @@ class DesembolsoService:
         emisor: CuentaBancaria,
         receptor: CuentaBancaria,
         referencia_pago: str | None,
-        estado: str = "confirmado",
     ) -> Desembolso:
         desembolso = Desembolso(
             id_credito=credito.id_credito,
@@ -284,14 +263,14 @@ class DesembolsoService:
             nit_receptor=receptor.nit_titular,
             receptor=receptor.titular,
             referencia_pago=referencia_pago,
-            fecha_desembolso=datetime.now(timezone.utc) if estado == "confirmado" else None,
+            fecha_desembolso=datetime.now(timezone.utc),
             capital=credito.valor_financiacion,
             cuota=credito.cuota_total,
             plazo=credito.plazo,
             tasa=credito.tasa,
             valor_seguro=credito.valor_seguro_vida,
             moneda=credito.moneda,
-            estado=estado,
+            estado="confirmado",
         )
         self.db.add(desembolso)
         self.db.flush()

@@ -92,20 +92,6 @@ def test_oferta_cuota_sin_seguro_es_anualidad_pura():
     assert abs(float(oferta.cuota_mensual) - 406_596) < 100
 
 
-def test_oferta_monto_es_lo_solicitado_topado_por_cupo():
-    """La oferta muestra lo que el cliente pidió, no el cupo máximo del
-    motor: si pidió menos, oferta = solicitado; si pidió más de lo que
-    su capacidad aprueba, oferta = cupo."""
-    datos = _terminos_datos()
-    datos["monto_solicitado"] = Decimal("8000000")
-    oferta = EligibilidadService().evaluar_producto("id", _producto([]), datos)
-    assert oferta.monto_aprobado == Decimal("8000000")
-
-    datos["monto_solicitado"] = Decimal("30000000")
-    oferta = EligibilidadService().evaluar_producto("id", _producto([]), datos)
-    assert oferta.monto_aprobado == Decimal("12781665")  # cupo_sugerido
-
-
 def test_oferta_cuota_incluye_seguro_vida():
     """La cuota de la oferta es la TOTAL: anualidad + prima 0,35 %/mes
     sobre el saldo ($406.596 + $44.736 ≈ $451.332)."""
@@ -113,24 +99,3 @@ def test_oferta_cuota_incluye_seguro_vida():
         "id", _producto([]), _terminos_datos(prima="0.35")
     )
     assert abs(float(oferta.cuota_mensual) - 451_332) < 100
-
-
-def test_oferta_no_se_infla_sobre_la_capacidad():
-    """Si el cupo real queda por debajo del mínimo comercial del producto,
-    la oferta NO se infla sobre la capacidad: queda no elegible. Si en
-    cambio el cliente pidió poco pero su cupo cubre el mínimo, se ofrece
-    el mínimo."""
-    producto = _producto([])
-    producto.monto_min = Decimal("500000")
-    datos = _terminos_datos()
-    datos["cupo_sugerido"] = Decimal("300000")  # capacidad real < mínimo
-    datos["monto_solicitado"] = Decimal("20000000")
-    oferta = EligibilidadService().evaluar_producto("id", producto, datos)
-    assert not oferta.elegible
-    assert "cupo" in oferta.motivo_no_elegible.lower()
-
-    datos["cupo_sugerido"] = Decimal("5000000")  # capacidad cubre el mínimo
-    datos["monto_solicitado"] = Decimal("100000")  # pidió menos del mínimo
-    oferta = EligibilidadService().evaluar_producto("id", producto, datos)
-    assert oferta.elegible
-    assert oferta.monto_aprobado == Decimal("500000")

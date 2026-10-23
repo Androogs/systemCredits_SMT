@@ -34,32 +34,3 @@ class EvaluacionAuditoria(Base):
     tiempo_ms: Mapped[int] = mapped_column(Integer, default=0)
     request_json: Mapped[str] = mapped_column(Text)
     resultado_json: Mapped[str] = mapped_column(Text)
-
-
-class ConsultaBuro(Base):
-    """Reporte crudo de centrales por persona: la consulta a Experian se
-    paga una vez y el reporte se reutiliza mientras esté vigente
-    (BURO_CACHE_DIAS). Guarda la respuesta completa — a diferencia de
-    resultado_json, que solo conserva el detalle normalizado — porque
-    rehidratarla permite correr el motor de nuevo sin otra consulta.
-    Cada fila documenta con qué datos de centrales se evaluó y cuándo se
-    consultaron; la vigencia acota también la retención de datos
-    personales de terceros."""
-
-    __tablename__ = "consulta_buro"
-
-    id_consulta: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    tipo_id: Mapped[str] = mapped_column(String(2))
-    numero_id: Mapped[str] = mapped_column(String(20), index=True)
-    id_solicitud: Mapped[str | None] = mapped_column(String(36), index=True)
-    fecha_consulta: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora_utc, index=True)
-    origen: Mapped[str] = mapped_column(String(30))  # experian
-    hdc_json: Mapped[str] = mapped_column(Text)
-    valor_ingreso_json: Mapped[str | None] = mapped_column(Text)
-
-    def a_reportes(self) -> tuple["RespuestaHDC", "RespuestaValorIngreso | None"]:
-        from backend.models.buro_models import RespuestaHDC, RespuestaValorIngreso
-
-        hdc = RespuestaHDC.model_validate_json(self.hdc_json)
-        vi = RespuestaValorIngreso.model_validate_json(self.valor_ingreso_json) if self.valor_ingreso_json else None
-        return hdc, vi

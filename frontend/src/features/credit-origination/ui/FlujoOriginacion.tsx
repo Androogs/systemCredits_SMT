@@ -19,11 +19,7 @@ import {
   tipoDocumentoUi,
   type IdentidadSolicitante,
 } from '../model/mapeos-api'
-import {
-  listarEvidenciasSolicitud,
-  obtenerSolicitud,
-} from '../api/originacionApi'
-import { pasoParaRetomar } from '../model/retomar'
+import { obtenerSolicitud } from '../api/originacionApi'
 import {
   numero,
   OCUPACION_LABELS,
@@ -93,7 +89,7 @@ function contextoDesdeSolicitud(
     validacion: {
       tipoDocumento: tipoDocumentoUi(datos.tipo_documento),
       numeroDocumento: datos.num_cedula,
-      fechaNacimiento: datos.fecha_nacimiento ?? '',
+      fechaNacimiento: '',
       nacionalidad: 'Colombia',
       multasPendientes: false,
     },
@@ -102,7 +98,7 @@ function contextoDesdeSolicitud(
       apellidos: partes.slice(mitad).join(' '),
       numeroIdentificacion: datos.num_cedula,
       sexo: '',
-      fechaNacimiento: datos.fecha_nacimiento ?? '',
+      fechaNacimiento: '',
       lugarNacimiento: '',
       fechaExpedicion: '',
       ciudadExpedicion: '',
@@ -120,8 +116,7 @@ function FlujoOriginacion() {
     location.state as { simulacion?: SimulacionPrevia } | null
   )?.simulacion
   // "Continuar" desde la lista de solicitudes: reconstruye el contexto
-  // desde el backend y aterriza en el primer paso que quedó pendiente
-  // (autorización, evidencia/OCR, perfil económico o evaluación).
+  // desde el backend y aterriza en el paso 5 (evaluación y oferta).
   const retomarId = (location.state as { retomarId?: string } | null)?.retomarId
   const [retomando, setRetomando] = useState(Boolean(retomarId))
   const [errorRetomar, setErrorRetomar] = useState<string | null>(null)
@@ -142,13 +137,8 @@ function FlujoOriginacion() {
     }
     if (retomarId) {
       let cancelado = false
-      // Las evidencias se consultan aparte: si el endpoint falla se
-      // asume que no hay captura y el paso derivado cae en evidencia.
-      Promise.all([
-        obtenerSolicitud(retomarId),
-        listarEvidenciasSolicitud(retomarId).catch(() => []),
-      ])
-        .then(([datos, evidencias]) => {
+      obtenerSolicitud(retomarId)
+        .then((datos) => {
           if (cancelado) return
           // El borrador local es de otra solicitud: al retomar una
           // persistida se descarta y el autoguardado crea uno nuevo.
@@ -166,7 +156,7 @@ function FlujoOriginacion() {
             return
           }
           setContexto(contextoDesdeSolicitud(datos))
-          setPasoActual(pasoParaRetomar(datos, evidencias))
+          setPasoActual(5)
         })
         .catch(() => {
           if (!cancelado) {
@@ -338,9 +328,6 @@ function FlujoOriginacion() {
       return (
         <EvidenciaYDatos
           numeroDocumento={contexto.validacion?.numeroDocumento}
-          nombres={contexto.revision?.nombres}
-          apellidos={contexto.revision?.apellidos}
-          fechaNacimiento={contexto.validacion?.fechaNacimiento}
           onBack={() => setPasoActual(2)}
           onContinue={({ biometria, ocr, revision }) => {
             setContexto((actual) => ({ ...actual, biometria, ocr, revision }))
@@ -357,7 +344,6 @@ function FlujoOriginacion() {
           inicial={contexto.solicitud}
           identidad={identidadDesdeContexto(contexto) ?? undefined}
           sesionCapturaToken={contexto.biometria?.sesionToken}
-          idSolicitud={contexto.idSolicitud}
           onContinue={(creada: ResultadoCrearSolicitud) => {
             setContexto((actual) => ({
               ...actual,

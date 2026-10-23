@@ -1,0 +1,199 @@
+/*
+  ResultadoSimit — pantalla intermedia del Paso 2.
+  AJUSTAR: si ResultadoCredito.css define variables de color, tipografía o
+  radio, reemplaza los valores por defecto de las variables de abajo por esas.
+*/
+.resultado-simit {
+  --simit-aprobado: #067647;
+  --simit-aprobado-fondo: #ecfdf3;
+  --simit-rechazado: #b42318;
+  --simit-rechazado-fondo: #fef3f2;
+  --simit-alerta: #b54708;
+  --simit-alerta-fondo: #fffaeb;
+  --simit-texto: #1d2939;
+  --simit-texto-suave: #475467;
+  --simit-borde: #e4e7ec;
+  --simit-primario: #1d4ed8;
+
+  box-sizing: border-box;
+  max-width: 34rem;
+  margin: 2rem auto;
+  padding: 2.5rem 2rem 2rem;
+  text-align: center;
+  color: var(--simit-texto);
+  background: #fff;
+  border: 1px solid var(--simit-borde);
+  border-top: 4px solid var(--simit-borde);
+  border-radius: 12px;
+}
+
+.resultado-simit--aprobado {
+  border-top-color: var(--simit-aprobado);
+}
+.resultado-simit--rechazado {
+  border-top-color: var(--simit-rechazado);
+}
+.resultado-simit--alerta {
+  border-top-color: var(--simit-alerta);
+}
+
+.resultado-simit__icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  margin-bottom: 1rem;
+  border-radius: 50%;
+  animation: resultado-simit-entrada 320ms ease-out;
+}
+.resultado-simit__icono--aprobado {
+  color: var(--simit-aprobado);
+  background: var(--simit-aprobado-fondo);
+}
+.resultado-simit__icono--rechazado {
+  color: var(--simit-rechazado);
+  background: var(--simit-rechazado-fondo);
+}
+.resultado-simit__icono--alerta {
+  color: var(--simit-alerta);
+  background: var(--simit-alerta-fondo);
+}
+.resultado-simit__icono--neutro {
+  color: var(--simit-texto-suave);
+  background: #f2f4f7;
+}
+
+.resultado-simit__titulo {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+  line-height: 1.25;
+  font-weight: 700;
+}
+
+.resultado-simit__texto {
+  margin: 0 auto;
+  max-width: 28rem;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--simit-texto-suave);
+}
+
+.resultado-simit__detalle {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1.5rem 0 1rem;
+  padding: 1rem;
+  background: var(--simit-rechazado-fondo);
+  border-radius: 8px;
+}
+.resultado-simit__detalle div {
+  min-width: 0;
+}
+.resultado-simit__detalle dt {
+  font-size: 0.8125rem;
+  color: var(--simit-texto-suave);
+}
+.resultado-simit__detalle dd {
+  margin: 0.25rem 0 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--simit-texto);
+  overflow-wrap: anywhere;
+}
+
+.resultado-simit__nota {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--simit-texto-suave);
+}
+
+.resultado-simit__demo {
+  display: inline-block;
+  margin: 1rem 0 0;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--simit-alerta);
+  background: var(--simit-alerta-fondo);
+  border-radius: 999px;
+}
+
+.resultado-simit__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1.75rem;
+}
+
+.resultado-simit__boton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: var(--simit-primario);
+  border: 1px solid var(--simit-primario);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.resultado-simit__boton:hover {
+  filter: brightness(0.92);
+}
+.resultado-simit__boton:focus-visible {
+  outline: 3px solid var(--simit-primario);
+  outline-offset: 3px;
+}
+.resultado-simit__boton--secundario {
+  color: var(--simit-texto);
+  background: #fff;
+  border-color: var(--simit-borde);
+}
+
+.resultado-simit__giro {
+  animation: resultado-simit-giro 900ms linear infinite;
+}
+
+@keyframes resultado-simit-entrada {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes resultado-simit-giro {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 480px) {
+  .resultado-simit {
+    margin: 1rem;
+    padding: 2rem 1.25rem 1.5rem;
+  }
+  .resultado-simit__detalle {
+    grid-template-columns: 1fr;
+    text-align: left;
+  }
+  .resultado-simit__acciones {
+    flex-direction: column;
+  }
+  .resultado-simit__boton {
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resultado-simit__icono,
+  .resultado-simit__giro {
+    animation: none;
+  }
+}

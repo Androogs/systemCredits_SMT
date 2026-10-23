@@ -22,22 +22,6 @@ from docx import Document
 ORIGEN = Path("Informes Pacifico/Plantillas/7. solicitudCredito.docx")
 DESTINO = Path("backend/documentos/plantillas/solicitud_credito.docx")
 
-# Huellas SHA-256 de los artefactos de la firma electrónica de la
-# solicitud de muestra 735: el QR de verificación y la rúbrica del
-# titular. Ninguno puede quedar en la plantilla generada.
-HUELLAS_FIRMA_MUESTRA = {
-    "05fb103c9a6f76995cd41d4506e6a4ab28423f39caf9af3b0a336e7e7ee3760f":
-        "QR de verificación",
-    "ca61fbbb9807d07c6c81116f7d0cd0443b83e011b68e1bdf54b8cc94892b8eeb":
-        "rúbrica del titular",
-}
-# Imágenes que sí se conservan: logo de Inversiones Pacífico y la
-# cláusula legal de la firma electrónica (imagen de texto legal).
-HUELLAS_CONSERVAR = {
-    "effb59786809aa24ebd2d9f68d4911ad733ae509f78a99a1e0856ab5ed63fcd3",
-    "f2627590be7e5dd7b888144089cbd1bff3e9616f94bf5958fb6273acb6e97ba0",
-}
-
 # Párrafos sueltos del cuerpo (fuera de la tabla).
 PARRAFOS = {
     "FECHA:": "**FECHA:** {{FECHA_SOLICITUD}} **No. SOLICITUD:** {{NUM_SOLICITUD}}",
@@ -177,63 +161,6 @@ def _reconstruir(paragraph, spec: str) -> None:
             run.font.size = size
 
 
-def _limpiar_firma_muestra(doc) -> None:
-    """Quita del paquete lo que venía de la firma electrónica de muestra.
-
-    - El QR de verificación de la firma de la solicitud 735 y la rúbrica
-      del titular de muestra: se identifican por la huella SHA-256 de su
-      blob (la muestra es un documento fijo). Si la plantilla de origen
-      cambia, las huellas ya no coinciden y el script aborta — hay que
-      revisar la nueva firma y actualizar HUELLAS_FIRMA_MUESTRA.
-    """
-    import hashlib
-
-    ns_r = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
-    ns_a = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
-    ns_pic = "{http://schemas.openxmlformats.org/drawingml/2006/picture}"
-    ns_v = "{urn:schemas-microsoft-com:vml}"
-
-    rids_qr = set()
-    for rid, rel in doc.part.rels.items():
-        if "image" not in rel.reltype:
-            continue
-        huella = hashlib.sha256(rel.target_part.blob).hexdigest()
-        if huella in HUELLAS_FIRMA_MUESTRA:
-            rids_qr.add(rid)
-            print(f"{HUELLAS_FIRMA_MUESTRA[huella]} de muestra "
-                  f"({rel.target_part.partname}); se elimina")
-        elif huella not in HUELLAS_CONSERVAR:
-            raise ValueError(
-                f"imagen desconocida en la plantilla de origen "
-                f"({rel.target_part.partname}, sha256 {huella}); revisa "
-                "si es un artefacto de firma y actualiza las huellas"
-            )
-
-    body = doc.element.body
-    # pic:pic y v:shape que dibujan el QR.
-    for pic in body.iter(f"{ns_pic}pic"):
-        if any(b.get(f"{ns_r}embed") in rids_qr for b in pic.iter(f"{ns_a}blip")):
-            pic.getparent().remove(pic)
-    for shape in body.iter(f"{ns_v}shape"):
-        if any(
-            i.get(f"{ns_r}id") in rids_qr
-            for i in shape.iter(f"{ns_v}imagedata")
-        ):
-            shape.getparent().remove(shape)
-
-    # Relaciones de imagen ya sin referencia en el documento (rúbrica).
-    usados = {
-        e.get(f"{ns_r}embed") or e.get(f"{ns_r}id")
-        for e in body.iter()
-        if e.get(f"{ns_r}embed") or e.get(f"{ns_r}id")
-    }
-    for rid in list(doc.part.rels):
-        rel = doc.part.rels[rid]
-        if "image" in rel.reltype and rid not in usados:
-            print(f"media sin referencia eliminada: {rel.target_part.partname}")
-            doc.part.drop_rel(rid)
-
-
 def main() -> int:
     if not ORIGEN.exists():
         print(f"no existe {ORIGEN}")
@@ -263,11 +190,6 @@ def main() -> int:
                     "{{NOMBRE_COMPLETO}} {{TIPO_DOCUMENTO}} {{NUMERO_DOCUMENTO}}",
                 )
                 print(f"txbx firma: {texto[:60]!r} -> tokens")
-
-    # Bloque de firma electrónica de la solicitud 735: el DOCX de muestra
-    # trae el QR de verificación de ESA firma (UUID ajeno) y la rúbrica
-    # del titular de muestra — ninguno puede quedar en la plantilla.
-    _limpiar_firma_muestra(doc)
 
     tabla = doc.tables[0]
     aplicadas = 0

@@ -29,6 +29,7 @@ interface RevisionDatosProps {
   ocr?: ResultadoOCRApi | null
 }
 
+const CONFIANZA_MAXIMA = 100
 /** Por debajo de esta confianza del OCR, el campo pide confirmación manual. */
 const CONFIANZA_DUDOSA = 75
 
@@ -86,6 +87,8 @@ const camposBase: DefinicionCampo[] = [
     id: 'lugarNacimiento',
     label: 'Lugar de Nacimiento',
     tipo: 'text',
+    dudoso: true,
+    ayudaDudoso: 'Campo dudoso. Confirmar con el físico de la cédula.',
   },
   {
     id: 'fechaExpedicion',
@@ -97,6 +100,7 @@ const camposBase: DefinicionCampo[] = [
     label: 'Ciudad de Expedición',
     tipo: 'text',
     placeholder: 'Ej: Palmira, Valle del Cauca',
+    dudoso: false,
   },
 ]
 
@@ -110,34 +114,16 @@ function campoOCR(
     : undefined
 }
 
-/** Palabras de la advertencia OCR que delatan a cada campo (datos que
- * no coinciden entre lo capturado, el anverso y el reverso). */
-const ADVERTENCIA_POR_CAMPO: Partial<Record<CampoId, RegExp>> = {
-  numeroIdentificacion: /documento|número/i,
-  nombres: /nombres?/i,
-  apellidos: /apellidos?/i,
-  fechaNacimiento: /fecha de nacimiento/i,
-}
-
 /**
- * Marca como dudoso un campo solo con evidencia real de discrepancia:
- * el OCR lo leyó con baja confianza o una advertencia lo nombra (el
- * dato leído no coincide con lo capturado o entre caras). Un campo que
- * el OCR no leyó no se marca: el asesor lo digita y la validación del
- * formulario exige el valor.
+ * Marca como dudoso, además de los fijos, todo campo que el OCR leyó con
+ * baja confianza. Un campo que el OCR no leyó no se marca: el asesor lo
+ * digita y la validación del formulario exige el valor.
  */
 function construirCampos(
   ocr: ResultadoOCRApi | null | undefined,
 ): DefinicionCampo[] {
-  const advertencias = ocr?.advertencias ?? []
   return camposBase.map((campo) => {
-    if (campo.soloLectura || !ocr?.disponible) return campo
-    const advertencia = ADVERTENCIA_POR_CAMPO[campo.id]
-      ? advertencias.find((a) => ADVERTENCIA_POR_CAMPO[campo.id]!.test(a))
-      : undefined
-    if (advertencia) {
-      return { ...campo, dudoso: true, ayudaDudoso: advertencia }
-    }
+    if (campo.dudoso || campo.soloLectura || !ocr?.disponible) return campo
     const leido = campoOCR(ocr, campo.id)
     if (
       leido?.valor &&
@@ -250,7 +236,43 @@ function RevisionDatos({
     return lista
   }, [datos])
 
+  // ---------- Cálculo dinámico de confianza ----------
+  // Parte de la confianza real del OCR (promedio de los campos leídos);
+  // sin OCR, base neutra del 50 %. Confirmar dudosos suma hasta 100.
+  const confianzaOCR = useMemo(() => {
+    const confianzas = camposBase
+      .map((c) => campoOCR(ocr, c.id))
+      .filter((c): c is CampoOCRApi => Boolean(c?.valor))
+      .map((c) => c.confianza)
+      .filter((c) => c > 0)
+    if (confianzas.length === 0) return 50
+    return confianzas.reduce((a, b) => a + b, 0) / confianzas.length
+  }, [ocr])
   const camposDudosos = useMemo(() => campos.filter((c) => c.dudoso), [campos])
+
+  const dudososConfirmadosCount = camposDudosos.filter(
+    (c) => dudososConfirmados[c.id],
+  ).length
+
+  const bonusPorConfirmacion =
+    camposDudosos.length > 0
+      ? (CONFIANZA_MAXIMA - confianzaOCR) / camposDudosos.length
+      : 0
+
+  const confianzaActual = Math.min(
+    CONFIANZA_MAXIMA,
+    confianzaOCR + dudososConfirmadosCount * bonusPorConfirmacion,
+  )
+
+  const confianzaCompleta = confianzaActual >= CONFIANZA_MAXIMA
+
+  const nivelConfianza = confianzaCompleta
+    ? 'VALIDADO'
+    : confianzaActual >= 95
+      ? 'ALTO'
+      : confianzaActual >= 85
+        ? 'MEDIO'
+        : 'BAJO'
 
   const dudososPendientes = camposDudosos.filter(
     (c) => !dudososConfirmados[c.id],
@@ -299,8 +321,8 @@ function RevisionDatos({
             <p className="revision__subtitle">Confirmación de Datos OCR</p>
             <p className="revision__lede">
               Valida la precisión de los datos extraídos por el sistema. Los
-              campos marcados en amarillo requieren confirmación: el OCR los
-              leyó con baja confianza o no coinciden con lo capturado.
+              campos marcados en amarillo requieren confirmación manual debido a
+              bajo nivel de confianza.
             </p>
           </div>
 
@@ -341,6 +363,47 @@ function RevisionDatos({
               Los campos marcados con <span aria-hidden="true">*</span> son
               obligatorios.
             </p>
+          </div>
+        </div>
+
+        <div className="revision__confianza" role="note">
+          <div className="revision__confianza-copy">
+            <span className="revision__confianza-label">
+              Nivel de Confianza Global del Procesamiento
+            </span>
+            <small>
+              Basado en legibilidad del documento anverso y reverso.
+              {camposDudosos.length > 0 && (
+                <>
+                  {' '}
+                  {dudososConfirmadosCount}/{camposDudosos.length} campo
+                  {camposDudosos.length > 1 ? 's' : ''} dudoso
+                  {camposDudosos.length > 1 ? 's' : ''} confirmado
+                  {dudososConfirmadosCount === 1 ? '' : 's'} manualmente.
+                </>
+              )}
+            </small>
+          </div>
+
+          <div className="revision__confianza-metrica">
+            <div className="revision__confianza-medidor">
+              <span
+                className={`revision__confianza-barra${
+                  confianzaCompleta ? ' is-completa' : ''
+                }`}
+                style={{ width: `${confianzaActual}%` }}
+                aria-hidden="true"
+              />
+            </div>
+            <strong
+              key={confianzaActual}
+              className={`revision__confianza-valor${
+                confianzaCompleta ? ' is-completa' : ''
+              }`}
+              aria-live="polite"
+            >
+              {confianzaActual.toFixed(1)}% · {nivelConfianza}
+            </strong>
           </div>
         </div>
 

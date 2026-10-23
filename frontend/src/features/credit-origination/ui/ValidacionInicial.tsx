@@ -7,12 +7,12 @@ import {
   EDAD_MINIMA,
   EDAD_MAXIMA,
 } from '../schemas/persona'
+import { useNombre, useSede } from '../../../shared/lib/sesion'
 import './ValidacionInicial.css'
 
 export interface DatosValidacion {
   tipoDocumento: string
   numeroDocumento: string
-  /** ISO 'YYYY-MM-DD': la captura el asesor y el OCR la coteja. */
   fechaNacimiento: string
   nacionalidad: string
   multasPendientes: boolean
@@ -33,12 +33,14 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
     DEMO ? '1032448900' : '',
   )
   const [fechaNacimiento, setFechaNacimiento] = useState(
-    DEMO ? '1991-08-15' : '',
+    DEMO ? '1990-05-15' : '',
   )
   const [multas, setMultas] = useState<'si' | 'no' | ''>(DEMO ? 'no' : '')
   const [tocados, setTocados] = useState<Partial<Record<Campo, boolean>>>({})
   const [intentado, setIntentado] = useState(false)
   const [resultado, setResultado] = useState<'idle' | 'ok' | 'error'>('idle')
+  const nombreAsesor = useNombre()
+  const sede = useSede()
 
   const errores = useMemo(() => {
     const resultado = validacionInicialSchema.safeParse({
@@ -90,8 +92,7 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
           <h1>Validación Inicial</h1>
           <p className="validacion__subtitle">Datos básicos y filtros</p>
           <p className="validacion__lede">
-            Ingresa los datos iniciales obligatorios del solicitante para
-            validar los criterios mínimos antes del tratamiento de datos.
+            Datos iniciales del solicitante para el tratamiento de datos.
           </p>
         </div>
 
@@ -102,11 +103,11 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
           <dl className="validacion__meta">
             <div>
               <dt>Asesor</dt>
-              <dd>Carlos Mendoza</dd>
+              <dd>{nombreAsesor || 'Asesor'}</dd>
             </div>
             <div>
               <dt>Sede</dt>
-              <dd>Palmira - Centro Interno</dd>
+              <dd>{sede}</dd>
             </div>
           </dl>
         </aside>
@@ -212,7 +213,6 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
                 id="fecha-nacimiento"
                 type="date"
                 value={fechaNacimiento}
-                max={new Date().toISOString().slice(0, 10)}
                 aria-invalid={mostrarError('fechaNacimiento')}
                 onChange={(event) => {
                   setFechaNacimiento(event.target.value)
@@ -227,8 +227,7 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
               </p>
             ) : (
               <p className="validacion__hint">
-                Debe tener entre {EDAD_MINIMA} y {EDAD_MAXIMA} años para
-                radicación de crédito. El OCR de la cédula coteja esta fecha.
+                Debe tener entre {EDAD_MINIMA} y {EDAD_MAXIMA} años.
               </p>
             )}
           </div>

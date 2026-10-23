@@ -7,7 +7,7 @@ es verificable en el código.
 
 > Complementa a `ARQUITECTURA.md` (visión por capas + brechas) y `README.md`
 > (cómo correrlo).
-
+ 
 ---
 
 ## 1 · Stack tecnológico (versiones reales)
@@ -434,21 +434,15 @@ punto de extensión ya existe en `otp_service` + `documento_service`.
 
 ### 7. "¿Cómo llega el desembolso del banco? (webhooks)"
 
-**Hoy**: dos vías. Síncrona — el admin registra el desembolso
-(`POST /api/solicitudes/{id}/desembolso`, transacción atómica
-multi-tabla). Y asíncrona — `POST /webhook/desembolso` para el emisor
-del giro (tesorería/core bancario): firma HMAC-SHA256 del cuerpo con
-`WEBHOOK_SECRETO` compartido (`X-Signature: sha256=<hex>`) +
-`X-Timestamp` en ventana anti-replay (`WEBHOOK_VENTANA_SEGUNDOS`,
-default 300 s; sin secreto → 503). Ciclo del giro: `en_transito` crea el
-desembolso pendiente, `confirmado` lo acredita (idempotente) y
-`rechazado` solo aplica sobre un pendiente. Identifica por
-`id_solicitud` o `num_solicitud`; cada evento queda en el log
-`creditos.webhook`. Contrato para el integrador:
-`docs/manual_integracion_aliados.md` §5.1.
+**Hoy**: síncrono — el admin registra el desembolso
+(`POST /solicitudes/{id}/desembolso`, transacción atómica multi-tabla).
+No hay `/webhook/*`: D57/D77 (confirmación asíncrona del banco) están
+pendientes.
 
-**Pendiente real**: eventos **salientes** (notificar al aliado cambios
-de estado/decisión/oferta) — no existen; el webhook es entrante.
+**Propuesta**: `POST /webhooks/desembolso` con firma HMAC del payload,
+`idempotency-key` obligatorio y persistencia del evento antes de
+procesar (replay-safe). El modelo de datos ya tiene `desembolso` como
+tabla — el webhook solo cambia el *origen* del evento.
 
 ### 8. "¿Hay pipeline de despliegue (CD)?"
 
@@ -489,7 +483,7 @@ completo del crédito. Así quedamos nosotros:
 | **Reportes y analítica** | Informes parametrizables, dashboards | **Parcial**: `metricas_reporte` + páginas Estados/Resumen/Riesgo; sin reportes parametrizables ni BI |
 | **Gestión documental** | Repositorio digital, control de versiones | **Parcial**: repositorio de evidencias por solicitud + paquete legal DOCX generado; control de versiones de documentos pendiente |
 | **Seguridad y cumplimiento** | Cifrado en tránsito/reposo, control de acceso, normativa | **Parcial**: TLS en borde (staging), OTP hash, rate limit, auditoría, consentimiento Habeas Data versionado (`consentimiento_habeas` — Ley 1581); faltan auth por endpoint, cifrado en reposo de evidencias, retención/supresión de PII y listas SARLAFT |
-| **Integración API** | Burós de crédito, pasarelas de pago, sistemas internos | **Cubierto**: DataCrédito HDC+ y Valor Ingreso integrados con resiliencia + reuso de consulta vigente (`consulta_buro`); webhook entrante de desembolso firmado HMAC (`POST /webhook/desembolso`); SARLAFT y eventos salientes pendientes |
+| **Integración API** | Burós de crédito, pasarelas de pago, sistemas internos | **Cubierto en diseño**: DataCrédito HDC+ y Valor Ingreso integrados con resiliencia; webhooks de desembolso y SARLAFT pendientes |
 
 ### Lectura honesta para el arquitecto
 

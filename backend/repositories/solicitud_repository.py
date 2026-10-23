@@ -2,11 +2,10 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import String, cast, func, or_
+from sqlalchemy import String, cast, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from backend.db_models.models import (
-    AliadoFinanciero,
     AliadoProducto,
     CapacidadPago,
     Ciudad,
@@ -20,7 +19,6 @@ from backend.db_models.models import (
     SolicitudCredito,
 )
 from backend.services.finanzas import cuota_anualidad
-from backend.services.seguro_service import cuota_seguro, seguro_vida_vigente
 from backend.services.motor_exceptions import (
     ConflictoEstadoError,
     SolicitudNoEncontradaError,
@@ -290,22 +288,11 @@ class SolicitudRepository:
                 )
             oferta.plazo_ofrecido = plazo
         if (monto is not None or plazo is not None) and oferta.tasa_ofrecida is not None:
-            # La cuota de la oferta es TOTAL: anualidad + seguro de
-            # vida, la misma fórmula con que se generó en la evaluación.
-            # Sin la prima, la cuota quedaba ~0.35% del monto por debajo
-            # de lo que el cliente vio al aceptar.
-            cuota = cuota_anualidad(
+            oferta.cuota_mensual = cuota_anualidad(
                 Decimal(str(oferta.monto_aprobado or 0)),
                 Decimal(str(oferta.tasa_ofrecida)),
                 int(oferta.plazo_ofrecido or 0),
             )
-            seguro = seguro_vida_vigente(self.db)
-            if seguro is not None:
-                cuota += cuota_seguro(
-                    Decimal(str(oferta.monto_aprobado or 0)),
-                    Decimal(str(seguro.tasa_prima)),
-                )
-            oferta.cuota_mensual = cuota
 
         # Desmarcar cualquier otra oferta seleccionada previamente
         # para esta solicitud (solo puede haber una activa a la vez).
@@ -337,116 +324,6 @@ class SolicitudRepository:
         self.db.add_all(ofertas)
         self.db.flush()
         return ofertas
-
-    def conteos_embudo(
-        self,
-        desde: datetime | None = None,
-        hasta: datetime | None = None,
-    ) -> dict:
-        """Agregados del embudo en una sola pasada sobre
-        solicitud_credito (FILTER WHERE: Postgres 9.4+ y SQLite 3.30+).
-        `desde`/`hasta` acotan por fecha_hora de radicación."""
-        q = self.db.query(
-            func.count(SolicitudCredito.id_solicitud),
-            func.count().filter(SolicitudCredito.decision.isnot(None)),
-            func.count().filter(SolicitudCredito.decision == "aprobado"),
-            func.count().filter(
-                SolicitudCredito.fecha_hora_firma.isnot(None)
-            ),
-            func.count().filter(
-                SolicitudCredito.estado == "desembolsada"
-            ),
-            func.count().filter(SolicitudCredito.estado == "cancelada"),
-        )
-        q_estado = self.db.query(
-            SolicitudCredito.estado, func.count()
-        ).group_by(SolicitudCredito.estado)
-        if desde is not None:
-            q = q.filter(SolicitudCredito.fecha_hora >= desde)
-            q_estado = q_estado.filter(SolicitudCredito.fecha_hora >= desde)
-        if hasta is not None:
-            q = q.filter(SolicitudCredito.fecha_hora < hasta)
-            q_estado = q_estado.filter(SolicitudCredito.fecha_hora < hasta)
-        fila = q.one()
-        por_estado = dict(q_estado.all())
-        return {
-            "radicadas": fila[0],
-            "evaluadas": fila[1],
-            "aprobadas": fila[2],
-            "formalizadas": fila[3],
-            "desembolsadas": fila[4],
-            "canceladas": fila[5],
-            "por_estado": por_estado,
-        }
-
-    def conteos_por_aliado(
-        self,
-        desde: datetime | None = None,
-        hasta: datetime | None = None,
-    ) -> list[dict]:
-        """Conversión por aliado financiero. La solicitud solo conoce a su
-        aliado cuando el cliente selecciona la oferta (post-aprobación);
-        el capital desembolsado se agrega desde credito_financiacion,
-        que guarda el aliado ganador al formalizar."""
-        q = (
-            self.db.query(
-                AliadoFinanciero.nombre,
-                func.count(SolicitudCredito.id_solicitud),
-                func.count().filter(
-                    SolicitudCredito.fecha_hora_firma.isnot(None)
-                ),
-                func.count().filter(
-                    SolicitudCredito.estado == "desembolsada"
-                ),
-            )
-            .join(
-                OfertaCredito,
-                (OfertaCredito.id_solicitud == SolicitudCredito.id_solicitud)
-                & OfertaCredito.seleccionada.is_(True),
-            )
-            .join(
-                AliadoProducto,
-                OfertaCredito.id_aliado_producto
-                == AliadoProducto.id_aliado_producto,
-            )
-            .join(
-                AliadoFinanciero,
-                AliadoProducto.id_aliado == AliadoFinanciero.id_aliado,
-            )
-        )
-        if desde is not None:
-            q = q.filter(SolicitudCredito.fecha_hora >= desde)
-        if hasta is not None:
-            q = q.filter(SolicitudCredito.fecha_hora < hasta)
-        filas = q.group_by(AliadoFinanciero.nombre).all()
-        capital_por_aliado = dict(
-            self.db.query(
-                AliadoFinanciero.nombre,
-                func.coalesce(func.sum(Desembolso.capital), 0),
-            )
-            .join(
-                CreditoFinanciacion,
-                Desembolso.id_credito == CreditoFinanciacion.id_credito,
-            )
-            .join(
-                AliadoFinanciero,
-                CreditoFinanciacion.id_aliado_financiero
-                == AliadoFinanciero.id_aliado,
-            )
-            .filter(Desembolso.estado == "confirmado")
-            .group_by(AliadoFinanciero.nombre)
-            .all()
-        )
-        return [
-            {
-                "aliado": nombre,
-                "con_oferta": con_oferta,
-                "formalizadas": formalizadas,
-                "desembolsadas": desembolsadas,
-                "valor_desembolsado": capital_por_aliado.get(nombre, 0),
-            }
-            for nombre, con_oferta, formalizadas, desembolsadas in filas
-        ]
 
     def productos_activos(self) -> list[AliadoProducto]:
         return (

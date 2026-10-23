@@ -33,27 +33,19 @@ from backend.config import Settings, get_settings
 from backend.integrations.datacredito.hdc_client import HDCRestClient
 from backend.integrations.datacredito.income_client import IncomeRestClient
 from backend.integrations.datacredito.mock_buro import crear_escenario
-from backend.integrations.simit.client import (
-    ResultadoSimit,
-    crear_cliente_simit,
-)
-from backend.integrations.simit.mock_simit import resultado_mock as simit_mock
 from backend.models.buro_models import HDC_CODIGO_CONSULTA_EFECTIVA, RespuestaHDC, RespuestaValorIngreso
-from backend.models.enums import Causal, Decision, DecisionFinal, Ocupacion, TipoContrato, TipoIdentificacion
+from backend.models.enums import Decision, DecisionFinal, Ocupacion, TipoContrato, TipoIdentificacion
 from backend.models.motor_models import (
     EvaluarRequest,
     EvaluarSolicitudRequest,
     IngresoPropioRequest,
     IngresoPropioResponse,
-    PasoTraza,
     ResultadoMotor,
     Solicitud,
 )
 from backend.repositories.auditoria_repository import AuditoriaRepository
-from backend.repositories.consulta_buro_repository import ConsultaBuroRepository
 from backend.repositories.evaluacion_repository import EvaluacionRepository
 from backend.repositories.solicitud_repository import SolicitudRepository
-from backend.services.documento_service import DocumentoService
 from backend.services.elegibilidad_service import EligibilidadService
 from backend.services.mapeos_db import (
     DECISION_A_DB,
@@ -121,7 +113,6 @@ class EvaluacionService:
         params: MotorParametros,
         consultar_experian: bool,
         escenario_mock: str | None,
-        id_solicitud=None,
     ) -> ReportesBuro:
         en_linea = consultar_experian or self.settings.environment == "produccion"
         if not en_linea:
@@ -140,39 +131,6 @@ class EvaluacionService:
 
         if escenario_mock:
             raise ValidacionError("escenario_mock solo se permite en ambiente demo sin consulta en línea.")
-
-        # La consulta a centrales es un recurso pago por persona: si hay
-        # un reporte vigente se reutiliza y el motor corre sobre esos
-        # datos (los parámetros vigentes siempre aplican de nuevo).
-        cache_repo = (
-            ConsultaBuroRepository(self.db)
-            if self.db is not None and self.settings.buro_cache_habilitado
-            else None
-        )
-        if cache_repo is not None:
-            previa = cache_repo.ultima_vigente(
-                solicitud.tipo_id.value, solicitud.numero_id, self.settings.buro_cache_dias
-            )
-            if previa is not None:
-                hdc_prev, vi_prev = previa.a_reportes()
-                logger.info(
-                    "Reuso de consulta a centrales vigente",
-                    extra={
-                        "numero_id": solicitud.numero_id,
-                        "consulta_id": previa.id_consulta,
-                        "fecha_consulta": previa.fecha_consulta.isoformat(),
-                    },
-                )
-                return ReportesBuro(
-                    hdc_prev,
-                    vi_prev,
-                    f"cache:{previa.origen}",
-                    [
-                        f"Reporte de centrales reutilizado (consulta {previa.fecha_consulta:%Y-%m-%d}, "
-                        f"vigente {self.settings.buro_cache_dias} días)."
-                    ],
-                )
-
         faltantes = self.settings.configuracion_experian_faltante()
         if faltantes:
             raise DataCreditoError(
@@ -186,126 +144,30 @@ class EvaluacionService:
         validar_identidad(solicitud, hdc, None)
 
         if _hdc_reporta_fallecimiento(hdc, params):
-            reportes = ReportesBuro(
+            return ReportesBuro(
                 hdc,
                 None,
                 "experian",
                 ["Valor Ingreso no consultado: HDC+ reporta al cliente como fallecido."],
             )
-        else:
-            # BRD: con una causal de rechazo activa no se consume Valor Ingreso.
-            score, _ = extraer_score(hdc, params)
-            preliminar = evaluar_filtros_duros(hdc, solicitud, params, date.today(), evaluar_exclusion_score(score, params))
-            rechazos = [c.causal.codigo for c in preliminar.causales if c.causal.tipo == Decision.RECHAZADO]
-            if rechazos:
-                reportes = ReportesBuro(
-                    hdc,
-                    None,
-                    "experian",
-                    [f"Valor Ingreso no consultado: HDC+ ya dispara causales de rechazo ({', '.join(rechazos)})."],
-                )
-            else:
-                income_client = self._income_client or IncomeRestClient(self.settings)
-                vi = income_client.consultar(
-                    solicitud.tipo_id, solicitud.numero_id, ingreso_validar=int(solicitud.ingresos_mensuales)
-                )
-                reportes = ReportesBuro(hdc, vi, "experian")
 
-        if cache_repo is not None:
-            cache_repo.registrar(
-                solicitud.tipo_id.value,
-                solicitud.numero_id,
-                id_solicitud,
-                reportes.hdc,
-                reportes.valor_ingreso,
-                reportes.origen,
+        # BRD: con una causal de rechazo activa no se consume Valor Ingreso.
+        score, _ = extraer_score(hdc, params)
+        preliminar = evaluar_filtros_duros(hdc, solicitud, params, date.today(), evaluar_exclusion_score(score, params))
+        rechazos = [c.causal.codigo for c in preliminar.causales if c.causal.tipo == Decision.RECHAZADO]
+        if rechazos:
+            return ReportesBuro(
+                hdc,
+                None,
+                "experian",
+                [f"Valor Ingreso no consultado: HDC+ ya dispara causales de rechazo ({', '.join(rechazos)})."],
             )
-        return reportes
 
-    # ------------------------------------------------------------------
-    # Pre-filtro SIMIT (deuda de tránsito)
-    # ------------------------------------------------------------------
-    def _consultar_simit(
-        self,
-        solicitud: Solicitud,
-        en_linea: bool,
-        escenario_mock: str | None,
-    ) -> ResultadoSimit | None:
-        """Paz y salvo de tránsito antes de gastar la consulta de buró.
-
-        Sin credenciales o en demo responde el mock; en línea usa el
-        proveedor de `simit_proveedor` (hoy PlacaPi). Si el proveedor
-        falla: fail-open por defecto (la evaluación sigue sin el
-        pre-filtro), salvo simit_requerido.
-        """
-        if not self.settings.simit_habilitado:
-            return None
-        # El cliente ya lo declaró en la solicitud: no hace falta
-        # verificarlo — la propia declaración dispara R22.
-        if solicitud.tiene_multas_runt:
-            return ResultadoSimit(
-                paz_y_salvo=False,
-                total_deuda=Decimal(0),
-                total_items=0,
-                origen="declarado en la solicitud",
-            )
-        if not en_linea:
-            return simit_mock(escenario_mock)
-        if not self.settings.simit_api_key:
-            logger.warning(
-                "SIMIT en línea sin API key (SIMIT_API_KEY): se omite el pre-filtro"
-            )
-            return None
-        try:
-            return crear_cliente_simit(self.settings).estado_cuenta_transito(
-                solicitud.tipo_id, solicitud.numero_id
-            )
-        except DataCreditoError as exc:
-            if self.settings.simit_requerido:
-                raise ValidacionError(
-                    f"No se pudo consultar el estado de cuenta de tránsito (SIMIT): {exc.message}"
-                ) from exc
-            logger.warning(
-                "SIMIT no respondió; la evaluación sigue sin el pre-filtro | %s",
-                exc.message,
-            )
-            return None
-
-    def _rechazo_simit(
-        self, solicitud: Solicitud, simit: ResultadoSimit
-    ) -> ResultadoMotor:
-        """Rechazo del pre-filtro: R22 con trazabilidad del hallazgo,
-        sin haber consumido la consulta de buró."""
-        declarado = simit.origen == "declarado en la solicitud"
-        solicitud.tiene_multas_runt = True
-        detalle = (
-            "El cliente declaró multas pendientes en la solicitud; "
-            "no se consumió la consulta de buró."
-            if declarado
-            else "Estado de cuenta de tránsito "
-            f"({simit.origen}): deuda pendiente "
-            f"{simit.total_deuda:,.0f} COP en "
-            f"{simit.total_items} registro(s); no se "
-            "consumió la consulta de buró."
+        income_client = self._income_client or IncomeRestClient(self.settings)
+        vi = income_client.consultar(
+            solicitud.tipo_id, solicitud.numero_id, ingreso_validar=int(solicitud.ingresos_mensuales)
         )
-        return ResultadoMotor(
-            evaluacion_id=str(uuid.uuid4()),
-            fecha_evaluacion=datetime.now(UTC),
-            ambiente=self.settings.environment,
-            solicitud=solicitud,
-            decision=DecisionFinal.RECHAZADO,
-            decision_interna=Decision.RECHAZADO,
-            causales=[Causal.R22],
-            smmlv=self.settings.smmlv,
-            trazabilidad=[
-                PasoTraza(
-                    etapa="Pre-filtro SIMIT",
-                    resultado="rechazado",
-                    causales=["R22"],
-                    detalle=[detalle],
-                )
-            ],
-        )
+        return ReportesBuro(hdc, vi, "experian")
 
     # ------------------------------------------------------------------
     # Evaluación
@@ -329,20 +191,12 @@ class EvaluacionService:
         """POST /motor/evaluar."""
         solicitud = req.a_solicitud()
         params = self.store.cargar()
-        en_linea = req.consultar_experian or self.settings.environment == "produccion"
-        origen = "evaluacion"
-        simit = self._consultar_simit(solicitud, en_linea, req.escenario_mock)
-        if simit is not None and not simit.paz_y_salvo:
-            resultado = self._rechazo_simit(solicitud, simit)
-            origen = simit.origen
-        else:
-            reportes = self._obtener_reportes(solicitud, params, req.consultar_experian, req.escenario_mock)
-            resultado = self.evaluar_con_reportes(
-                solicitud, reportes.hdc, reportes.valor_ingreso, reportes.advertencias, params
-            )
-            origen = reportes.origen
+        reportes = self._obtener_reportes(solicitud, params, req.consultar_experian, req.escenario_mock)
+        resultado = self.evaluar_con_reportes(
+            solicitud, reportes.hdc, reportes.valor_ingreso, reportes.advertencias, params
+        )
         if self.db is not None:
-            AuditoriaRepository(self.db).guardar(resultado, origen, parametros_huella=params.huella())
+            AuditoriaRepository(self.db).guardar(resultado, reportes.origen, parametros_huella=params.huella())
         return resultado
 
     def evaluar_solicitud_db(self, id_solicitud: uuid.UUID, req: EvaluarSolicitudRequest) -> ResultadoMotor:
@@ -356,25 +210,15 @@ class EvaluacionService:
         solicitud = self._solicitud_desde_db(sc, req)
 
         params = self.store.cargar()
-        en_linea = req.consultar_experian or self.settings.environment == "produccion"
-        simit = self._consultar_simit(solicitud, en_linea, req.escenario_mock)
-        origen = "evaluacion"
-        if simit is not None and not simit.paz_y_salvo:
-            resultado = self._rechazo_simit(solicitud, simit)
-            origen = simit.origen
-        else:
-            reportes = self._obtener_reportes(
-                solicitud, params, req.consultar_experian, req.escenario_mock, id_solicitud
-            )
-            if not req.consultar_experian and self.settings.environment == "demo":
-                vi_db = respuesta_desde_cotizantes(sc.cotizantes)
-                if vi_db is not None:
-                    reportes.valor_ingreso = vi_db
-                    reportes.origen = f"{reportes.origen}+cotizantes"
-            resultado = self.evaluar_con_reportes(
-                solicitud, reportes.hdc, reportes.valor_ingreso, reportes.advertencias, params
-            )
-            origen = reportes.origen
+        reportes = self._obtener_reportes(solicitud, params, req.consultar_experian, req.escenario_mock)
+        if not req.consultar_experian and self.settings.environment == "demo":
+            vi_db = respuesta_desde_cotizantes(sc.cotizantes)
+            if vi_db is not None:
+                reportes.valor_ingreso = vi_db
+                reportes.origen = f"{reportes.origen}+cotizantes"
+        resultado = self.evaluar_con_reportes(
+            solicitud, reportes.hdc, reportes.valor_ingreso, reportes.advertencias, params
+        )
 
         eval_repo = EvaluacionRepository(self.db)
         eval_repo.crear_evaluacion_motor(id_solicitud, resultado)
@@ -388,19 +232,7 @@ class EvaluacionService:
         )
         if resultado.decision == DecisionFinal.APROBADO:
             self._generar_ofertas(id_solicitud, resultado, repo)
-        AuditoriaRepository(self.db).guardar(resultado, origen, str(id_solicitud), parametros_huella=params.huella())
-        try:
-            with self.db.begin_nested():
-                # Soporte documental de la radicación (autorización de
-                # centrales + solicitud de crédito): la consulta al buró
-                # ya se hizo con el consentimiento del cliente — el
-                # expediente la evidencia haya o no aprobación.
-                DocumentoService(self.db).generar_paquete_radicacion(id_solicitud)
-        except Exception:
-            logger.exception(
-                "No se pudo generar el paquete de radicación de la solicitud %s",
-                id_solicitud,
-            )
+        AuditoriaRepository(self.db).guardar(resultado, reportes.origen, str(id_solicitud), parametros_huella=params.huella())
         return resultado
 
     def _solicitud_desde_db(self, sc, req: EvaluarSolicitudRequest) -> Solicitud:

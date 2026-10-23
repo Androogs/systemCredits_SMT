@@ -37,10 +37,6 @@ ESCENARIOS: dict[str, str] = {
     "perfil_bajo": "Ingreso de 1,2 SMMLV con continuidad: perfil BAJO (E4).",
     "sin_valor_ingreso": "Sin Valor Ingreso: ingreso por Quanto y sin continuidad -> GRIS (RC1) para empleado.",
     "endeudamiento_alto": "Obligaciones que llevan el endeudamiento a 86% (R17).",
-    # No llega al buró: el pre-filtro SIMIT rechaza (R22) antes de
-    # construir este reporte. Si el pre-filtro está deshabilitado, el
-    # escenario se comporta como 'aprobado'.
-    "simit_multas": "Deuda pendiente en SIMIT: rechazo R22 sin consultar el buró.",
 }
 
 _PERIODOS = [(2026, 8), (2026, 7), (2026, 6)]

@@ -249,12 +249,11 @@ class MotorDecision:
             hdc, solicitud, parametros, ingreso_final, ingreso_smmlv, ingreso_res.fuente
         )
         causales += capacidad.causales
-        causales_traza += capacidad.causales_traza
         traza.append(
             PasoTraza(
                 etapa="capacidad_pago",
                 resultado=f"Endeudamiento {capacidad.endeudamiento:.2f}% | capacidad {capacidad.capacidad_pago:.0f}",
-                causales=[c.codigo for c in [*capacidad.causales, *capacidad.causales_traza]],
+                causales=[c.codigo for c in capacidad.causales],
                 detalle=capacidad.detalles,
             )
         )

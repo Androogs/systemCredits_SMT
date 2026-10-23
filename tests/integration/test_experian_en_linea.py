@@ -138,66 +138,6 @@ def test_error_http_y_token(client, credenciales):
     assert r.status_code == 502 and r.json()["error"] == "error_datacredito"
 
 
-@respx.mock
-def test_segunda_evaluacion_reusa_consulta_vigente(client, credenciales):
-    """La consulta de centrales se paga una vez por persona: dentro del
-    período de vigencia la re-evaluación corre el motor con el reporte
-    almacenado — no vuelve a Experian."""
-    _mock_tokens()
-    hdc = respx.post(HDC_URL).mock(return_value=httpx.Response(200, json=_hdc_payload()))
-    income = respx.get(INCOME_URL).mock(return_value=httpx.Response(200, json=_income_payload()))
-    assert client.post(
-        "/api/motor/evaluar", json={**PAYLOAD, "consultar_experian": True}
-    ).status_code == 200
-    r = client.post("/api/motor/evaluar", json={**PAYLOAD, "consultar_experian": True})
-    assert r.status_code == 200, r.text
-    assert hdc.call_count == 1
-    assert income.call_count == 1
-    auditorias = client.get("/api/auditoria").json()
-    assert auditorias[1]["origen_datos"] == "experian"
-    assert auditorias[0]["origen_datos"].startswith("cache:experian")
-
-
-@respx.mock
-def test_cache_deshabilitado_consulta_de_nuevo(client, credenciales, monkeypatch):
-    """BURO_CACHE_HABILITADO=false: cada evaluación consulta en línea."""
-    monkeypatch.setenv("BURO_CACHE_HABILITADO", "false")
-    get_settings.cache_clear()
-    _mock_tokens()
-    hdc = respx.post(HDC_URL).mock(return_value=httpx.Response(200, json=_hdc_payload()))
-    respx.get(INCOME_URL).mock(return_value=httpx.Response(200, json=_income_payload()))
-    for _ in range(2):
-        client.post("/api/motor/evaluar", json={**PAYLOAD, "consultar_experian": True})
-    assert hdc.call_count == 2
-
-
-def test_repositorio_consulta_buro_vigencia(client):
-    """La vigencia la controla BURO_CACHE_DIAS: 0 días = siempre vencida;
-    la llave es la persona (tipo_id + numero_id), no la solicitud."""
-    from backend.db_models import session as db_session
-    from backend.db_models.auditoria_models import ConsultaBuro  # noqa: F401
-    from backend.integrations.datacredito.mock_buro import crear_escenario
-    from backend.models.enums import TipoIdentificacion
-    from backend.repositories.consulta_buro_repository import ConsultaBuroRepository
-
-    hdc, vi = crear_escenario(
-        "aprobado", TipoIdentificacion.CC, "1000000001", "Ficticio", 1_300_000
-    )
-    db = db_session.SessionLocal()
-    try:
-        repo = ConsultaBuroRepository(db)
-        repo.registrar("1", "1000000001", None, hdc, vi)
-        db.commit()
-        assert repo.ultima_vigente("1", "1000000001", dias=30) is not None
-        assert repo.ultima_vigente("1", "1000000001", dias=0) is None
-        assert repo.ultima_vigente("1", "999999", dias=30) is None
-        reusada = repo.ultima_vigente("1", "1000000001", dias=30)
-        hdc_re, vi_re = reusada.a_reportes()
-        assert hdc_re.scores and vi_re.aportantes
-    finally:
-        db.close()
-
-
 def test_produccion_no_permite_mock(client, monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "produccion")
     get_settings.cache_clear()

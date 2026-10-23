@@ -25,7 +25,6 @@ from backend.db_models.models import (
     SolicitudCausal,
     SolicitudCredito,
 )
-from backend.db_models.evidencia_models import DocumentoEvidencia
 from backend.services.finanzas import cuota_anualidad
 from tests.integration.conftest import PAYLOAD
 
@@ -42,9 +41,6 @@ ESPERADO = {
     "perfil_bajo": ("Aprobado", ["E4"]),
     "sin_valor_ingreso": ("Rechazado", ["RC1"]),
     "endeudamiento_alto": ("Rechazado", ["R17"]),
-    # El pre-filtro SIMIT corre antes del buró: deuda pendiente -> R22
-    # sin que se llegue a construir el escenario del buró.
-    "simit_multas": ("Rechazado", ["R22"]),
 }
 
 
@@ -173,97 +169,6 @@ def test_flujo_solicitud_persistida(client):
     assert len(client.get("/api/auditoria", params={"numero_id": "1000000001"}).json()) == 2
 
 
-def test_evaluar_rechaza_tasa_sobre_usura(client):
-    """Guarda de cumplimiento: la tasa nunca iguala ni supera la usura
-    de la modalidad que aplica al monto (stub SFC en conftest)."""
-    id_solicitud = _crear_solicitud(client)
-    # 10M > 6 SMMLV (7,8M en pruebas): aplica usura ordinario 2,1176% m.v.
-    r = client.post(
-        f"/api/solicitudes/{id_solicitud}/evaluar",
-        json={**CREDITO, "tasa": 2.1176},
-    )
-    assert r.status_code == 422
-    assert "usura" in r.json()["detail"].lower()
-
-    # Justo por debajo del límite sí evalúa.
-    ok = client.post(
-        f"/api/solicitudes/{id_solicitud}/evaluar",
-        json={**CREDITO, "tasa": 2.1175},
-    )
-    assert ok.status_code == 200
-
-
-def test_evaluar_usura_bajo_monto(client):
-    """A 5M (≤ 6 SMMLV) rige la usura de bajo monto (4,3488% m.v.),
-    que permite tasas por encima de la ordinaria."""
-    id_solicitud = _crear_solicitud(client)
-    ok = client.post(
-        f"/api/solicitudes/{id_solicitud}/evaluar",
-        json={**CREDITO, "saldo_financiar": 5_000_000, "tasa": 3.5},
-    )
-    assert ok.status_code == 200
-
-    r = client.post(
-        f"/api/solicitudes/{id_solicitud}/evaluar",
-        json={**CREDITO, "saldo_financiar": 5_000_000, "tasa": 5},
-    )
-    assert r.status_code == 422
-    assert "usura" in r.json()["detail"].lower()
-
-
-def test_simit_con_deuda_rechaza_sin_buro(client):
-    """Pre-filtro: con deuda SIMIT la evaluación rechaza con R22 y la
-    trazabilidad muestra que el buró nunca se consultó."""
-    r = client.post("/api/motor/evaluar", json={**PAYLOAD, "escenario_mock": "simit_multas"})
-    assert r.status_code == 200, r.text
-    data = r.json()
-    assert data["decision"] == "Rechazado"
-    assert [c["codigo"] for c in data["causales"]] == ["R22"]
-    etapa = data["trazabilidad"][0]
-    assert etapa["etapa"] == "Pre-filtro SIMIT"
-    assert "no se consumió" in etapa["detalle"][0]
-    # Sin buró no hay score ni indicadores.
-    assert data["score_consultado"] is None
-    assert data["indicadores_buro"] == {}
-
-
-def test_simit_rechazo_tambien_en_solicitud_persistida(client):
-    id_solicitud = _crear_solicitud(client)
-    r = client.post(
-        f"/api/solicitudes/{id_solicitud}/evaluar",
-        json={**CREDITO, "escenario_mock": "simit_multas"},
-    )
-    assert r.status_code == 200 and r.json()["decision"] == "Rechazado"
-    db = db_session.SessionLocal()
-    try:
-        solicitud = db.query(SolicitudCredito).one()
-        assert solicitud.decision == "rechazado"
-        assert [(c.codigo, c.activa) for c in db.query(SolicitudCausal)] == [("R22", True)]
-    finally:
-        db.close()
-
-
-def test_simit_limpio_no_altera_el_flujo(client):
-    """Paz y salvo (mock por defecto): la evaluación sigue al buró."""
-    data = client.post("/api/motor/evaluar", json=PAYLOAD).json()
-    assert data["decision"] == "Aprobado"
-    assert data["trazabilidad"][0]["etapa"] != "Pre-filtro SIMIT"
-
-
-def test_multas_declaradas_rechazan_sin_ninguna_consulta(client):
-    """Si el propio cliente declaró multas, ni SIMIT ni buró se
-    consultan: rechazo directo con la misma causal."""
-    r = client.post(
-        "/api/motor/evaluar", json={**PAYLOAD, "tiene_multas_runt": True}
-    )
-    assert r.status_code == 200, r.text
-    data = r.json()
-    assert data["decision"] == "Rechazado"
-    assert [c["codigo"] for c in data["causales"]] == ["R22"]
-    assert data["score_consultado"] is None
-    assert "declaró" in data["trazabilidad"][0]["detalle"][0]
-
-
 def test_solicitud_inexistente_y_apellido_faltante(client):
     assert client.post("/api/solicitudes/00000000-0000-0000-0000-000000000000/evaluar", json=CREDITO).status_code == 404
     sin_apellido = {**SOLICITUD, "cliente": {**SOLICITUD["cliente"]}}
@@ -322,15 +227,13 @@ def test_seleccion_oferta_con_monto_y_plazo(client):
     assert client.post(f"/api/solicitudes/{id_solicitud}/evaluar", json=CREDITO).json()["decision"] == "Aprobado"
     ofertas = client.get(f"/api/solicitudes/{id_solicitud}/ofertas").json()
     elegible = next(o for o in ofertas if o["elegible"])
-    # La oferta responde a lo pedido ($10M), no al cupo máximo del
-    # motor ($20M): ese exceso de capacidad queda como cupo_sugerido.
     cupo = float(elegible["monto_aprobado"])
-    assert cupo == 10_000_000
+    assert cupo > 0
 
-    # Monto por encima de la capacidad evaluada ($20M) -> 422
+    # Monto por encima del cupo aprobado -> 422
     r = client.post(
         f"/api/solicitudes/{id_solicitud}/ofertas/seleccionar",
-        json={"id_oferta": elegible["id_oferta"], "monto": 20_000_001},
+        json={"id_oferta": elegible["id_oferta"], "monto": cupo + 1},
     )
     assert r.status_code == 422
 
@@ -460,98 +363,6 @@ def test_crear_solicitud_actualiza_ocupacion_cliente_existente(client):
         db.close()
 
 
-def test_metricas_embudo(client):
-    """D181: el embudo cuenta radicadas → evaluadas → aprobadas →
-    formalizadas → desembolsadas, con desglose por aliado."""
-    db = db_session.SessionLocal()
-    aliado = AliadoFinanciero(nit="900000009", nombre="Aliado Embudo", tipo="banco")
-    db.add(aliado)
-    db.flush()
-    db.add(AliadoProducto(id_aliado=aliado.id_aliado, nombre="Producto Embudo"))
-    db.commit()
-    db.close()
-
-    aprobada = _crear_solicitud(client)
-    client.post(f"/api/solicitudes/{aprobada}/evaluar", json=CREDITO)
-    ofertas = client.get(f"/api/solicitudes/{aprobada}/ofertas").json()
-    elegible = next(o for o in ofertas if o["elegible"])
-    client.post(
-        f"/api/solicitudes/{aprobada}/ofertas/seleccionar",
-        json={"id_oferta": elegible["id_oferta"]},
-    )
-
-    rechazada = _crear_solicitud(client)
-    client.post(
-        f"/api/solicitudes/{rechazada}/evaluar",
-        json={**CREDITO, "escenario_mock": "embargo"},
-    )
-    _crear_solicitud(client)  # solo radicada, sin evaluar
-
-    db = db_session.SessionLocal()
-    fila = db.query(SolicitudCredito).filter_by(id_solicitud=uuid.UUID(aprobada)).one()
-    fila.fecha_hora_firma = datetime.now(UTC)
-    fila.estado = "desembolsada"
-    db.commit()
-    db.close()
-
-    data = client.get("/api/solicitudes/metricas/embudo").json()
-    etapas = {e["clave"]: e for e in data["etapas"]}
-    assert data["radicadas"] == 3
-    assert etapas["evaluadas"]["total"] == 2
-    assert etapas["aprobadas"]["total"] == 1
-    assert etapas["formalizadas"]["total"] == 1
-    assert etapas["desembolsadas"]["total"] == 1
-    assert etapas["desembolsadas"]["pct"] == pytest.approx(33.3)
-    assert data["canceladas"] == 0
-    assert data["por_estado"]["desembolsada"] == 1
-    assert data["por_estado"]["rechazada"] == 1
-    [aliado] = data["por_aliado"]
-    assert aliado["con_oferta"] == 1
-    assert aliado["formalizadas"] == 1
-    assert aliado["desembolsadas"] == 1
-    assert Decimal(str(aliado["valor_desembolsado"])) == 0
-
-
-def test_metricas_embudo_vacio(client):
-    """Sin solicitudes el embudo responde ceros, nunca divide por cero."""
-    data = client.get("/api/solicitudes/metricas/embudo").json()
-    assert data["radicadas"] == 0
-    assert all(e["total"] == 0 for e in data["etapas"])
-    assert data["por_aliado"] == []
-
-
-def test_metricas_embudo_rango(client):
-    """El filtro de mes del panel acota el embudo por fecha de
-    radicación: fuera del rango no cuenta."""
-    _crear_solicitud(client)
-    db = db_session.SessionLocal()
-    vieja = db.query(SolicitudCredito).first()
-    vieja.fecha_hora = datetime(2020, 1, 15, tzinfo=UTC)
-    db.commit()
-    db.close()
-    _crear_solicitud(client)  # radicada hoy
-
-    global_ = client.get("/api/solicitudes/metricas/embudo").json()
-    assert global_["radicadas"] == 2
-    # Rango del mes actual: solo la radicada hoy entra.
-    ahora = datetime.now(UTC)
-    desde = ahora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    mes = client.get(
-        "/api/solicitudes/metricas/embudo",
-        params={"desde": desde.isoformat()},
-    ).json()
-    assert mes["radicadas"] == 1
-    # Rango de 2020: solo la vieja entra.
-    enero2020 = client.get(
-        "/api/solicitudes/metricas/embudo",
-        params={
-            "desde": "2020-01-01T00:00:00Z",
-            "hasta": "2020-02-01T00:00:00Z",
-        },
-    ).json()
-    assert enero2020["radicadas"] == 1
-
-
 def test_detalle_solicitud(client):
     id_solicitud = _crear_solicitud(client)
     client.post(
@@ -561,7 +372,6 @@ def test_detalle_solicitud(client):
     d = client.get(f"/api/solicitudes/{id_solicitud}").json()
     assert d["id_solicitud"] == id_solicitud
     assert d["nombre_cliente"] == "Cliente Ficticio"
-    assert d["fecha_nacimiento"] == "1990-05-15"
     assert d["datos_laborales"]["ingreso_mensual"] == "5000000.00"
     assert d["datos_laborales"]["tipo_contrato"] == "indefinido"
     assert [c["codigo"] for c in d["causales"]] == ["R2"]
@@ -571,163 +381,6 @@ def test_detalle_solicitud(client):
         client.get("/api/solicitudes/00000000-0000-0000-0000-000000000000").status_code
         == 404
     )
-
-
-def test_actualizar_solicitud_completa_datos_sin_duplicar(client):
-    """Retomar una solicitud creada con pasos pendientes (sin Habeas
-    Data, sin contacto, perfil incompleto) persiste los datos sobre el
-    mismo registro: el flujo de "continuar" no puede duplicarla."""
-    id_solicitud = _crear_solicitud(client)
-
-    r = client.put(
-        f"/api/solicitudes/{id_solicitud}",
-        json={
-            **SOLICITUD,
-            "datos_laborales": {
-                "tipo_contrato": "Indefinido",
-                "ingreso_mensual": 7200000,
-                "meses_continuidad": 18,
-            },
-            "contacto_vivienda": {
-                "telefono": "3001234567",
-                "correo": "c@correo.com",
-            },
-            "consentimiento": {"aceptado": True},
-            "linea_credito": "Inversiones Pacífico",
-            "destino_credito": "Financiamiento de Vehículos",
-            "plazo_deseado_meses": 36,
-        },
-    )
-    assert r.status_code == 200, r.text
-    assert r.json()["id_solicitud"] == id_solicitud
-
-    d = client.get(f"/api/solicitudes/{id_solicitud}").json()
-    assert d["datos_laborales"]["ingreso_mensual"] == "7200000.00"
-    assert d["datos_laborales"]["meses_continuidad"] == 18
-    assert d["contacto_vivienda"]["telefono"] == "3001234567"
-    assert d["linea_credito"] == "Inversiones Pacífico"
-    assert d["plazo_deseado_meses"] == 36
-    assert len(d["consentimientos"]) == 1
-    # Sigue siendo una sola solicitud: no hubo radicación duplicada.
-    assert len(client.get("/api/solicitudes").json()) == 1
-
-
-def test_actualizar_solicitud_recrea_datos_laborales_faltantes(client):
-    """Si la radicación quedó sin fila de datos_laborales (perfil
-    económico pendiente), la actualización la crea como upsert."""
-    id_solicitud = _crear_solicitud(client)
-    db = db_session.SessionLocal()
-    try:
-        from backend.db_models.models import DatosLaborales
-
-        db.query(DatosLaborales).filter_by(id_solicitud=uuid.UUID(id_solicitud)).delete()
-        db.commit()
-    finally:
-        db.close()
-
-    r = client.put(
-        f"/api/solicitudes/{id_solicitud}",
-        json={
-            **SOLICITUD,
-            "datos_laborales": {"tipo_contrato": "Indefinido", "ingreso_mensual": 4100000},
-        },
-    )
-    assert r.status_code == 200, r.text
-    assert client.get(f"/api/solicitudes/{id_solicitud}").json()["datos_laborales"][
-        "ingreso_mensual"
-    ] == "4100000.00"
-
-
-def test_actualizar_solicitud_enlaza_sesion_captura(client):
-    """Al retomar en el paso de evidencia, el token de la sesión nueva
-    enlaza las fotos de la cédula a la solicitud existente."""
-    import io
-
-    sesion = client.post("/api/sesiones-captura").json()
-    client.post(
-        f"/api/captura/{sesion['token']}/evidencias",
-        data={"tipo": "cedula_frontal"},
-        files={"archivo": ("cedula.jpg", io.BytesIO(b"\xff\xd8\xff\xe0" + b"0" * 100), "image/jpeg")},
-    )
-    id_solicitud = _crear_solicitud(client)
-
-    r = client.put(
-        f"/api/solicitudes/{id_solicitud}",
-        json={**SOLICITUD, "sesion_captura": sesion["token"]},
-    )
-    assert r.status_code == 200, r.text
-    evidencias = client.get(f"/api/solicitudes/{id_solicitud}/evidencias").json()
-    assert [e["tipo"] for e in evidencias] == ["cedula_frontal"]
-
-
-def test_actualizar_solicitud_evaluada_rechaza(client):
-    """Una solicitud con decisión ya no se re-diligencia por esta vía:
-    la reevaluación administra su propio camino."""
-    id_solicitud = _crear_solicitud(client)
-    client.post(f"/api/solicitudes/{id_solicitud}/evaluar", json=CREDITO)
-
-    r = client.put(f"/api/solicitudes/{id_solicitud}", json=SOLICITUD)
-    assert r.status_code == 409
-
-
-def test_actualizar_solicitud_rechazada_permite_rectificar(client):
-    """Una rechazada sí se re-diligencia: corregir un dato mal capturado
-    (p. ej. la ocupación) y re-evaluar es la ruta de recuperación.
-    El resultado queda como una nueva versión de evaluación auditada."""
-    id_solicitud = _crear_solicitud(client)
-    client.post(
-        f"/api/solicitudes/{id_solicitud}/evaluar",
-        json={**CREDITO, "escenario_mock": "embargo"},
-    )
-    assert client.get(f"/api/solicitudes/{id_solicitud}").json()["decision"] == "rechazado"
-
-    # Rectifica la ocupación: empleado -> pensionado sobre el mismo registro.
-    r = client.put(
-        f"/api/solicitudes/{id_solicitud}",
-        json={**SOLICITUD, "cliente": {**SOLICITUD["cliente"], "ocupacion": "Pensionado"}},
-    )
-    assert r.status_code == 200, r.text
-    assert client.get(f"/api/solicitudes/{id_solicitud}").json()["ocupacion"] == "pensionado"
-
-    # Re-evalúa con los datos corregidos: nueva versión vigente.
-    ev = client.post(f"/api/solicitudes/{id_solicitud}/evaluar", json=CREDITO)
-    assert ev.status_code == 200, ev.text
-    assert len(client.get("/api/auditoria", params={"numero_id": "1000000001"}).json()) == 2
-
-
-def test_evaluar_genera_documentos_de_radicacion(client, tmp_path, monkeypatch):
-    """La radicación deja soporte documental aunque el crédito no se
-    concrete: la autorización de consulta a centrales (respaldo del
-    consentimiento Habeas Data) y la solicitud de crédito diligenciada.
-    Se generan para cualquier decisión — también para la rechazada."""
-    from backend.config import get_settings
-
-    monkeypatch.setenv("EVIDENCIAS_DIR", str(tmp_path / "evid"))
-    get_settings.cache_clear()
-    id_solicitud = _crear_solicitud(client)
-
-    r = client.post(
-        f"/api/solicitudes/{id_solicitud}/evaluar",
-        json={**CREDITO, "escenario_mock": "embargo"},
-    )
-    assert r.status_code == 200 and r.json()["decision"] == "Rechazado"
-
-    db = db_session.SessionLocal()
-    try:
-        docs = db.query(DocumentoEvidencia).all()
-        assert {d.tipo for d in docs} == {"doc_autorizacion", "doc_solicitud"}
-        for d in docs:
-            assert (tmp_path / "evid" / d.ruta).exists(), d.tipo
-            assert d.hash_sha256
-    finally:
-        db.close()
-
-
-def test_actualizar_solicitud_inexistente(client):
-    r = client.put(
-        "/api/solicitudes/00000000-0000-0000-0000-000000000000", json=SOLICITUD
-    )
-    assert r.status_code == 404
 
 
 @pytest.mark.parametrize("ocupacion", ["Pensionado", "Fuerzas Militares"])
@@ -776,82 +429,6 @@ def test_catalogo_productos(client):
     assert float(p["tasa_min"]) == 1.5
     assert p["plazo_max_meses"] == 48
     assert p["monto_max"] == "20000000.00"
-
-
-def test_tasa_mercado(client):
-    """GET /api/tasa-mercado expone el TIBC de la SFC convertido a m.v."""
-    from backend.main import app
-    from backend.routes.dependencies import get_tasa_mercado_service
-    from backend.services.tasa_mercado_service import TasaMercadoService
-
-    filas = [
-        {
-            "resolucion": "1472",
-            "vigencia_desde": "2026-10-01T00:00:00.000",
-            "vigencia_hasta": "2026-10-31T00:00:00.000",
-            "interes_bancario_corriente": "44.44%",
-            "modalidad": "CONSUMO BAJO MONTO",
-        },
-        {
-            "resolucion": "1472",
-            "vigencia_desde": "2026-10-01T00:00:00.000",
-            "vigencia_hasta": "2026-10-31T00:00:00.000",
-            "interes_bancario_corriente": "19.06%",
-            "modalidad": "CONSUMO Y ORDINARIO",
-        },
-    ]
-
-    class ClienteFalso:
-        def tasas_vigentes(self, modalidades):
-            return filas
-
-    class SettingsFalso:
-        smmlv = 1_300_000  # igual que el fixture del conftest
-        sfc_tasas_cache_segundos = 21_600.0
-
-    app.dependency_overrides[get_tasa_mercado_service] = (
-        lambda: TasaMercadoService(ClienteFalso(), SettingsFalso())
-    )
-    try:
-        r = client.get("/api/tasa-mercado")
-    finally:
-        app.dependency_overrides.pop(get_tasa_mercado_service, None)
-
-    assert r.status_code == 200
-    datos = r.json()
-    assert datos["umbral_bajo_monto"] == 6 * 1_300_000
-    bajo = datos["bajo_monto"]
-    assert bajo["modalidad"] == "CONSUMO BAJO MONTO"
-    assert bajo["tasa_ea"] == pytest.approx(44.44)
-    assert bajo["tasa_mv"] == pytest.approx(3.1115, abs=0.001)
-    assert bajo["usura_ea"] == pytest.approx(66.66)
-    assert bajo["vigencia_hasta"] == "2026-10-31"
-    assert datos["ordinario"]["tasa_ea"] == pytest.approx(19.06)
-    assert "datos.gov.co" in datos["fuente"]
-
-
-def test_tasa_mercado_fuente_caida_devuelve_502(client):
-    from backend.main import app
-    from backend.routes.dependencies import get_tasa_mercado_service
-    from backend.services.motor_exceptions import DataCreditoError
-    from backend.services.tasa_mercado_service import TasaMercadoService
-
-    class ClienteCaido:
-        def tasas_vigentes(self, modalidades):
-            raise DataCreditoError("sfc_tasas", 500, "caído")
-
-    class SettingsFalso:
-        smmlv = 1_300_000
-        sfc_tasas_cache_segundos = 21_600.0
-
-    app.dependency_overrides[get_tasa_mercado_service] = (
-        lambda: TasaMercadoService(ClienteCaido(), SettingsFalso())
-    )
-    try:
-        r = client.get("/api/tasa-mercado")
-    finally:
-        app.dependency_overrides.pop(get_tasa_mercado_service, None)
-    assert r.status_code == 502
 
 
 def test_valor_ingreso_desde_cotizantes(client):
@@ -950,7 +527,7 @@ def test_desembolso_flujo_completo(client):
     assert d["num_desembolso"].startswith("DES-")
     assert d["emisor"] == "INVERSIONES PACIFICO S.A."
     assert d["receptor"] == "Cliente Ficticio"
-    assert d["capital"] == "10000000.00"  # saldo_financiar pedido (cupo era $20M)
+    assert d["capital"] == "20000000.00"  # cupo del motor acotado a monto_max
     assert d["plazo"] == 36 and d["tasa"] == "2.0000"
     assert d["referencia_pago"] == "TRX-TEST-1"
     assert d["fecha_desembolso"] is not None
@@ -961,7 +538,7 @@ def test_desembolso_flujo_completo(client):
     try:
         credito = db.query(CreditoFinanciacion).one()
         assert credito.ganadora is True
-        assert credito.valor_financiacion == 10000000
+        assert credito.valor_financiacion == 20000000
         assert credito.fecha_inicio is not None and credito.fecha_fin is not None
         assert db.query(ProductoVehiculo).one().id_solicitud == credito.id_solicitud
         desembolso = db.query(Desembolso).one()

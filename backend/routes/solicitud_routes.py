@@ -17,7 +17,6 @@ from backend.models.solicitud_models import (
     DesembolsoResponse,
     GenerarOtpRequest,
     GenerarOtpResponse,
-    MetricasEmbudoResponse,
     OfertaResponse,
     RegistrarDesembolsoRequest,
     SeleccionarOfertaRequest,
@@ -27,44 +26,15 @@ from backend.models.solicitud_models import (
     VerificarOtpResponse,
 )
 from backend.repositories.solicitud_repository import SolicitudRepository
-from backend.routes.dependencies import (
-    get_evaluacion_service,
-    get_tasa_mercado_service,
-)
+from backend.routes.dependencies import get_evaluacion_service
 from backend.services.desembolso_service import DesembolsoService
 from backend.services.documento_service import DocumentoService
 from backend.services.evaluacion_service import EvaluacionService
-from backend.services.motor_exceptions import DataCreditoError, ValidacionError
 from backend.services.notificacion_service import NotificacionService
 from backend.services.otp_service import OtpError, OtpService
 from backend.services.solicitud_service import SolicitudService
-from backend.services.tasa_mercado_service import TasaMercadoService
 
 router = APIRouter(prefix="/solicitudes", tags=["solicitudes"])
-
-
-def _rechazar_tasa_sobre_usura(
-    payload: EvaluarSolicitudRequest, servicio: TasaMercadoService
-) -> None:
-    """Guarda de cumplimiento: la tasa cobrada nunca puede igualar ni
-    superar la usura vigente de la modalidad (bajo monto ≤ 6 SMMLV,
-    ordinario por encima). Si la fuente SFC está caída no bloquea —
-    la referencia es informativa, como en el simulador."""
-    try:
-        tasas = servicio.tasas()
-    except DataCreditoError:
-        return
-    modalidad = (
-        tasas.bajo_monto
-        if float(payload.saldo_financiar) <= tasas.umbral_bajo_monto
-        else tasas.ordinario
-    )
-    if float(payload.tasa) >= modalidad.usura_mv:
-        raise ValidacionError(
-            f"La tasa {payload.tasa}% m.v. llega o supera la usura vigente "
-            f"de {modalidad.modalidad.lower()} ({modalidad.usura_mv}% m.v., "
-            f"{modalidad.usura_ea}% EA). Debe quedar por debajo."
-        )
 
 
 def _paquete_legalizacion(db: Session, id_solicitud: uuid.UUID) -> None:
@@ -126,19 +96,6 @@ def listar(
     )
 
 
-@router.get("/metricas/embudo", response_model=MetricasEmbudoResponse)
-def metricas_embudo(
-    desde: datetime | None = None,
-    hasta: datetime | None = None,
-    db: Session = Depends(get_db),
-) -> MetricasEmbudoResponse:
-    """Conversión del embudo originación → desembolso: conteos por etapa,
-    distribución por estado y desglose por aliado financiero. `desde`/
-    `hasta` acotan el rango por fecha de radicación (ej: mes del filtro
-    del panel)."""
-    return SolicitudService(db).metricas_embudo(desde=desde, hasta=hasta)
-
-
 @router.get("/{id_solicitud}", response_model=SolicitudDetalleResponse)
 def detalle(
     id_solicitud: uuid.UUID,
@@ -158,30 +115,13 @@ def crear(
     )
 
 
-@router.put("/{id_solicitud}", response_model=CrearSolicitudResponse)
-def actualizar(
-    id_solicitud: uuid.UUID,
-    payload: CrearSolicitudRequest,
-    request: Request,
-    db: Session = Depends(get_db),
-) -> CrearSolicitudResponse:
-    """Re-diligencia la radicación al retomar pasos pendientes (Habeas
-    Data, evidencias, perfil económico): upsert sobre el mismo registro,
-    no duplica. 409 si la solicitud ya tiene decisión."""
-    return SolicitudService(db).actualizar(
-        id_solicitud, payload, ip=request.client.host if request.client else None
-    )
-
-
 @router.post("/{id_solicitud}/evaluar", response_model=ResultadoMotorResponse)
 def evaluar(
     id_solicitud: uuid.UUID,
     payload: EvaluarSolicitudRequest,
     servicio: EvaluacionService = Depends(get_evaluacion_service),
-    tasas: TasaMercadoService = Depends(get_tasa_mercado_service),
     db: Session = Depends(get_db),
 ) -> ResultadoMotorResponse:
-    _rechazar_tasa_sobre_usura(payload, tasas)
     resultado = servicio.evaluar_solicitud_db(id_solicitud, payload)
     respuesta = ResultadoMotorResponse.desde_resultado(resultado, str(id_solicitud))
     aprobado = getattr(resultado.decision, "value", resultado.decision) == "Aprobado"

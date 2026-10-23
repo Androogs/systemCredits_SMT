@@ -30,9 +30,6 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
-    # URL pública del frontend: es lo que codifica el QR de verificación
-    # de firma en los documentos de legalización.
-    app_url_publica: str = "http://localhost:5173"
     demo_user_email: str = "demo@underwriting.io"
     demo_user_password: str = "demo1234"
 
@@ -151,52 +148,8 @@ class Settings(BaseSettings):
     # --- OCR de la cédula (Tesseract) ---
     # Ruta al binario si no está en el PATH (ej. Windows sin PATH configurado).
     tesseract_cmd: str = ""
-    # Carpeta con los .traineddata cuando no están junto al binario
-    # (ej. Windows sin permisos para escribir en Program Files).
-    tessdata_dir: str = ""
     # Idioma(s) del OCR; debe incluir 'spa' (paquete de idioma instalado).
     tesseract_lang: str = "spa"
-    # --- Pre-filtro SIMIT (deuda de tránsito) ---
-    # Corre antes de consumir la consulta de buró: con deuda pendiente
-    # la evaluación rechaza (R22) sin gastar la llamada a Experian.
-    # Proveedor: "placapi" (hoy). Cuando el convenio de consulta
-    # masiva con la FCM entregue el servicio oficial se agrega "fcm".
-    simit_habilitado: bool = True
-    simit_proveedor: str = "placapi"
-    simit_base_url: str = "https://placapi.com"
-    simit_api_key: str = ""
-    simit_timeout_segundos: float = 15.0
-    # Si SIMIT no responde: False (default) = fail-open, la evaluación
-    # sigue sin el pre-filtro; True = la evaluación se bloquea.
-    simit_requerido: bool = False
-
-    # --- Reuso de consulta a centrales (tabla consulta_buro) ---
-    # La consulta a Experian es un recurso pago por persona: si hay un
-    # reporte vigente para (tipo_id, numero_id) la evaluación corre el
-    # motor con esos datos en vez de pagar otra llamada. El motor siempre
-    # re-corre con los parámetros vigentes — se reusan los datos de
-    # centrales, no la decisión. Cada reevaluación con caché queda
-    # trazada en auditoría como origen_datos 'cache:experian'.
-    buro_cache_habilitado: bool = True
-    # Días de vigencia del reporte guardado. 0 = cada evaluación
-    # consulta en línea (equivale a apagar el reuso).
-    buro_cache_dias: int = 30
-
-    # --- Webhook de confirmación asíncrona (aliados/tesorería) ---
-    # Secreto compartido HMAC-SHA256 del emisor. Vacío = endpoint
-    # deshabilitado (503): sin secreto configurado no se acepta nada.
-    webhook_secreto: str = ""
-    # Tolerancia de X-Timestamp en segundos (anti-replay).
-    webhook_ventana_segundos: int = 300
-
-    # --- Tasas de mercado SFC (TIBC, datos.gov.co) ---
-    # Referencia oficial del Interés Bancario Corriente para precargar
-    # la tasa del simulador. Dataset público: no requiere credenciales.
-    sfc_tasas_base_url: str = "https://www.datos.gov.co"
-    sfc_tasas_timeout_segundos: float = 10.0
-    # El dataset se certifica una vez al mes; 6h sobra de refresco.
-    sfc_tasas_cache_segundos: float = 21_600.0
-
     # --- Resiliencia Experian ---
     experian_reintentos: int = 2  # reintentos extra tras el primer intento
     experian_espera_reintento_seg: float = 1.0  # backoff base (x2 por intento)

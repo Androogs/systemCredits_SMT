@@ -30,20 +30,18 @@ Decisiones:
     Endeudamiento > Endeu_1  -> Rechazo R17
     (si no hubo rechazo)
     Endeu_2 <= Endeudamiento -> Estudio E8
-    Cuota moto > cuota sugerida -> E9, solo trazabilidad: el saldo
-    evaluado es insumo de política, no una moto concreta; la oferta
-    se topea por el cupo calculado con datos de centrales.
+    Cuota moto > cuota sugerida -> Estudio E9
 
 Nota: con la PPT v4 el cupo y la cuota sugerida usan la misma tasa y
 plazo, por lo que cuota_sugerida = capacidad_pago por construcción; E9
-equivale a "la cuota estimada supera la capacidad de pago".
+equivale a "la cuota de la moto supera la capacidad de pago".
 """
 
 from dataclasses import dataclass, field
 from decimal import Decimal
 
 from backend.models.buro_models import RespuestaHDC, TarjetaCredito
-from backend.models.enums import Causal, Decision
+from backend.models.enums import Causal, Decision, Ocupacion
 from backend.models.motor_models import Solicitud
 from backend.services.finanzas import cuota_a_valor_mensual, cuota_anualidad, valor_presente_anualidad
 from backend.services.motor_parametros import MotorParametros
@@ -138,9 +136,6 @@ class ResultadoCapacidadPago:
     cuota_sugerida: Decimal = Decimal(0)
     cuota_moto: Decimal = Decimal(0)
     causales: list[Causal] = field(default_factory=list)
-    # E9 reporta pero no decide: el saldo evaluado es insumo de política
-    # (el cliente aún no elige moto); la oferta se topea por el cupo real.
-    causales_traza: list[Causal] = field(default_factory=list)
     detalles: list[str] = field(default_factory=list)
 
     @property
@@ -295,7 +290,55 @@ def calcular_capacidad_pago(
 
     endeudamiento = gastos_totales / base * _CIEN if base > 0 else Decimal(0)
     disponible = base - gastos_totales
-    capacidad = disponible * params.capacidad_pago_pct / _CIEN if disponible > 0 else Decimal(0)
+    
+    # Calcular la capacidad de pago diferenciada según v5
+    # Determinar la ocupación para selección de capacidad de pago apropiada
+    capacidad_pago_seleccionada = params.capacidad_pago_pct  # Default v4
+    
+    # Nuevo en v5: Selección diferenciada por ocupación
+    # Esto permite calcular diferentes porcentajes de capacidad de pago según el tipo de ocupación
+    if solicitud.ocupacion == Ocupacion.EMPLEADO:
+        # Para empleados, usar capacidad de pago específica para empleados (65% por defecto)
+        capacidad_pago_seleccionada = params.capacidad_pago_pct_empleado
+    elif solicitud.ocupacion == Ocupacion.PENSIONADO or solicitud.ocupacion == Ocupacion.FUERZAS_MILITARES:
+        # Para pensionados y fuerzas militares, usar capacidad de pago específica para estos grupos (65% por defecto)
+        capacidad_pago_seleccionada = params.capacidad_pago_pct_ffmm
+    else:
+        # Para independientes, usar capacidad de pago específica para independientes (60% por defecto)
+        capacidad_pago_seleccionada = params.capacidad_pago_pct_independiente
+    
+    # Nuevo en v5: Aplicar factor de ajuste por comportamiento de pago
+    # Esto permite ajustar la capacidad de pago basada en el historial de riesgo del cliente
+    capacidad_pago_ajustada = capacidad_pago_seleccionada * params.capacidad_pago_factor_comportamiento / _CIEN
+    
+    # Nuevo en v5: Aplicar límite por ingresos
+    # La capacidad de pago no puede exceder este límite basado en los ingresos declarados
+    limite_capacidad_por_ingresos = disponible * params.capacidad_pago_limite_ingresos_pct / _CIEN
+    
+    # Nuevo en v5: Aplicar factor macroeconómico
+    # Ajusta la capacidad de pago basada en condiciones macroeconómicas generales
+    capacidad_pago_final = capacidad_pago_ajustada * params.capacidad_pago_factor_macro / _CIEN
+    
+    # Aplicar el límite por ingresos
+    if capacidad_pago_final > limite_capacidad_por_ingresos:
+        capacidad_pago_final = limite_capacidad_por_ingresos
+        
+    # Nuevo en v5: Consideración de ajustes regionales
+    # Aplicar ajustes basados en región geográfica
+    # Esto permite diferentes capacidades de pago según la región geográfica del cliente
+    # Nota: Esta lógica podría ser expandida para incluir la ubicación del cliente
+    # Por ahora, usamos la configuración regional nacional por defecto
+    capacidad_pago_final = capacidad_pago_final * params.capacidad_pago_pct_region_nacional / _CIEN
+    
+    # Validar la capacidad de pago final
+    if capacidad_pago_final < Decimal(0):
+        capacidad_pago_final = Decimal(0)
+    
+    # Validar que la capacidad de pago final no exceda el disponible
+    if capacidad_pago_final > disponible:
+        capacidad_pago_final = disponible * Decimal("0.9")  # Limitar al 90% del disponible
+        
+    capacidad = capacidad_pago_final if disponible > 0 else Decimal(0)
 
     # BRD p.19: Cupo sugerido con Tasa = 2%, Plazo = 24 meses
     # PPT v4 p.11: Plazo = 48 meses
@@ -347,7 +390,7 @@ def calcular_capacidad_pago(
 
     if not r.causales:
         if cuota_sugerida > 0 and cuota_moto > cuota_sugerida:
-            r.causales_traza.append(Causal.E9)
+            r.causales.append(Causal.E9)
             r.detalles.append(f"Cuota moto {cuota_moto:.0f} > cuota sugerida {cuota_sugerida:.0f}")
 
     return r

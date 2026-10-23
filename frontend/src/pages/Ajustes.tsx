@@ -1825,7 +1825,6 @@ export default function Ajustes() {
                 )}
                 {!cargandoAuditoria && !errorAuditoria && (
                   <>
-                    )
                     <div className="hidden overflow-auto rounded-md border sm:block">
                       <table className="w-full text-sm">
                         <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">

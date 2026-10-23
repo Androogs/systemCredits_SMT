@@ -1,23 +1,15 @@
 .access-shell {
   position: relative;
   display: flex;
-  min-height: 100dvh;
+  min-height: 100vh;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   padding: 2rem;
   background:
-    radial-gradient(
-      ellipse at 12% 10%,
-      rgb(var(--brand-light-rgb) / 13%),
-      transparent 34%
-    ),
-    radial-gradient(
-      ellipse at 92% 92%,
-      rgb(var(--navy-panel-rgb) / 8%),
-      transparent 33%
-    ),
-    var(--surface-tint);
+    radial-gradient(ellipse at 12% 10%, rgb(49 174 223 / 13%), transparent 34%),
+    radial-gradient(ellipse at 92% 92%, rgb(0 59 92 / 8%), transparent 33%),
+    #f2f7fb;
 }
 
 .access-card {
@@ -25,15 +17,15 @@
   z-index: 1;
   display: grid;
   width: min(100%, 1120px);
-  min-height: min(690px, calc(100dvh - 4rem));
+  min-height: 690px;
   grid-template-columns: 1.04fr 0.96fr;
   overflow: hidden;
-  border: 1px solid rgb(var(--border-rgb) / 85%);
+  border: 1px solid rgb(219 231 240 / 85%);
   border-radius: 28px;
-  background: var(--white);
+  background: #fff;
   box-shadow:
-    0 32px 80px -38px rgb(var(--navy-rgb) / 30%),
-    0 8px 24px -16px rgb(var(--navy-rgb) / 16%);
+    0 32px 80px -38px rgb(0 33 64 / 30%),
+    0 8px 24px -16px rgb(0 33 64 / 16%);
 }
 
 .access-mobile-brand {
@@ -49,21 +41,16 @@
   justify-content: space-between;
   padding: 2.75rem 3rem 1.65rem;
   background:
-    linear-gradient(
-      145deg,
-      rgb(var(--navy-panel-rgb) / 94%),
-      rgb(var(--navy-panel-rgb) / 98%)
-    ),
-    var(--navy-panel);
-  color: var(--white);
+    linear-gradient(145deg, rgb(0 28 72 / 94%), rgb(0 24 58 / 98%)), #001c48;
+  color: #fff;
 }
 
 .access-showcase::before {
   top: 19%;
   right: -250px;
   box-shadow:
-    0 0 0 32px rgb(var(--brand-light-rgb) / 4%),
-    0 0 0 68px rgb(var(--brand-light-rgb) / 3%);
+    0 0 0 32px rgb(145 220 246 / 4%),
+    0 0 0 68px rgb(145 220 246 / 3%);
 }
 
 .access-showcase-glow {
@@ -73,7 +60,7 @@
   width: 340px;
   height: 340px;
   border-radius: 50%;
-  background: rgb(var(--brand-rgb) / 16%);
+  background: rgb(0 157 215 / 16%);
   filter: blur(90px);
   pointer-events: none;
 }
@@ -104,11 +91,11 @@
 .access-brand-divider {
   width: 1px;
   height: 38px;
-  background: rgb(var(--white-rgb) / 25%);
+  background: rgb(255 255 255 / 25%);
 }
 
 .access-brand-caption {
-  color: rgb(var(--surface-tint-rgb) / 78%);
+  color: rgb(220 239 249 / 78%);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.13em;
@@ -125,7 +112,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  color: var(--brand-light);
+  color: #9bdcf4;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -134,7 +121,7 @@
 
 .access-title {
   margin: 0 0 1rem;
-  color: var(--white);
+  color: #fff;
   font-family: Inter, Arial, sans-serif;
   font-size: clamp(2.8rem, 3vw, 3.6rem);
   font-weight: 700;
@@ -148,13 +135,13 @@
 }
 
 .access-title span {
-  color: var(--brand-light);
+  color: #8bd9f2;
 }
 
 .access-description {
   max-width: 420px;
   margin: 0;
-  color: rgb(var(--surface-tint-rgb) / 76%);
+  color: rgb(225 237 248 / 76%);
   font-family: Inter, Arial, sans-serif;
   font-size: 1rem;
   line-height: 1.65;
@@ -185,7 +172,7 @@
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  color: rgb(var(--surface-tint-rgb) / 92%);
+  color: rgb(239 247 252 / 92%);
   font-size: 0.8rem;
 }
 
@@ -195,23 +182,23 @@
   height: 1.25rem;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid rgb(var(--brand-light-rgb) / 42%);
+  border: 1px solid rgb(139 217 242 / 42%);
   border-radius: 50%;
-  background: rgb(var(--brand-light-rgb) / 12%);
-  color: var(--brand-light);
+  background: rgb(139 217 242 / 12%);
+  color: #9bdcf4;
 }
 
 .access-preview {
   max-width: 410px;
   padding: 1.1rem 1.25rem 0.8rem;
-  border: 1px solid rgb(var(--white-rgb) / 13%);
+  border: 1px solid rgb(255 255 255 / 13%);
   border-radius: 14px;
   background: linear-gradient(
     140deg,
-    rgb(var(--white-rgb) / 10%),
-    rgb(var(--white-rgb) / 5%)
+    rgb(255 255 255 / 10%),
+    rgb(255 255 255 / 5%)
   );
-  box-shadow: 0 14px 38px rgb(var(--navy-rgb) / 18%);
+  box-shadow: 0 14px 38px rgb(0 10 30 / 18%);
   backdrop-filter: blur(10px);
 }
 
@@ -224,7 +211,7 @@
 }
 
 .access-preview-top {
-  color: rgb(var(--surface-tint-rgb) / 66%);
+  color: rgb(224 239 250 / 66%);
   font-size: 0.58rem;
 }
 
@@ -235,7 +222,7 @@
 
 .access-preview-period {
   padding: 0.28rem 0.55rem;
-  border: 1px solid rgb(var(--white-rgb) / 11%);
+  border: 1px solid rgb(255 255 255 / 11%);
   border-radius: 999px;
 }
 
@@ -249,12 +236,12 @@
 }
 
 .access-preview-caption {
-  color: rgb(var(--surface-tint-rgb) / 65%);
+  color: rgb(224 239 250 / 65%);
   font-size: 0.65rem;
 }
 
 .access-preview-main strong {
-  color: var(--white);
+  color: #fff;
   font-size: 1rem;
   font-weight: 600;
 }
@@ -263,7 +250,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  color: var(--success-bright);
+  color: #b9f5d0;
   font-size: 0.62rem;
 }
 
@@ -271,8 +258,8 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--success-bright);
-  box-shadow: 0 0 9px rgb(var(--success-bright-rgb) / 65%);
+  background: #5ce099;
+  box-shadow: 0 0 9px rgb(92 224 153 / 65%);
 }
 
 .access-preview-bars {
@@ -286,11 +273,7 @@
 .access-preview-bars span {
   flex: 1;
   border-radius: 3px 3px 1px 1px;
-  background: linear-gradient(
-    180deg,
-    var(--brand-light),
-    rgb(var(--brand-light-rgb) / 28%)
-  );
+  background: linear-gradient(180deg, #68ccef, rgb(104 204 239 / 28%));
 }
 
 .access-preview-bars span:nth-child(3n + 1) {
@@ -312,8 +295,8 @@
 .access-preview-footer {
   margin-top: 0.65rem;
   padding-top: 0.6rem;
-  border-top: 1px solid rgb(var(--white-rgb) / 10%);
-  color: rgb(var(--surface-tint-rgb) / 58%);
+  border-top: 1px solid rgb(255 255 255 / 10%);
+  color: rgb(224 239 250 / 58%);
   font-size: 0.55rem;
 }
 
@@ -322,7 +305,7 @@
   justify-content: space-between;
   gap: 1rem;
   margin-top: 1.25rem;
-  color: rgb(var(--surface-tint-rgb) / 50%);
+  color: rgb(224 239 250 / 50%);
   font-size: 0.57rem;
   letter-spacing: 0.08em;
 }
@@ -338,12 +321,8 @@
   justify-content: center;
   padding: 3rem clamp(2rem, 4.4vw, 4.2rem);
   background:
-    radial-gradient(
-      ellipse at 92% 0%,
-      rgb(var(--brand-rgb) / 5%),
-      transparent 34%
-    ),
-    var(--white);
+    radial-gradient(ellipse at 92% 0%, rgb(9 157 215 / 5%), transparent 34%),
+    #fff;
 }
 
 .access-form-content {
@@ -356,10 +335,10 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.42rem 0.72rem 0.42rem 0.45rem;
-  border: 1px solid var(--border-soft);
+  border: 1px solid #e1edf3;
   border-radius: 999px;
-  background: var(--surface-tint-light);
-  color: var(--brand-ink);
+  background: #f7fbfd;
+  color: #315569;
   font-size: 0.68rem;
   font-weight: 600;
 }
@@ -370,8 +349,8 @@
   height: 1.55rem;
   place-items: center;
   border-radius: 50%;
-  background: var(--surface-tint-deep);
-  color: var(--brand-deep);
+  background: #e1f4fb;
+  color: #087da8;
 }
 
 .access-form-header {
@@ -380,7 +359,7 @@
 
 .access-welcome {
   margin: 0 0 0.45rem;
-  color: var(--brand-deep);
+  color: #0787b5;
   font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0.035em;
@@ -388,7 +367,7 @@
 
 .access-form-title {
   margin: 0;
-  color: var(--navy-soft);
+  color: #10283f;
   font-size: 2rem;
   font-weight: 700;
   letter-spacing: -0.045em;
@@ -397,7 +376,7 @@
 
 .access-form-subtitle {
   margin: 0.55rem 0 0;
-  color: var(--slate-soft);
+  color: #708094;
   font-size: 0.82rem;
   line-height: 1.65;
 }
@@ -414,7 +393,7 @@
 
 .access-field label,
 .access-field legend {
-  color: var(--brand-ink);
+  color: #263b50;
   font-size: 0.74rem;
   font-weight: 650;
 }
@@ -439,10 +418,10 @@ fieldset.access-field {
   align-items: center;
   gap: 0.7rem;
   padding: 0 0.85rem;
-  border: 1px solid var(--border);
+  border: 1px solid #dfe7ee;
   border-radius: 10px;
-  background: var(--surface-tint-light);
-  color: var(--slate-faint);
+  background: #fbfcfd;
+  color: #8292a3;
   transition:
     border-color 160ms ease,
     background 160ms ease,
@@ -450,9 +429,9 @@ fieldset.access-field {
 }
 
 .access-input-wrap:focus-within {
-  border-color: var(--brand);
-  background: var(--white);
-  box-shadow: 0 0 0 3px rgb(var(--brand-rgb) / 12%);
+  border-color: #159dca;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgb(9 157 215 / 12%);
 }
 
 .access-input-wrap > svg {
@@ -466,12 +445,12 @@ fieldset.access-field {
   border: 0;
   outline: 0;
   background: transparent;
-  color: var(--navy-soft);
+  color: #172b3e;
   font-size: 0.82rem;
 }
 
 .access-input-wrap input::placeholder {
-  color: var(--slate-faint);
+  color: #a4b0bd;
 }
 
 .access-password-toggle,
@@ -487,22 +466,22 @@ fieldset.access-field {
 
 .access-password-toggle {
   padding: 0.35rem;
-  color: var(--slate-soft);
+  color: #718296;
 }
 
 .access-password-toggle:hover {
-  color: var(--brand-ink);
+  color: #075d86;
 }
 
 .access-help-link {
   padding: 0.2rem 0;
-  color: var(--brand-deep);
+  color: #087fa9;
   font-size: 0.68rem;
   font-weight: 600;
 }
 
 .access-help-link:hover {
-  color: var(--brand-ink);
+  color: #005878;
   text-decoration: underline;
 }
 
@@ -510,7 +489,7 @@ fieldset.access-field {
 .access-help-link:focus-visible,
 .access-demo-button:focus-visible,
 .access-submit:focus-visible {
-  outline: 3px solid rgb(var(--brand-rgb) / 48%);
+  outline: 3px solid rgb(9 157 215 / 48%);
   outline-offset: 3px;
 }
 
@@ -524,15 +503,15 @@ fieldset.access-field {
 }
 
 .access-feedback-error {
-  border-color: var(--error-border);
-  background: var(--error-bg);
-  color: var(--error-ink);
+  border-color: #f5c7c4;
+  background: #fff6f5;
+  color: #a82e28;
 }
 
 .access-feedback-info {
-  border-color: var(--border-tint);
-  background: var(--surface-tint);
-  color: var(--brand-ink);
+  border-color: #c8e9f4;
+  background: #f1fbfe;
+  color: #145a75;
 }
 
 .access-submit {
@@ -545,9 +524,9 @@ fieldset.access-field {
   padding: 0.8rem 1.1rem;
   border: 0;
   border-radius: 10px;
-  background: linear-gradient(100deg, var(--navy-panel), var(--brand-ink));
-  box-shadow: 0 8px 18px rgb(var(--navy-panel-rgb) / 17%);
-  color: var(--white);
+  background: linear-gradient(100deg, #002c5b, #064f7d);
+  box-shadow: 0 8px 18px rgb(0 58 98 / 17%);
+  color: #fff;
   cursor: pointer;
   font-size: 0.82rem;
   font-weight: 650;
@@ -559,8 +538,8 @@ fieldset.access-field {
 
 .access-submit:hover:not(:disabled) {
   transform: translateY(-1px);
-  background: linear-gradient(100deg, var(--navy-panel), var(--brand-ink));
-  box-shadow: 0 11px 22px rgb(var(--navy-panel-rgb) / 23%);
+  background: linear-gradient(100deg, #00396d, #08618e);
+  box-shadow: 0 11px 22px rgb(0 58 98 / 23%);
 }
 
 .access-submit:disabled {
@@ -574,13 +553,9 @@ fieldset.access-field {
   gap: 0.75rem;
   margin-top: 1.45rem;
   padding: 0.9rem;
-  border: 1px solid var(--surface-tint-deep);
+  border: 1px solid #deedf4;
   border-radius: 11px;
-  background: linear-gradient(
-    110deg,
-    var(--surface-tint-light),
-    var(--surface-neutral)
-  );
+  background: linear-gradient(110deg, #f6fbfd, #f9fcfd);
 }
 
 .access-demo-icon {
@@ -590,8 +565,8 @@ fieldset.access-field {
   flex: 0 0 auto;
   place-items: center;
   border-radius: 8px;
-  background: var(--surface-tint-deep);
-  color: var(--brand-deep);
+  background: #e5f5fa;
+  color: #087fa9;
 }
 
 .access-demo-copy {
@@ -602,12 +577,12 @@ fieldset.access-field {
 }
 
 .access-demo-copy strong {
-  color: var(--brand-ink);
+  color: #244157;
   font-size: 0.69rem;
 }
 
 .access-demo-copy > span {
-  color: var(--slate-soft);
+  color: #718397;
   font-size: 0.62rem;
   line-height: 1.4;
 }
@@ -621,10 +596,10 @@ fieldset.access-field {
 
 .access-demo-credentials span {
   padding: 0.2rem 0.4rem;
-  border: 1px solid var(--border-soft);
+  border: 1px solid #e1eaf0;
   border-radius: 5px;
-  background: var(--white);
-  color: var(--brand-ink);
+  background: #fff;
+  color: #52697d;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 0.58rem;
 }
@@ -633,10 +608,10 @@ fieldset.access-field {
   align-self: center;
   flex: 0 0 auto;
   padding: 0.5rem 0.6rem;
-  border: 1px solid var(--border-tint);
+  border: 1px solid #cce4ee;
   border-radius: 7px;
-  background: var(--white);
-  color: var(--brand-deep);
+  background: #fff;
+  color: #08759c;
   cursor: pointer;
   font-size: 0.64rem;
   font-weight: 650;
@@ -646,8 +621,8 @@ fieldset.access-field {
 }
 
 .access-demo-button:hover {
-  border-color: var(--border-tint);
-  background: var(--surface-tint);
+  border-color: #9bcfdf;
+  background: #eef9fc;
 }
 
 .access-form-footer {
@@ -656,7 +631,7 @@ fieldset.access-field {
   justify-content: center;
   gap: 0.65rem;
   margin-top: 2rem;
-  color: var(--slate-faint);
+  color: #98a5b2;
   font-size: 0.72rem;
   text-align: center;
 }
@@ -665,7 +640,7 @@ fieldset.access-field {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  color: var(--slate-soft);
+  color: #718397;
 }
 
 @media (max-width: 920px) {
@@ -674,7 +649,7 @@ fieldset.access-field {
   }
 
   .access-card {
-    min-height: min(660px, calc(100dvh - 2.5rem));
+    min-height: 660px;
     grid-template-columns: 0.95fr 1.05fr;
   }
 
@@ -695,7 +670,7 @@ fieldset.access-field {
 
 @media (max-width: 720px) {
   .access-shell {
-    height: 100dvh;
+    height: 100vh;
     height: 100svh;
     min-height: 0;
     align-items: center;
@@ -705,9 +680,9 @@ fieldset.access-field {
       max(1.25rem, env(safe-area-inset-bottom));
     background: linear-gradient(
       180deg,
-      var(--navy) 0,
-      var(--navy) 260px,
-      var(--surface-tint) 260px
+      #000033 0,
+      #000033 260px,
+      #f2f7fb 260px
     );
   }
 
@@ -746,12 +721,12 @@ fieldset.access-field {
   .access-form-panel {
     align-items: stretch;
     padding: 1.6rem clamp(1.25rem, 6vw, 1.8rem) 1.35rem;
-    border: 1px solid rgb(var(--border-rgb) / 85%);
+    border: 1px solid rgb(219 231 240 / 85%);
     border-radius: 24px;
-    background: var(--white);
+    background: #fff;
     box-shadow:
-      0 24px 48px -28px rgb(var(--navy-panel-rgb) / 38%),
-      0 8px 20px -15px rgb(var(--navy-panel-rgb) / 24%);
+      0 24px 48px -28px rgb(0 24 58 / 38%),
+      0 8px 20px -15px rgb(0 24 58 / 24%);
   }
 
   .access-form-content {

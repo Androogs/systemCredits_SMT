@@ -14,6 +14,8 @@ import { useSyncExternalStore } from 'react'
 export type RolSesion = 'asesor' | 'administrador'
 
 const CLAVE_ROL = 'uw_rol'
+const CLAVE_NOMBRE = 'uw_nombre'
+const CLAVE_SEDE = 'uw_sede'
 const EVENTO_ROL = 'inversiones-pacifico:rol'
 
 export function obtenerRol(): RolSesion {
@@ -47,6 +49,50 @@ function suscribir(notificar: () => void): () => void {
 /** Rol reactivo: re-renderiza al cambiar el perfil desde el menú. */
 export function useRol(): RolSesion {
   return useSyncExternalStore(suscribir, obtenerRol)
+}
+
+/* ---------- Perfil del usuario autenticado ---------- */
+
+const SEDE_DEFECTO = 'Palmira - Centro Interno'
+
+export function obtenerNombre(): string {
+  try {
+    return localStorage.getItem(CLAVE_NOMBRE) || ''
+  } catch {
+    return ''
+  }
+}
+
+export function guardarNombre(nombre: string): void {
+  try {
+    localStorage.setItem(CLAVE_NOMBRE, nombre)
+  } catch {
+    // Sin persistencia: solo afecta esta sesión.
+  }
+}
+
+export function useNombre(): string {
+  return useSyncExternalStore(suscribir, obtenerNombre)
+}
+
+export function obtenerSede(): string {
+  try {
+    return localStorage.getItem(CLAVE_SEDE) || SEDE_DEFECTO
+  } catch {
+    return SEDE_DEFECTO
+  }
+}
+
+export function guardarSede(sede: string): void {
+  try {
+    localStorage.setItem(CLAVE_SEDE, sede)
+  } catch {
+    // Sin persistencia: solo afecta esta sesión.
+  }
+}
+
+export function useSede(): string {
+  return useSyncExternalStore(suscribir, obtenerSede)
 }
 
 /* ---------- Concesionario del asesor ---------- */

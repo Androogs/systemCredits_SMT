@@ -33,25 +33,25 @@
 }
 
 .alerta--informacion {
-  border-color: var(--border-tint);
-  background: var(--surface-tint);
-  color: var(--brand-ink);
+  border-color: #b8ddeb;
+  background: #f2f9fc;
+  color: #075e7c;
 }
 
 .alerta--exito {
-  border-color: var(--success-border);
-  background: var(--success-bg);
-  color: var(--success-ink);
+  border-color: #b8dfca;
+  background: #f2faf5;
+  color: #176b46;
 }
 
 .alerta--advertencia {
-  border-color: var(--warning);
-  background: var(--warning-bg);
-  color: var(--warning-ink);
+  border-color: #e9c36b;
+  background: #fffaf0;
+  color: #9b6412;
 }
 
 .alerta--error {
-  border-color: var(--error-border);
-  background: var(--error-bg);
-  color: var(--error-ink);
+  border-color: #e8b4b0;
+  background: #fff5f4;
+  color: #a4231a;
 }

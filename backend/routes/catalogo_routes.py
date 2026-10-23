@@ -8,11 +8,6 @@ from sqlalchemy.orm import Session
 
 from backend.db_models.models import AliadoFinanciero, AliadoProducto, Banco
 from backend.db_models.session import get_db
-from backend.routes.dependencies import get_tasa_mercado_service
-from backend.services.tasa_mercado_service import (
-    TasasMercado,
-    TasaMercadoService,
-)
 
 router = APIRouter(tags=["catalogos"])
 
@@ -54,39 +49,6 @@ def productos(db: Session = Depends(get_db)) -> list[ProductoResponse]:
         )
         for p, nombre_aliado in filas
     ]
-
-
-class TasaModalidadResponse(BaseModel):
-    modalidad: str
-    tasa_ea: float
-    tasa_mv: float
-    usura_ea: float
-    usura_mv: float
-    vigencia_desde: str
-    vigencia_hasta: str
-    resolucion: str
-
-
-class TasaMercadoResponse(BaseModel):
-    umbral_bajo_monto: int
-    fuente: str
-    bajo_monto: TasaModalidadResponse
-    ordinario: TasaModalidadResponse
-
-
-@router.get("/tasa-mercado", response_model=TasaMercadoResponse)
-def tasa_mercado(
-    servicio: TasaMercadoService = Depends(get_tasa_mercado_service),
-) -> TasasMercado:
-    """TIBC vigente de la SFC para las dos modalidades de consumo.
-
-    El simulador precarga la usura de consumo ordinario en m.v. (la
-    referencia que publican los medios) y topa la tasa editable con la
-    usura de la modalidad que aplique al monto financiado (bajo monto
-    hasta 6 SMMLV, ordinario por encima). Un fallo de la fuente
-    externa se traduce en 502 vía middleware.
-    """
-    return servicio.tasas()
 
 
 class BancoResponse(BaseModel):

@@ -14,7 +14,7 @@ La implementación vigente es una API REST FastAPI bajo el prefijo `/api`. El al
 
 - No existe endpoint para que un aliado se registre, gestione sus usuarios, cree productos o edite reglas de elegibilidad. El catálogo lo configura el equipo operador en la base de datos y se publica mediante migraciones/siembra.
 - No existe autenticación/autorización de API implementada en las rutas descritas. Los endpoints de solicitudes exponen datos personales y operaciones de crédito. **No exponerlos a Internet ni entregar credenciales de integración como si ya hubiera control de acceso.** Antes de una integración real, el equipo de plataforma debe definir y desplegar autenticación, autorización por aliado, transporte seguro, auditoría y política de secretos.
-- No existe evento **saliente** para notificar al aliado cambios de estado, decisión u oferta. Sí existe un webhook **entrante** — `POST /webhook/desembolso` — para que el emisor del giro (tesorería/core bancario) confirme el desembolso de forma asíncrona (sección 5.1).
+- No existe webhook, callback ni evento saliente para notificar al aliado cambios de estado, decisión, oferta o desembolso.
 - La plataforma genera ofertas desde el catálogo activo y reglas almacenadas; no consulta en tiempo real un motor externo del aliado.
 - La API tiene ambientes de configuración `demo` y `produccion`; no hay selector explícito de UAT para Experian. No enviar credenciales reales a través de este manual, tickets o chats.
 
@@ -278,50 +278,6 @@ Content-Type: application/json
 
 El registro es idempotente para un crédito que ya tiene desembolso: devuelve el desembolso existente y, si estaba pendiente, lo confirma. El response identifica `id_desembolso`, estado, capital, cuota, tasa, plazo, emisor/receptor y referencia de pago. Este endpoint no es una instrucción bancaria ni ejecuta una transferencia externa por sí solo; requiere que el proceso operativo confirme que el pago ocurrió.
 
-### 5.1 Webhook de confirmación asíncrona del desembolso (entrante)
-
-Alternativa al registro manual: el emisor del giro (tesorería del aliado financiero propio o el core bancario) notifica el ciclo de la transferencia a la plataforma sin intervención del operador. Es un endpoint **fuera del prefijo `/api`**, público y sin sesión: la autenticación es la firma HMAC del cuerpo.
-
-```http
-POST /webhook/desembolso
-Content-Type: application/json
-X-Signature: sha256=<hex>
-X-Timestamp: <unix segundos>
-```
-
-**Firma**: `X-Signature` es el HMAC-SHA256 hexadecimal de `"{X-Timestamp}.{cuerpo crudo}"` con el secreto compartido `WEBHOOK_SECRETO` (lo entrega el equipo de plataforma por canal seguro — nunca por este manual, tickets o chat). `X-Timestamp` debe caer dentro de la ventana configurada (`WEBHOOK_VENTANA_SEGUNDOS`, default 300 s): un replay capturado fuera de ventana se rechaza. Sin secreto configurado el endpoint responde 503.
-
-```python
-firma = "sha256=" + hmac.new(SECRETO, f"{timestamp}.".encode() + body, hashlib.sha256).hexdigest()
-```
-
-**Payload**:
-
-```json
-{
-  "id_solicitud": "uuid-opcional",
-  "num_solicitud": 143,
-  "estado": "en_transito | confirmado | rechazado",
-  "codigo_ach_banco": "007",
-  "numero_cuenta_cliente": "000123456789",
-  "titular_cuenta": "EJEMPLO CLIENTE",
-  "referencia_pago": "REF-BANCO-7788",
-  "id_evento": "evt-emisor-001",
-  "motivo": "opcional, típico en rechazado"
-}
-```
-
-- La solicitud se identifica por `id_solicitud` (uuid interno) **o** `num_solicitud` (el número público) — uno de los dos es obligatorio.
-- `estado='en_transito'` crea el desembolso **pendiente** y formaliza el crédito (la solicitud sigue `aprobada` hasta la confirmación); `codigo_ach_banco` y `numero_cuenta_cliente` son obligatorios al crearlo.
-- `estado='confirmado'` confirma el pendiente — o formaliza y confirma de una sola vez si no hubo `en_transito` — y la solicitud pasa a `desembolsada`. Idempotente: reenviar el mismo `confirmado` devuelve el desembolso existente.
-- `estado='rechazado'` solo aplica sobre un desembolso `pendiente`: lo marca rechazado. Sin giro en tránsito → 409.
-
-**Respuesta 200**: `id_solicitud`, `num_solicitud`, `estado`, `num_desembolso`, `referencia_pago`.
-
-**Errores**: `401` firma ausente/inválida/timestamp fuera de ventana · `404` solicitud inexistente · `409` transición inválida (rechazar sin pendiente, desembolso ya confirmado) · `422` payload inválido · `503` `WEBHOOK_SECRETO` no configurado.
-
-**Reintentos del emisor**: la operación es idempotente e ídem de manera segura ante reenvíos con el mismo `id_evento`/`referencia_pago`; cada evento queda trazado en el log estructurado `creditos.webhook`.
-
 ## 6. Consulta y soporte
 
 ```http
@@ -372,7 +328,7 @@ No reintentar automáticamente solicitudes de creación, selección o desembolso
 5. Se recorrió el ciclo con un cliente y datos sintéticos: crear solicitud, evaluar, consultar ofertas, seleccionar y registrar desembolso de prueba.
 6. Se probaron validaciones, identidad no coincidente, decisión no aprobada, oferta inelegible, UUID inexistente, timeout y reintentos.
 7. El aliado confirmó manejo seguro de PII, acceso por rol, tiempos de retención y canal de soporte.
-8. Si el emisor confirma desembolsos por webhook (`POST /webhook/desembolso`, sección 5.1): secreto `WEBHOOK_SECRETO` entregado por canal seguro y prueba de firma + ciclo `en_transito → confirmado`/`rechazado` verificado en staging. Si además se requiere notificación push saliente, onboarding autónomo o edición remota de productos, se acordó desarrollar primero esos contratos (eventos salientes/API de administración no están implementados).
+8. Si se requiere notificación push, onboarding autónomo o edición remota de productos, se acordó desarrollar primero esos contratos (webhooks/API de administración no están implementados).
 
 ## 10. Fuentes del contrato implementado
 
@@ -382,7 +338,5 @@ No reintentar automáticamente solicitudes de creación, selección o desembolso
 - [Servicio de solicitudes y ofertas](../backend/services/solicitud_service.py)
 - [Elegibilidad de producto](../backend/services/elegibilidad_service.py)
 - [Servicio de desembolso](../backend/services/desembolso_service.py)
-- [Webhook de desembolso (rutas)](../backend/routes/webhook_routes.py)
-- [Contrato del payload del webhook](../backend/models/webhook_models.py)
 - [Esquema y restricciones de base de datos](../backend/database/schema.sql)
 - [Especificación OpenAPI del proyecto](./openapi.yaml)

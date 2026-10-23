@@ -5,27 +5,7 @@ from fastapi.testclient import TestClient
 
 from backend.config import get_settings
 from backend.db_models import session as db_session
-from backend.routes.dependencies import get_store, get_tasa_mercado_service
-from backend.services.tasa_mercado_service import ModalidadTasa, TasasMercado
-
-
-# Referencia SFC fija para pruebas: la guarda de usura de POST /evaluar
-# valida contra estos valores sin depender de datos.gov.co.
-_TASAS_STUB = TasasMercado(
-    umbral_bajo_monto=6 * 1_300_000,
-    fuente="stub de pruebas",
-    bajo_monto=ModalidadTasa(
-        "CONSUMO BAJO MONTO", 44.44, 3.11, 66.66, 4.3488, "", "", "TEST"
-    ),
-    ordinario=ModalidadTasa(
-        "CONSUMO Y ORDINARIO", 19.06, 1.4645, 28.59, 2.1176, "", "", "TEST"
-    ),
-)
-
-
-class _TasaMercadoStub:
-    def tasas(self) -> TasasMercado:
-        return _TASAS_STUB
+from backend.routes.dependencies import get_store
 
 
 @pytest.fixture
@@ -70,10 +50,8 @@ def client(tmp_path, monkeypatch):
 
     from backend.main import app
 
-    app.dependency_overrides[get_tasa_mercado_service] = _TasaMercadoStub
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
-    app.dependency_overrides.pop(get_tasa_mercado_service, None)
     get_settings.cache_clear()
     get_store.cache_clear()
 

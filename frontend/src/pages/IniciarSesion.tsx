@@ -18,7 +18,7 @@ import {
   ErrorAutenticacionApi,
   iniciarSesion,
 } from '../features/auth/api/autenticacionApi'
-import { guardarRol, type RolSesion } from '../shared/lib/sesion'
+import { guardarRol, guardarNombre, type RolSesion } from '../shared/lib/sesion'
 import './IniciarSesion.css'
 
 const USUARIO_DEMO = 'demo@underwriting.io'
@@ -45,9 +45,10 @@ export default function IniciarSesion() {
     setLoading(true)
 
     try {
-      await iniciarSesion(email.trim(), password)
+      const respuesta = await iniciarSesion(email.trim(), password)
       localStorage.setItem('uw_auth', '1')
       guardarRol(rol)
+      guardarNombre(respuesta.usuario.nombre)
       navigate('/dashboard')
     } catch (cause) {
       setError(
@@ -84,9 +85,7 @@ export default function IniciarSesion() {
           </div>
 
           <div className="access-showcase-content">
-            <h1 className="access-title">
-              Bienvenido
-            </h1>
+            <h1 className="access-title">Bienvenido</h1>
             <p className="access-description">
               Sigamos transformando vidas generando oportunidades de realización
               personal.

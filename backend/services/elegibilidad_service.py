@@ -109,32 +109,15 @@ class EligibilidadService:
             motivo_no_elegible="; ".join(motivos) if motivos else None,
         )
         if oferta.elegible:
-            cupo = datos_solicitud.get("cupo_sugerido")
-            monto_min = getattr(producto, "monto_min", None)
-            if (
-                cupo is not None
-                and monto_min is not None
-                and Decimal(str(cupo)) < Decimal(str(monto_min))
-            ):
-                # La capacidad real no alcanza ni el mínimo comercial:
-                # la oferta no se infla sobre la capacidad del cliente.
-                oferta.elegible = False
-                oferta.motivo_no_elegible = (
-                    f"cupo_sugerido {cupo} por debajo del "
-                    f"monto_min {monto_min} del producto"
-                )
-            else:
-                self._poblar_terminos(oferta, producto, datos_solicitud)
+            self._poblar_terminos(oferta, producto, datos_solicitud)
         return oferta
 
     @staticmethod
     def _poblar_terminos(oferta: OfertaCredito, producto: AliadoProducto, datos: dict[str, Any]) -> None:
         """
         Términos de la oferta: ck_oferta_elegible exige tasa, monto y
-        cuota no nulos en ofertas elegibles. El monto ofrecido es lo que
-        el cliente pidió topado por el cupo del motor (si pidió más de
-        lo que su capacidad aprueba, se ofrece el cupo), acotado al
-        rango comercial del producto.
+        cuota no nulos en ofertas elegibles. El monto ofrecido es el
+        cupo sugerido por el motor acotado al rango del producto.
         """
         # La tasa ofrecida es la que evaluó el motor (tasa_referencia del
         # request): el cupo y la cuota que vio el asesor responden a esa
@@ -147,13 +130,7 @@ class EligibilidadService:
         )
         if plazo is None:
             plazo = getattr(producto, "plazo_min_meses", None) or getattr(producto, "plazo_max_meses", None)
-        cupo = datos.get("cupo_sugerido")
-        solicitado = datos.get("monto_solicitado")
-        if cupo is not None and solicitado is not None:
-            monto_base = min(Decimal(str(solicitado)), Decimal(str(cupo)))
-        else:
-            monto_base = cupo if cupo is not None else solicitado
-        monto = _acotar(monto_base, getattr(producto, "monto_min", None), getattr(producto, "monto_max", None))
+        monto = _acotar(datos.get("cupo_sugerido"), getattr(producto, "monto_min", None), getattr(producto, "monto_max", None))
         oferta.tasa_ofrecida = tasa
         oferta.plazo_ofrecido = int(plazo) if plazo is not None else None
         oferta.monto_aprobado = monto

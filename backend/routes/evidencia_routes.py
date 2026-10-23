@@ -1,19 +1,14 @@
 """Evidencias documentales: sesión de captura (asesor) y subida con token (cliente)."""
 
-import io
 import uuid
-import zipfile
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from backend.db_models.evidencia_models import DocumentoEvidencia
-from backend.db_models.models import SolicitudCredito
 from backend.db_models.session import get_db
-from backend.services.documento_service import _TIPO_ID
 from backend.services.evidencia_service import TIPOS_CEDULA, EvidenciaService, TIPOS_EVIDENCIA
 from backend.services.motor_exceptions import SolicitudNoEncontradaError
 
@@ -110,38 +105,6 @@ def contenido_evidencia(id_evidencia: int, db: Session = Depends(get_db)) -> Fil
     return FileResponse(ruta, media_type=mime)
 
 
-@router.get("/solicitudes/{id_solicitud}/legalizacion.zip")
-def paquete_legalizacion(
-    id_solicitud: uuid.UUID, db: Session = Depends(get_db)
-) -> Response:
-    """Todos los documentos del paquete de legalización (doc_*) en un .zip."""
-    servicio = EvidenciaService(db)
-    documentos = [
-        e
-        for e in servicio.evidencias_de_solicitud(id_solicitud)
-        if e.tipo.startswith("doc_")
-    ]
-    if not documentos:
-        raise SolicitudNoEncontradaError(
-            "La solicitud no tiene documentos de legalización"
-        )
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as paquete:
-        for doc in documentos:
-            ruta, _ = servicio.archivo_evidencia(doc.id_evidencia)
-            if ruta.exists():
-                paquete.write(ruta, doc.nombre_original or f"{doc.tipo}.docx")
-    solicitud = db.get(SolicitudCredito, id_solicitud)
-    numero = solicitud.num_solicitud if solicitud else str(id_solicitud)[:8]
-    return Response(
-        content=buffer.getvalue(),
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="legalizacion-{numero}.zip"'
-        },
-    )
-
-
 # ---------------------------------------------------------------------------
 # Lado del cliente (público, autoriza el token del link)
 # ---------------------------------------------------------------------------
@@ -181,43 +144,3 @@ def subir_evidencia(
 ) -> dict[str, Any]:
     evidencia = EvidenciaService(db).registrar_evidencia(token, tipo, archivo)
     return _evidencia_dict(evidencia)
-
-
-@router.get("/firmas/{uuid_firma}", response_model=dict)
-def verificar_firma(
-    uuid_firma: uuid.UUID, db: Session = Depends(get_db)
-) -> dict[str, Any]:
-    """Verificación pública de la firma electrónica (OTP): es el destino
-    del QR estampado en los documentos de legalización. Solo devuelve lo
-    impreso en el propio documento — permite a un tercero contrastar que
-    la firma existe y a quién pertenece."""
-    solicitud = (
-        db.query(SolicitudCredito)
-        .filter(SolicitudCredito.uuid_firma == uuid_firma)
-        .first()
-    )
-    if solicitud is None or solicitud.fecha_hora_firma is None:
-        raise SolicitudNoEncontradaError("Firma no encontrada")
-    cliente = solicitud.cliente
-    documentos = (
-        db.query(DocumentoEvidencia)
-        .filter(
-            DocumentoEvidencia.id_solicitud == solicitud.id_solicitud,
-            DocumentoEvidencia.tipo.like("doc_%"),
-        )
-        .count()
-    )
-    return {
-        "uuid_firma": str(solicitud.uuid_firma),
-        "num_solicitud": solicitud.num_solicitud,
-        "firmante": cliente.nombre_completo if cliente else "",
-        "documento_identidad": (
-            f"{_TIPO_ID.get(str(cliente.tipo_documento), str(cliente.tipo_documento))}"
-            f" {cliente.num_cedula}"
-            if cliente
-            else ""
-        ),
-        "fecha_hora_firma": solicitud.fecha_hora_firma.isoformat(),
-        "autenticacion": solicitud.autenticacion,
-        "documentos": documentos,
-    }

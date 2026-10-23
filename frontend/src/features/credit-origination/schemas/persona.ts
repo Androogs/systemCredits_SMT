@@ -19,33 +19,24 @@ export const numeroIdentificacionSchema = z.preprocess(
   numeroDocumentoSchema,
 )
 
-/** Edad en años cumplidos a partir de una fecha 'YYYY-MM-DD'. */
-export function edadDesdeFecha(fecha: string): number {
-  const nacimiento = new Date(fecha)
-  if (Number.isNaN(nacimiento.getTime())) return NaN
-  const hoy = new Date()
-  let edad = hoy.getFullYear() - nacimiento.getFullYear()
-  const mes = hoy.getMonth() - nacimiento.getMonth()
-  if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate())) edad -= 1
-  return edad
-}
-
-/**
- * Fecha de nacimiento capturada (input date, ISO). Es el mismo dato que
- * lee el OCR de la cédula: capturarla en el paso 1 permite la doble
- * validación documento vs digitado.
- */
-export const fechaNacimientoSchema = z
-  .string()
-  .min(1, 'Ingresa la fecha de nacimiento.')
-  .refine((fecha) => {
-    const edad = edadDesdeFecha(fecha)
-    return edad >= EDAD_MINIMA && edad <= EDAD_MAXIMA
-  }, `La fecha de nacimiento debe corresponder a una edad entre ${EDAD_MINIMA} y ${EDAD_MAXIMA} años.`)
-
 export const validacionInicialSchema = z.object({
   numeroDocumento: numeroDocumentoSchema,
-  fechaNacimiento: fechaNacimientoSchema,
+  fechaNacimiento: z.preprocess(
+    (valor) => (typeof valor === 'string' ? valor : valor),
+    z
+      .string({ invalid_type_error: 'Ingresa la fecha de nacimiento.' })
+      .min(1, 'Ingresa la fecha de nacimiento.')
+      .refine((fecha) => {
+        const nacimiento = new Date(fecha)
+        const hoy = new Date()
+        if (Number.isNaN(nacimiento.getTime())) return false
+        let edad = hoy.getFullYear() - nacimiento.getFullYear()
+        const mes = hoy.getMonth() - nacimiento.getMonth()
+        if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate()))
+          edad -= 1
+        return edad >= EDAD_MINIMA && edad <= EDAD_MAXIMA
+      }, `La fecha de nacimiento debe corresponder a una edad entre ${EDAD_MINIMA} y ${EDAD_MAXIMA} años.`),
+  ),
   multas: z.enum(['si', 'no'], {
     errorMap: () => ({ message: 'Selecciona una opción para continuar.' }),
   }),
@@ -71,7 +62,18 @@ export const datosPersonalesSchema = z
     apellidos: z.string().trim().min(1, 'Los apellidos son obligatorios.'),
     numeroIdentificacion: numeroIdentificacionSchema,
     sexo: z.string().min(1, 'Selecciona el sexo.'),
-    fechaNacimiento: fechaNacimientoSchema,
+    fechaNacimiento: z
+      .string()
+      .min(1, 'Ingresa la fecha de nacimiento.')
+      .refine((fecha) => {
+        const nacimiento = new Date(fecha)
+        const hoy = new Date()
+        let edad = hoy.getFullYear() - nacimiento.getFullYear()
+        const mes = hoy.getMonth() - nacimiento.getMonth()
+        if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate()))
+          edad -= 1
+        return edad >= EDAD_MINIMA && edad <= EDAD_MAXIMA
+      }, `La fecha de nacimiento debe corresponder a una edad entre ${EDAD_MINIMA} y ${EDAD_MAXIMA} años.`),
     lugarNacimiento: z
       .string()
       .trim()

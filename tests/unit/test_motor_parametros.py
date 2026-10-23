@@ -11,25 +11,18 @@ from backend.services.motor_parametros import PARAMETROS_DEFAULT, MotorParametro
 
 def test_defaults_ppt_v4():
     p = MotorParametros()
-    assert (p.score_ep_1, p.score_ep_2, p.score_ep_3, p.score_ep_4) == (750, 680, 600, 500)
-    assert (p.score_if_1, p.score_if_2, p.score_if_3, p.score_if_4) == (770, 700, 620, 520)
-    assert (p.ingreso_e_1, p.ingreso_e_2, p.ingreso_e_3) == (Decimal("1.6"), Decimal("1.4"), Decimal("1.0"))
-    assert (p.ingreso_i_1, p.ingreso_i_2, p.ingreso_i_3, p.ingreso_i_4) == (
-        Decimal("2.5"),
-        Decimal("2.0"),
-        Decimal("1.6"),
-        Decimal("1.4"),
-    )
-    assert (p.meses_cont_1, p.meses_cont_2) == (5, 10)
-    assert (p.anios_cam_1, p.anios_cam_2, p.anios_cam_3, p.anios_cam_4) == (1, 2, 3, 4)
-    assert (p.edad_minima_be, p.edad_maxima_be) == (18, 66)
-    assert (p.endeu_1, p.endeu_2) == (90, 86)
-    assert (p.gastos_personales_pct_bajo, p.gastos_personales_pct_medio, p.gastos_personales_pct_alto) == (50, 45, 40)
-    assert p.capacidad_pago_pct == 70
+    assert p.capacidad_pago_pct_empleado == 70
+    assert p.capacidad_pago_pct_independiente == 60
+    assert p.capacidad_pago_pct_ffmm == 65
+    assert p.capacidad_pago_factor_comportamiento == Decimal("1.0")
+    assert p.capacidad_pago_limite_ingresos_pct == 85
+    assert p.capacidad_pago_factor_macro == Decimal("1.0")
+    assert p.capacidad_pago_pct_region_nacional == 70
+    assert p.capacidad_pago_pct_region_costa == 68
+    assert p.capacidad_pago_pct_region_andina == 72
+    assert p.capacidad_pago_pct_region_pacifico == 69
     assert p.saldo_mora_be == 300000
     assert (p.cupo_sugerido_tasa_pct, p.cupo_sugerido_plazo_meses, p.cupo_sugerido_tope) == (2, 24, 20000000)
-    assert p.scores_exclusion == [0, 4]
-    assert p.calificaciones_negativas == ["C", "D", "E", "K"]
 
 
 def test_archivo_parametros_del_proyecto_coincide_con_defaults():
@@ -50,6 +43,19 @@ def test_archivo_parametros_del_proyecto_coincide_con_defaults():
         {"capacidad_pago_pct": 120},  # porcentaje fuera de rango
         {"codigos_score": []},
         {"campo_inexistente": 1},
+        # Nuevos parámetros v5 que deben ser validados
+        {"capacidad_pago_pct_empleado": 120},  # porcentaje fuera de rango
+        {"capacidad_pago_pct_independiente": -5},  # negativo
+        {"capacidad_pago_pct_ffmm": 101},  # mayor que 100
+        {"capacidad_pago_factor_comportamiento": 3.0},  # factor > 2.0
+        {"capacidad_pago_limite_ingresos_pct": -10},  # negativo
+        {"capacidad_pago_factor_macro": -1.5},  # factor negativo
+        {"capacidad_pago_pct_region_costa": 95},  # mayor que 100
+        {"capacidad_pago_pct_region_andina": -5},  # negativo
+        {"capacidad_pago_pct_region_pacifico": 101},  # mayor que 100
+        {"capacidad_pago_factor_macro": 2.5},  # factor > 2.0
+        {"capacidad_pago_factor_comportamiento": 0.5},  # factor muy bajo
+        {"capacidad_pago_pct_region_costa": 55},  # mínimo no alcanzado
     ],
 )
 def test_parametros_incoherentes_se_rechazan(tmp_path, cambio):

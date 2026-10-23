@@ -21,8 +21,6 @@ pillow-heif>=0.16  # opcional: fotos HEIC/HEIF de iPhone (sin esto, el OCR de HE
 docx-mailmerge>=0.5
 python-docx>=1.0
 num2words>=0.5
-# QR del uuid_firma estampado en cada documento legal del paquete.
-segno>=1.6
 
 # Driver PostgreSQL (esquema SUMOTO). Con SQLite no se necesita.
 psycopg[binary]>=3.1

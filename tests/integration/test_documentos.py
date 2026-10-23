@@ -1,7 +1,6 @@
 """Paquete de legalización: los documentos se generan con los datos de
 la solicitud una vez el cliente firma (OTP verificado)."""
 
-import hashlib
 import re
 import uuid
 import zipfile
@@ -21,7 +20,7 @@ from backend.db_models.models import (
     SolicitudContactoVivienda,
     SolicitudCredito,
 )
-from backend.services.documento_service import DocumentoService, _fmt
+from backend.services.documento_service import DocumentoService
 from backend.services.letras import numero_a_letras
 
 
@@ -151,12 +150,12 @@ def test_paquete_genera_los_ocho_documentos(client, tmp_path, monkeypatch):
         docs = DocumentoService(db).generar_paquete(id_solicitud)
         db.commit()
 
-        assert len(docs) == 9
+        assert len(docs) == 8
         tipos = {d.tipo for d in docs}
         assert tipos == {
             "doc_autorizacion", "doc_carta_aprobacion", "doc_pagare",
             "doc_instrucciones", "doc_prenda", "doc_asegurabilidad",
-            "doc_solicitud", "doc_compromiso", "doc_amortizacion",
+            "doc_solicitud", "doc_compromiso",
         }
         for doc in docs:
             ruta = tmp_path / "evid" / doc.ruta
@@ -186,81 +185,6 @@ def test_todos_los_documentos_llevan_el_uuid_de_firma(
             assert str(firma_uuid) in texto, doc.tipo
     finally:
         db.close()
-
-
-# Huellas SHA-256 del QR y la rúbrica de la firma electrónica de la
-# solicitud de muestra 735 (artefactos removidos de la plantilla; ver
-# scripts/generar_plantilla_solicitud.py).
-HUELLAS_FIRMA_MUESTRA = {
-    "05fb103c9a6f76995cd41d4506e6a4ab28423f39caf9af3b0a336e7e7ee3760f",
-    "ca61fbbb9807d07c6c81116f7d0cd0443b83e011b68e1bdf54b8cc94892b8eeb",
-}
-
-
-def _qrs_decodificados(ruta: Path) -> list[str]:
-    """Decodifica los QR embebidos en las imágenes del DOCX."""
-    import cv2
-    import numpy as np
-
-    decodificados = []
-    with zipfile.ZipFile(ruta) as z:
-        for nombre in z.namelist():
-            if "media" not in nombre:
-                continue
-            img = cv2.imdecode(
-                np.frombuffer(z.read(nombre), np.uint8),
-                cv2.IMREAD_GRAYSCALE,
-            )
-            if img is None:
-                continue
-            texto, _, _ = cv2.QRCodeDetector().detectAndDecode(img)
-            if texto:
-                decodificados.append(texto)
-    return decodificados
-
-
-def _huellas_media(ruta: Path) -> set[str]:
-    with zipfile.ZipFile(ruta) as z:
-        return {
-            hashlib.sha256(z.read(n)).hexdigest()
-            for n in z.namelist()
-            if "media" in n
-        }
-
-
-def test_cada_documento_lleva_qr_con_su_uuid_firma(
-    client, tmp_path, monkeypatch
-):
-    """El QR estampado en cada pieza legal codifica el uuid_firma real
-    de la solicitud — no el QR fijo de la muestra 735."""
-    monkeypatch.setenv("EVIDENCIAS_DIR", str(tmp_path / "evid"))
-    get_settings.cache_clear()
-    db = db_session.SessionLocal()
-    try:
-        id_solicitud = _crear_solicitud_firmada(db)
-        firma_uuid = str(db.get(SolicitudCredito, id_solicitud).uuid_firma)
-        docs = DocumentoService(db).generar_paquete(id_solicitud)
-        db.commit()
-
-        url_esperada = f"/verificar-firma/{firma_uuid}"
-        for doc in docs:
-            ruta = tmp_path / "evid" / doc.ruta
-            qrs = _qrs_decodificados(ruta)
-            assert any(url_esperada in q for q in qrs), doc.tipo
-            assert not (HUELLAS_FIRMA_MUESTRA & _huellas_media(ruta)), doc.tipo
-    finally:
-        db.close()
-
-
-def test_plantilla_solicitud_sin_artefactos_de_muestra():
-    """La plantilla del doc 7 no arrastra el QR ni la rúbrica de la
-    solicitud 735 — solo logo y cláusula legal."""
-    plantilla = (
-        Path(__file__).resolve().parents[2]
-        / "backend" / "documentos" / "plantillas" / "solicitud_credito.docx"
-    )
-    assert not (HUELLAS_FIRMA_MUESTRA & _huellas_media(plantilla))
-    assert not _qrs_decodificados(plantilla)
 
 
 def test_solicitud_credito_se_llena_con_los_datos(client, tmp_path, monkeypatch):
@@ -434,75 +358,3 @@ def test_numero_a_letras_formato_legal():
         "CUATROCIENTOS TREINTA Y CUATRO MIL "
         "SETECIENTOS DIECISÉIS PESOS M/CTE"
     )
-
-
-def test_tabla_amortizacion_lleva_datos_y_cuadra(
-    client, tmp_path, monkeypatch
-):
-    """La tabla de amortización trae los datos del cliente y el plan de
-    pagos cuadra: 48 filas, saldo inicial = monto aprobado y saldo final 0."""
-    from decimal import Decimal
-
-    from docx import Document
-
-    from backend.services.finanzas import cuota_anualidad
-
-    monkeypatch.setenv("EVIDENCIAS_DIR", str(tmp_path / "evid"))
-    get_settings.cache_clear()
-    db = db_session.SessionLocal()
-    try:
-        id_solicitud = _crear_solicitud_firmada(db)
-        docs = DocumentoService(db).generar_paquete(id_solicitud)
-        db.commit()
-        amort = next(d for d in docs if d.tipo == "doc_amortizacion")
-        ruta = tmp_path / "evid" / amort.ruta
-        assert ruta.name == "9. Tabla de amortizacion - 1015464714.docx"
-
-        texto = _texto_docx(ruta)
-        assert "RUBIO URREGO EDDY SLEIDER" in texto
-        assert "1015464714" in texto
-        assert "14.552.484" in texto
-        assert "2% mensual" in texto
-        assert "48 meses" in texto
-
-        doc = Document(str(ruta))
-        tabla = doc.tables[-1]  # la primera es la tarjeta-resumen
-        # 1 encabezado + 48 cuotas + 1 fila de totales
-        assert len(tabla.rows) == 50
-        celdas = [[c.text for c in f.cells] for f in tabla.rows]
-        assert celdas[1][0] == "1"
-        assert celdas[1][2] == "14.552.484"  # saldo inicial primera cuota
-        cuota = cuota_anualidad(Decimal("14552484"), Decimal("2"), 48)
-        assert celdas[1][3] == _fmt(cuota)
-        assert celdas[48][0] == "48"
-        assert celdas[48][8] == "0"  # saldo final en cero
-        assert celdas[49][1] == "TOTALES"
-    finally:
-        db.close()
-
-
-def test_endpoint_verificacion_firma(client, tmp_path, monkeypatch):
-    """GET /api/firmas/{uuid}: el destino del QR devuelve solo lo impreso
-    en el documento (firmante, cédula, solicitud, fecha) + 404 ajeno."""
-    monkeypatch.setenv("EVIDENCIAS_DIR", str(tmp_path / "evid"))
-    get_settings.cache_clear()
-    db = db_session.SessionLocal()
-    try:
-        id_solicitud = _crear_solicitud_firmada(db)
-        uuid_firma = str(db.get(SolicitudCredito, id_solicitud).uuid_firma)
-        DocumentoService(db).generar_paquete(id_solicitud)
-        db.commit()
-    finally:
-        db.close()
-
-    r = client.get(f"/api/firmas/{uuid_firma}")
-    assert r.status_code == 200
-    datos = r.json()
-    assert datos["uuid_firma"] == uuid_firma
-    assert datos["firmante"] == "RUBIO URREGO EDDY SLEIDER"
-    assert datos["documento_identidad"] == "CC 1015464714"
-    assert datos["num_solicitud"] == 41
-    assert datos["documentos"] == 9
-    assert datos["fecha_hora_firma"].startswith("2026-03-15")
-
-    assert client.get(f"/api/firmas/{uuid.uuid4()}").status_code == 404
