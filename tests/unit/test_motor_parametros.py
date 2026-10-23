@@ -26,6 +26,16 @@ def test_defaults_ppt_v4():
     assert (p.endeu_1, p.endeu_2) == (90, 86)
     assert (p.gastos_personales_pct_bajo, p.gastos_personales_pct_medio, p.gastos_personales_pct_alto) == (50, 45, 40)
     assert p.capacidad_pago_pct == 70
+    assert p.capacidad_pago_pct_empleado == 70
+    assert p.capacidad_pago_pct_independiente == 60
+    assert p.capacidad_pago_pct_ffmm == 65
+    assert p.capacidad_pago_factor_comportamiento == Decimal("1.0")
+    assert p.capacidad_pago_limite_ingresos_pct == Decimal("0.85")
+    assert p.capacidad_pago_factor_macro == Decimal("1.0")
+    assert p.capacidad_pago_pct_region_nacional == 70
+    assert p.capacidad_pago_pct_region_costa == 68
+    assert p.capacidad_pago_pct_region_andina == 72
+    assert p.capacidad_pago_pct_region_pacifico == 69
     assert p.saldo_mora_be == 300000
     assert (p.cupo_sugerido_tasa_pct, p.cupo_sugerido_plazo_meses, p.cupo_sugerido_tope) == (2, 24, 20000000)
     assert p.scores_exclusion == [0, 4]
@@ -50,6 +60,17 @@ def test_archivo_parametros_del_proyecto_coincide_con_defaults():
         {"capacidad_pago_pct": 120},  # porcentaje fuera de rango
         {"codigos_score": []},
         {"campo_inexistente": 1},
+        # Nuevos parámetros v5 que deben ser validados
+        {"capacidad_pago_pct_empleado": 120},  # porcentaje fuera de rango
+        {"capacidad_pago_pct_independiente": -5},  # negativo
+        {"capacidad_pago_pct_ffmm": 101},  # mayor que 100
+        {"capacidad_pago_factor_comportamiento": 3.0},  # factor > 2.0
+        {"capacidad_pago_limite_ingresos_pct": -10},  # negativo
+        {"capacidad_pago_factor_macro": -1.5},  # factor negativo
+        {"capacidad_pago_pct_region_andina": -5},  # negativo
+        {"capacidad_pago_pct_region_pacifico": 101},  # mayor que 100
+        {"capacidad_pago_factor_macro": 2.5},  # factor > 2.0
+        {"capacidad_pago_pct_region_costa": 55},  # mínimo regional no alcanzado
     ],
 )
 def test_parametros_incoherentes_se_rechazan(tmp_path, cambio):

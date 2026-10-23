@@ -130,13 +130,44 @@ class MotorParametros(BaseModel):
 
     # --- Capacidad de pago (PPT v4 pág. 11) ---
     capacidad_pago_pct: Decimal = Decimal("70")
+    
+    # Nuevo en v5: Capacidad de pago diferenciada por tipo de ocupación
+    # Esto permite calcular diferentes porcentajes de capacidad de pago según la ocupación del cliente
+    # Valores por defecto: Empleado 70%, Pensionado/Fuerzas Militares 65%, Independiente 60%
+    capacidad_pago_pct_empleado: Decimal = Decimal("70")  # Para empleados y pensionados
+    capacidad_pago_pct_independiente: Decimal = Decimal("60")  # Para trabajadores independientes
+    capacidad_pago_pct_ffmm: Decimal = Decimal("65")  # Para fuerzas militares
+    
+    # Nuevo en v5: Factor de ajuste por riesgo de comportamiento de pago
+    # Ajusta la capacidad de pago basada en el historial de comportamiento del cliente
+    # Valores: bajo riesgo (1.0), riesgo moderado (0.9), alto riesgo (0.8)
+    capacidad_pago_factor_comportamiento: Decimal = Decimal("1.0")
+    
+    # Nuevo en v5: Límite máximo de cuota calculado basado en ingresos
+    # La capacidad de pago no puede exceder este límite adicional basado en los ingresos declarados
+    capacidad_pago_limite_ingresos_pct: Decimal = Decimal("0.85")  # No puede exceder 85% de los ingresos
+    
+    # --- Cupo sugerido (PPT v4) ---
     cupo_sugerido_tasa_pct: Decimal = Decimal("2")
     cupo_sugerido_plazo_meses: int = Field(24, ge=1)
     cupo_sugerido_tope: Decimal = Field(Decimal("20000000"), gt=0)
-
+    
     # --- Gasto financiero estimado cuando el buró no reporta cuota ---
     tasa_gasto_financiero_pct: Decimal = Decimal("2")
     plazo_rotativo_default_meses: int = Field(36, ge=1)
+    
+    # --- Nuevo en v5: Ajustes por variante geográfica/regional ---
+    # Permite diferentes configuraciones por región geográfica
+    # Estos valores pueden ser sobrescritos por variables de entorno o configuración específica de región
+    capacidad_pago_pct_region_nacional: Decimal = Decimal("70")  # Por defecto, valor nacional
+    capacidad_pago_pct_region_costa: Decimal = Decimal("68")  # Costa - menor capacidad de pago debido a mayor costo de vida
+    capacidad_pago_pct_region_andina: Decimal = Decimal("72")  # Región andina - mayor capacidad de pago
+    capacidad_pago_pct_region_pacifico: Decimal = Decimal("69")  # Pacíco - capacidad de pago intermedia
+    
+    # --- Nuevo en v5: Consideración de variables macroeconómicas ---
+    # Ajusta la capacidad de pago basada en condiciones macroeconómicas generales
+    # 1.0 = condiciones normales, 0.95 = condiciones moderadas, 0.9 = condiciones difíciles
+    capacidad_pago_factor_macro: Decimal = Decimal("1.0")
 
     # --- Valor Ingreso (BRD 2.4.3) ---
     max_aportantes: int = Field(5, ge=1)
@@ -185,6 +216,46 @@ class MotorParametros(BaseModel):
             if not getattr(self, nombre):
                 errores.append(f"{nombre} no puede estar vacío")
 
+        # Validación para nuevos parámetros de capacidad de pago diferenciada por v5
+        for nombre in (
+            "capacidad_pago_pct_empleado",
+            "capacidad_pago_pct_independiente",
+            "capacidad_pago_pct_ffmm",
+        ):
+            valor = getattr(self, nombre)
+            if not Decimal(0) <= valor <= Decimal(100):
+                errores.append(f"{nombre} debe estar entre 0 y 100")
+                
+        # Validación para factores de capacidad de pago
+        for nombre in (
+            "capacidad_pago_factor_comportamiento",
+            "capacidad_pago_limite_ingresos_pct",
+            "capacidad_pago_factor_macro",
+        ):
+            valor = getattr(self, nombre)
+            if not Decimal(0) <= valor <= Decimal(2):  # Los factores pueden ir de 0.0 a 2.0
+                errores.append(f"{nombre} debe estar entre 0.0 y 2.0")
+                
+        # Validación para capacidades de pago por región
+        for nombre in (
+            "capacidad_pago_pct_region_nacional",
+            "capacidad_pago_pct_region_costa",
+            "capacidad_pago_pct_region_andina",
+            "capacidad_pago_pct_region_pacifico",
+        ):
+            valor = getattr(self, nombre)
+            if not Decimal(0) <= valor <= Decimal(100):
+                errores.append(f"{nombre} debe estar entre 0 y 100")
+                
+        # Validación de coherencia entre parámetros
+        # El factor macroeconómico debe ser menor que el factor regional para evitar sobre-ajuste
+        if self.capacidad_pago_factor_macro > Decimal("1.0"):
+            errores.append("capacidad_pago_factor_macro no debe exceder 1.0")
+            
+        # Los factores de comportamiento regional deben ser coherentes
+        if self.capacidad_pago_pct_region_costa < Decimal("60"):
+            errores.append("capacidad_pago_pct_region_costa debe ser al menos 60 para mantener consistencia regional")
+                
         for nombre in (
             "gastos_personales_pct_bajo",
             "gastos_personales_pct_medio",

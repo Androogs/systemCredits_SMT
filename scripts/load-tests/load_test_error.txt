@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "C:\Users\USUARIO\Desktop\Desarrollo-Creditos\load_test.py", line 8, in <module>
+    import aiohttp
+ModuleNotFoundError: No module named 'aiohttp'

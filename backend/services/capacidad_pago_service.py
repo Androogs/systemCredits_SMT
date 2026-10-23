@@ -43,7 +43,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from backend.models.buro_models import RespuestaHDC, TarjetaCredito
-from backend.models.enums import Causal, Decision
+from backend.models.enums import Causal, Decision, Ocupacion
 from backend.models.motor_models import Solicitud
 from backend.services.finanzas import cuota_a_valor_mensual, cuota_anualidad, valor_presente_anualidad
 from backend.services.motor_parametros import MotorParametros
@@ -292,7 +292,38 @@ def calcular_capacidad_pago(
 
     endeudamiento = gastos_totales / base * _CIEN if base > 0 else Decimal(0)
     disponible = base - gastos_totales
-    capacidad = disponible * params.capacidad_pago_pct / _CIEN if disponible > 0 else Decimal(0)
+
+    # v5: porcentaje de capacidad según la ocupación del solicitante.
+    pct = params.capacidad_pago_pct
+    if solicitud.ocupacion == Ocupacion.EMPLEADO:
+        pct = params.capacidad_pago_pct_empleado
+    elif solicitud.ocupacion in (Ocupacion.PENSIONADO, Ocupacion.FUERZAS_MILITARES):
+        pct = params.capacidad_pago_pct_ffmm
+    elif solicitud.ocupacion == Ocupacion.INDEPENDIENTE:
+        pct = params.capacidad_pago_pct_independiente
+
+    # v5: factores multiplicativos sobre el porcentaje — comportamiento
+    # y macroeconomía (ambos neutros en 1.0 por defecto).
+    pct_ajustado = (
+        pct
+        * params.capacidad_pago_factor_comportamiento
+        * params.capacidad_pago_factor_macro
+    )
+    # La región opera como techo del porcentaje (hoy siempre la
+    # nacional; la sede no mapea a región todavía).
+    pct_ajustado = min(pct_ajustado, params.capacidad_pago_pct_region_nacional)
+    capacidad = (
+        disponible * pct_ajustado / _CIEN if disponible > 0 else Decimal(0)
+    )
+
+    # Techos sobre el disponible: límite por ingresos (fracción, ej. 0.85)
+    # y el 90% del disponible.
+    if disponible > 0:
+        capacidad = min(
+            capacidad,
+            disponible * params.capacidad_pago_limite_ingresos_pct,
+            disponible * Decimal("0.9"),
+        )
 
     # BRD p.19: Cupo sugerido con Tasa = 2%, Plazo = 24 meses
     # PPT v4 p.11: Plazo = 48 meses

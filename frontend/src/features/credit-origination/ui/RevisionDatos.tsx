@@ -30,6 +30,7 @@ interface RevisionDatosProps {
   ocr?: ResultadoOCRApi | null
 }
 
+const CONFIANZA_MAXIMA = 100
 /** Por debajo de esta confianza del OCR, el campo pide confirmación manual. */
 const CONFIANZA_DUDOSA = 75
 
@@ -87,6 +88,8 @@ const camposBase: DefinicionCampo[] = [
     id: 'lugarNacimiento',
     label: 'Lugar de Nacimiento',
     tipo: 'text',
+    dudoso: true,
+    ayudaDudoso: 'Campo dudoso. Confirmar con el físico de la cédula.',
   },
   {
     id: 'fechaExpedicion',
@@ -252,7 +255,43 @@ function RevisionDatos({
     return lista
   }, [datos])
 
+  // Nivel de confianza global: promedio de la confianza OCR de los campos
+  // leídos (sin OCR, base neutra del 50 %); confirmar dudosos suma a 100.
+  const confianzaOCR = useMemo(() => {
+    const confianzas = camposBase
+      .map((c) => campoOCR(ocr, c.id))
+      .filter((c): c is CampoOCRApi => Boolean(c?.valor))
+      .map((c) => c.confianza)
+      .filter((c) => c > 0)
+    if (confianzas.length === 0) return 50
+    return confianzas.reduce((a, b) => a + b, 0) / confianzas.length
+  }, [ocr])
+
   const camposDudosos = useMemo(() => campos.filter((c) => c.dudoso), [campos])
+
+  const dudososConfirmadosCount = camposDudosos.filter(
+    (c) => dudososConfirmados[c.id],
+  ).length
+
+  const bonusPorConfirmacion =
+    camposDudosos.length > 0
+      ? (CONFIANZA_MAXIMA - confianzaOCR) / camposDudosos.length
+      : 0
+
+  const confianzaActual = Math.min(
+    CONFIANZA_MAXIMA,
+    confianzaOCR + dudososConfirmadosCount * bonusPorConfirmacion,
+  )
+
+  const confianzaCompleta = confianzaActual >= CONFIANZA_MAXIMA
+
+  const nivelConfianza = confianzaCompleta
+    ? 'VALIDADO'
+    : confianzaActual >= 95
+      ? 'ALTO'
+      : confianzaActual >= 85
+        ? 'MEDIO'
+        : 'BAJO'
 
   const dudososPendientes = camposDudosos.filter(
     (c) => !dudososConfirmados[c.id],
@@ -343,6 +382,47 @@ function RevisionDatos({
               Los campos marcados con <span aria-hidden="true">*</span> son
               obligatorios.
             </p>
+          </div>
+        </div>
+
+        <div className="revision__confianza" role="note">
+          <div className="revision__confianza-copy">
+            <span className="revision__confianza-label">
+              Nivel de Confianza Global del Procesamiento
+            </span>
+            <small>
+              Basado en legibilidad del documento anverso y reverso.
+              {camposDudosos.length > 0 && (
+                <>
+                  {' '}
+                  {dudososConfirmadosCount}/{camposDudosos.length} campo
+                  {camposDudosos.length > 1 ? 's' : ''} dudoso
+                  {camposDudosos.length > 1 ? 's' : ''} confirmado
+                  {dudososConfirmadosCount === 1 ? '' : 's'} manualmente.
+                </>
+              )}
+            </small>
+          </div>
+
+          <div className="revision__confianza-metrica">
+            <div className="revision__confianza-medidor">
+              <span
+                className={`revision__confianza-barra${
+                  confianzaCompleta ? ' is-completa' : ''
+                }`}
+                style={{ width: `${confianzaActual}%` }}
+                aria-hidden="true"
+              />
+            </div>
+            <strong
+              key={confianzaActual}
+              className={`revision__confianza-valor${
+                confianzaCompleta ? ' is-completa' : ''
+              }`}
+              aria-live="polite"
+            >
+              {confianzaActual.toFixed(1)}% · {nivelConfianza}
+            </strong>
           </div>
         </div>
 
