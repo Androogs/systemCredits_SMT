@@ -79,11 +79,7 @@ function EvidenciaYDatos({
 
   return (
     <div className="evidencia-datos">
-      <CabeceraEtapaOriginacion
-        paso={3}
-        titulo="Evidencia y datos personales"
-        descripcion="Captura la cédula y la prueba de vida del cliente; el sistema extrae los datos por debajo y tú confirmas que concuerdan."
-      />
+      <CabeceraEtapaOriginacion paso={3} titulo="Documento y prueba de vida" />
       <SeguimientoOriginacion pasoActual={3} />
       {!biometria ? (
         <CapturaCedula
