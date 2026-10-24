@@ -337,18 +337,22 @@ def _es_linea2(s: str) -> str | None:
     """
     if len(s) < 18:
         return None
-    m = re.search(r"C[O0Q]L", s[10:26])
+    m = re.search(r"C[O0Q1I][O0Q1I|]?L", s[10:26])
     if not m:
         return None
     desfase = 10 + m.start() - 15
     if desfase < 0:
         return None
     s = s[desfase:]
+    # Fin de la nacionalidad ya realineada: el OCR puede leer COL con un
+    # carácter de más (``C01L``), así que el resto arranca donde termina el
+    # match, no en una posición fija.
+    fin_col = 10 + m.end() - desfase
     nacimiento = s[0:7].translate(_A_DIGITO)
     # Sexo MRZ (1 char): M/F/T y X (ICAO "no especificado" → no binario).
     sexo = s[7] if s[7] in "MFTX<" else {"H": "M", "N": "M", "P": "F", "E": "F"}.get(s[7], "<")
     expira = s[8:15].translate(_A_DIGITO)
-    resto = s[18:]
+    resto = s[fin_col:]
     opcional = re.match(r"[^<]*", resto).group().translate(_A_DIGITO)
     resto = opcional + resto[len(opcional) :]
     corregida = (nacimiento + sexo + expira + "COL" + resto)[:30]

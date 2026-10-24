@@ -202,6 +202,7 @@ def _qrs_decodificados(ruta: Path) -> list[str]:
     import cv2
     import numpy as np
 
+    detector = cv2.QRCodeDetector()
     decodificados = []
     with zipfile.ZipFile(ruta) as z:
         for nombre in z.namelist():
@@ -213,7 +214,14 @@ def _qrs_decodificados(ruta: Path) -> list[str]:
             )
             if img is None:
                 continue
-            texto, _, _ = cv2.QRCodeDetector().detectAndDecode(img)
+            texto, _, _ = detector.detectAndDecode(img)
+            if not texto:
+                # El detector varía por versión de OpenCV: un upscale
+                # suele recuperar QRs que a tamaño nativo no decodifica.
+                grande = cv2.resize(
+                    img, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC
+                )
+                texto, _, _ = detector.detectAndDecode(grande)
             if texto:
                 decodificados.append(texto)
     return decodificados
