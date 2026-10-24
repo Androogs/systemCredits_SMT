@@ -5,7 +5,6 @@ import {
   BadgeCheck,
   Bike,
   Check,
-  CircleAlert,
   MailCheck,
   MessageCircle,
   X,
@@ -26,7 +25,11 @@ import CampoNumerico from '../../../shared/ui/CampoNumerico'
 import type { ResultadoEvaluacionCredito } from '../model/resultado-evaluacion'
 import { PRIMA_SEGURO_VIDA_PCT } from '../model/resultado-evaluacion'
 import type { SimulacionPrevia } from '../model/borrador'
-import { CONCESIONARIOS, MARCAS_VEHICULO } from '../model/concesionarios'
+import {
+  CONCESIONARIOS,
+  MARCAS_VEHICULO,
+  REFERENCIAS_VEHICULO,
+} from '../model/concesionarios'
 import {
   generarOtp,
   guardarDatosFormalizacion,
@@ -61,6 +64,8 @@ interface ResultadoCreditoProps {
   formalizacionIniciada: boolean
   onModificar: () => void
   onFormalizar: (oferta: OfertaSeleccionada) => void
+  /** Cierra el proceso tras un rechazo: el veredicto ya quedó persistido. */
+  onFinalizar?: () => void
   /** Simulación de origen: precarga valor de la moto y plazo. */
   simulacion?: SimulacionPrevia
   /** Datos del paso 4: la ocupación adapta la sección laboral y la empresa
@@ -97,6 +102,7 @@ function ResultadoCredito({
   formalizacionIniciada,
   onModificar,
   onFormalizar,
+  onFinalizar,
   simulacion,
   solicitud,
   compacto = false,
@@ -239,6 +245,7 @@ function ResultadoCredito({
   const [soat, setSoat] = useState<number | null>(0)
   const [impuestos, setImpuestos] = useState<number | null>(0)
   const [avalPct, setAvalPct] = useState<number | null>(0)
+  const [gastosAdmin, setGastosAdmin] = useState<number | null>(0)
 
   // El plazo que el cliente puede tomar nunca supera al ofertado: el
   // motor evaluó ese término (capacidad.plazo_cupo) y el backend lo
@@ -268,7 +275,8 @@ function ResultadoCredito({
       (matricula ?? 0) +
       (soat ?? 0) +
       (impuestos ?? 0) +
-      avalValor,
+      avalValor +
+      (gastosAdmin ?? 0),
   )
   const saldoInvalido = saldoFinanciar <= 0
   const superaCupo = cupoMaximo > 0 && saldoFinanciar > cupoMaximo
@@ -328,6 +336,7 @@ function ResultadoCredito({
         soat,
         impuestos,
         aval_pct: avalPct,
+        gastos_administrativos: gastosAdmin,
       },
     ).then(() => oferta)
   }
@@ -417,7 +426,7 @@ function ResultadoCredito({
       })
   }
 
-  const titulo = aprobado ? 'Oferta de crédito generada' : 'Solicitud rechazada'
+  const titulo = aprobado ? 'Decisión y moto' : 'Solicitud rechazada'
   const descripcion = aprobado
     ? 'Confirma los datos del vehículo y la financiación para continuar.'
     : 'La solicitud no cumple las políticas de crédito vigentes.'
@@ -508,20 +517,12 @@ function ResultadoCredito({
             <strong className="resultado-credito__veredicto-titulo">
               {aprobado ? '¡Crédito aprobado!' : 'Crédito no aprobado'}
             </strong>
-            {aprobado ? (
+            {aprobado && (
               <span className="resultado-credito__veredicto-cupo">
                 <small>Cupo aprobado hasta</small>
                 <b>{currency(Math.round(cupoAnim))}</b>
               </span>
-            ) : (
-              <p className="resultado-credito__veredicto-sub">
-                Puedes reabrir la solicitud para revisar cuánto se le podría
-                prestar ajustando los parámetros de decisión.
-              </p>
             )}
-            <span className="resultado-credito__veredicto-pill">
-              {aprobado ? 'Aprobado' : 'No aprobado'}
-            </span>
             <small className="resultado-credito__veredicto-radicado">
               {idSolicitud
                 ? `Solicitud ${idSolicitud.slice(0, 8).toUpperCase()}`
@@ -565,11 +566,9 @@ function ResultadoCredito({
             <div className="resultado-credito__cupo">
               <small>Cupo máximo aprobado</small>
               <strong>{currency(cupoMaximo)}</strong>
-              <p>
-                Cuota de referencia {currency(resultado.cuotaSugerida)} a{' '}
-                {resultado.plazoMeses} meses, según la capacidad de pago
-                evaluada.
-              </p>
+              <span className="resultado-credito__cupo-tasa">
+                Tasa vigente {tasaOferta.toFixed(2)}% M.V.
+              </span>
             </div>
 
             <div className="resultado-credito__seleccion">
@@ -750,8 +749,14 @@ function ResultadoCredito({
                       value={referencia}
                       disabled={formalizacionIniciada || confirmando}
                       placeholder="PULSAR NS 160FI UG"
+                      list="rc-referencias"
                       onChange={(e) => setReferencia(e.target.value)}
                     />
+                    <datalist id="rc-referencias">
+                      {(REFERENCIAS_VEHICULO[marca] ?? []).map((r) => (
+                        <option key={r} value={r} />
+                      ))}
+                    </datalist>
                   </label>
                   <label>
                     Modelo (año)
@@ -904,21 +909,18 @@ function ResultadoCredito({
                       onValor={(n) => setAvalPct(n)}
                     />
                   </label>
-                  <div className="resultado-credito__plazo">
-                    <label htmlFor="rc-plazo">Plazo</label>
+                  <label>
+                    Gastos administrativos
                     <CampoNumerico
-                      id="rc-plazo"
                       className="input-base"
-                      value={plazo}
+                      formatoMiles
+                      minimo={0}
+                      value={gastosAdmin}
                       disabled={formalizacionIniciada || confirmando}
-                      onValor={(n) => setPlazo(n ?? 0)}
-                      aria-invalid={plazoInvalido}
-                      aria-describedby="rc-plazo-ayuda"
+                      placeholder="0"
+                      onValor={(n) => setGastosAdmin(n)}
                     />
-                    <small id="rc-plazo-ayuda">
-                      meses · 12–{plazoMaximo} (máximo evaluado)
-                    </small>
-                  </div>
+                  </label>
                 </div>
               )}
               {pasoFirma === 'vehiculo' && plazoInvalido && (
@@ -940,36 +942,6 @@ function ResultadoCredito({
                 </p>
               )}
             </div>
-
-            <dl className="resultado-credito__valores">
-              <div>
-                <dt>Saldo a financiar</dt>
-                <dd>{saldoInvalido ? '—' : currency(saldoFinanciar)}</dd>
-              </div>
-              <div>
-                <dt>Cuota mensual estimada</dt>
-                <dd>
-                  {plazoInvalido || saldoInvalido
-                    ? '—'
-                    : currency(cuotaMensual)}
-                </dd>
-              </div>
-              <div>
-                <dt>Plazo seleccionado</dt>
-                <dd>{plazoInvalido ? '—' : `${plazo} meses`}</dd>
-              </div>
-              <div>
-                <dt>Desembolso al concesionario</dt>
-                <dd>{saldoInvalido ? '—' : currency(desembolsoEstimado)}</dd>
-              </div>
-            </dl>
-
-            <p className="resultado-credito__tasa">
-              <CircleAlert size={15} aria-hidden="true" />
-              Tasa {resultado.esDemo ? 'ilustrativa' : 'ofrecida'}:{' '}
-              {tasaOferta.toFixed(2)}% M.V. sujeta a confirmación en pagaré
-              final.
-            </p>
 
             <div className="resultado-credito__condiciones">
               <strong>Condiciones obligatorias para desembolso</strong>
@@ -996,15 +968,31 @@ function ResultadoCredito({
                 </strong>
                 <small>
                   {[modelo, color.trim()].filter(Boolean).join(' · ') ||
-                    concesionario}
+                    'Por definir'}
                 </small>
               </div>
+            </div>
+
+            <div className="resultado-credito__plazo">
+              <label htmlFor="rc-plazo">Plazo (meses)</label>
+              <CampoNumerico
+                id="rc-plazo"
+                className="input-base"
+                value={plazo}
+                disabled={formalizacionIniciada || confirmando}
+                onValor={(n) => setPlazo(n ?? 0)}
+                aria-invalid={plazoInvalido}
+              />
             </div>
 
             <dl className="resultado-credito__vehiculo-datos">
               <div>
                 <dt>Valor moto + IVA</dt>
                 <dd>{valorMoto ? currency(valorMoto) : '—'}</dd>
+              </div>
+              <div>
+                <dt>Tasa vigente</dt>
+                <dd>{tasaOferta.toFixed(2)}% M.V.</dd>
               </div>
               <div>
                 <dt>Saldo a financiar</dt>
@@ -1031,11 +1019,6 @@ function ResultadoCredito({
                 </dd>
               </div>
             </dl>
-
-            <p className="resultado-credito__inclusion">
-              La moto se entrega en {concesionario}; la entrega se agenda tras
-              la firma del pagaré y el desembolso.
-            </p>
           </aside>
         </div>
       ) : (
@@ -1075,6 +1058,16 @@ function ResultadoCredito({
           <ArrowLeft size={15} aria-hidden="true" />
           {rechazado ? 'Reabrir solicitud' : 'Modificar oferta'}
         </button>
+        {rechazado && onFinalizar && (
+          <button
+            className="resultado-credito__primario"
+            type="button"
+            onClick={onFinalizar}
+          >
+            Finalizar proceso
+            <Check size={15} aria-hidden="true" />
+          </button>
+        )}
         {aprobado && pasoFirma === 'vehiculo' && (
           <button
             className="resultado-credito__primario"

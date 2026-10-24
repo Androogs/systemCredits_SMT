@@ -294,6 +294,7 @@ export interface VehiculoFinanciado {
   /** Impuesto por cilindraje de la motocicleta (impuesto de registro). */
   impuestos?: number | null
   aval_pct?: number | null
+  gastos_administrativos?: number | null
 }
 
 export function seleccionarOferta(

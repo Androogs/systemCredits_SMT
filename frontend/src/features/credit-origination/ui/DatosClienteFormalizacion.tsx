@@ -361,24 +361,6 @@ function DatosClienteFormalizacion({
           {toggle('tieneMoto', 'Moto')}
           {toggle('tieneCarro', 'Carro')}
           {toggle('primeraMoto', '¿Primera moto?')}
-          <div className="datos-cliente__sino">
-            <span className="datos-cliente__sino-label" id="dc-queFinancia">
-              ¿Qué está financiando?
-            </span>
-            <select
-              className="input-base"
-              value={f.queFinancia}
-              required
-              disabled={deshabilitado}
-              aria-labelledby="dc-queFinancia"
-              onChange={(e) =>
-                set('queFinancia', e.target.value as 'moto' | 'otro')
-              }
-            >
-              <option value="moto">Motocicleta</option>
-              <option value="otro">Otro bien</option>
-            </select>
-          </div>
         </div>
       </section>
 

@@ -79,17 +79,20 @@ const camposBase: DefinicionCampo[] = [
   },
   {
     id: 'sexo',
-    label: 'Sexo',
+    label: 'Género',
     tipo: 'select',
-    opciones: ['Masculino (M)', 'Femenino (F)', 'No binario'],
+    opciones: [
+      'Masculino (M)',
+      'Femenino (F)',
+      'No binario (NB)',
+      'Transexual (T)',
+    ],
   },
   { id: 'fechaNacimiento', label: 'Fecha de Nacimiento', tipo: 'date' },
   {
     id: 'lugarNacimiento',
     label: 'Lugar de Nacimiento',
     tipo: 'text',
-    dudoso: true,
-    ayudaDudoso: 'Campo dudoso. Confirmar con el físico de la cédula.',
   },
   {
     id: 'fechaExpedicion',
@@ -120,7 +123,11 @@ const ADVERTENCIA_POR_CAMPO: Partial<Record<CampoId, RegExp>> = {
   numeroIdentificacion: /documento|número/i,
   nombres: /nombres?/i,
   apellidos: /apellidos?/i,
+  sexo: /sexo|género/i,
   fechaNacimiento: /fecha de nacimiento/i,
+  lugarNacimiento: /lugar de nacimiento/i,
+  fechaExpedicion: /fecha de expedición/i,
+  ciudadExpedicion: /ciudad de expedición/i,
 }
 
 /**
@@ -177,6 +184,9 @@ const valoresIniciales: DatosRevisados = {
 function normalizarSexo(valor: string): string {
   const plano = valor.trim().toUpperCase()
   if (!plano) return ''
+  if (plano === 'NB' || plano === 'X' || plano.startsWith('NO B'))
+    return 'No binario (NB)'
+  if (plano.startsWith('T')) return 'Transexual (T)'
   if (plano.startsWith('F')) return 'Femenino (F)'
   if (plano.startsWith('M')) return 'Masculino (M)'
   return valor

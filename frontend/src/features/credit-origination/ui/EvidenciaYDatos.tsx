@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Smartphone, Zap } from 'lucide-react'
 import CapturaCedula, { type ResultadoBiometrico } from './CapturaCedula'
 import RevisionDatos, { type DatosRevisados } from './RevisionDatos'
 import type { ResultadoOCR } from '../model/resultado-ocr'
@@ -79,11 +80,15 @@ function EvidenciaYDatos({
 
   return (
     <div className="evidencia-datos">
-      <CabeceraEtapaOriginacion
-        paso={3}
-        titulo="Evidencia y datos personales"
-        descripcion="Captura la cédula y la prueba de vida del cliente; el sistema extrae los datos por debajo y tú confirmas que concuerdan."
-      />
+      <CabeceraEtapaOriginacion paso={3} titulo="Evidencia y datos personales">
+        <p className="evidencia-datos__tagline">
+          <Zap size={14} aria-hidden="true" />
+          Rápido y fácil
+          <span className="evidencia-datos__tagline-sep" aria-hidden="true" />
+          <Smartphone size={14} aria-hidden="true" />
+          sin instalar apps
+        </p>
+      </CabeceraEtapaOriginacion>
       <SeguimientoOriginacion pasoActual={3} />
       {!biometria ? (
         <CapturaCedula

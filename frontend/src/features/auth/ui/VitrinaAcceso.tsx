@@ -20,7 +20,7 @@ export default function VitrinaAcceso() {
       <div className="access-showcase-content">
         <h1 className="access-title">Bienvenido</h1>
         <p className="access-description">
-          Sigamos transformando vidas generando oportunidades de realización
+          Sigamos transformando vidas y generando oportunidades de realización
           personal.
         </p>
       </div>
@@ -123,8 +123,7 @@ export default function VitrinaAcceso() {
       </div>
 
       <div className="access-showcase-footer">
-        <span>INVERSIONES PACÍFICO</span>
-        <span>Confianza que impulsa.</span>
+        <span>Desarrollado por GaRi Software</span>
       </div>
     </section>
   )

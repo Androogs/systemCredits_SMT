@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useMutation, useQuery } from '@tanstack/react-query'
@@ -45,8 +45,6 @@ export interface ResultadoBiometrico {
   ocr?: ResultadoOCRApi | null
 }
 
-type Modo = 'tablet' | 'handoff'
-
 const REQUISITOS: { tipo: TipoEvidencia; label: string; detail: string }[] = [
   {
     tipo: 'cedula_frontal',
@@ -85,7 +83,6 @@ function CapturaCedula({
   compacto = false,
   datosEsperados,
 }: CapturaCedulaProps) {
-  const [modo, setModo] = useState<Modo>('handoff')
   const qrRef = useRef<HTMLCanvasElement>(null)
 
   // Los datos esperados no cambian durante el paso; congelarlos evita
@@ -178,8 +175,8 @@ function CapturaCedula({
             </p>
             <p className="captura__lede">
               El cliente captura su cédula y graba un video corto con el
-              documento junto a su rostro, desde su celular o en este
-              dispositivo. Las evidencias quedan asociadas a la solicitud.
+              documento junto a su rostro, desde su propio celular. Las
+              evidencias quedan asociadas a la solicitud.
             </p>
           </div>
 
@@ -206,16 +203,6 @@ function CapturaCedula({
       <div
         className={`captura__form${compacto ? ' captura__form--compacto' : ''}`}
       >
-        <div className="captura__form-head">
-          <div>
-            <h2>Captura remota de evidencias</h2>
-            <p>
-              Sin instalar apps: el cliente abre el enlace en el navegador de su
-              celular y usa la cámara directamente.
-            </p>
-          </div>
-        </div>
-
         {sesionMut.isError && (
           <div className="captura__error-panel" role="alert">
             <div className="captura__error-copy">
@@ -241,53 +228,6 @@ function CapturaCedula({
 
         {sesion && !completada && (
           <>
-            {/* Selector de dispositivo */}
-            <div
-              role="tablist"
-              aria-label="Dispositivo de captura"
-              className="captura__modos"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={modo === 'handoff'}
-                onClick={() => setModo('handoff')}
-                className={`captura__modo${modo === 'handoff' ? ' is-selected' : ''}`}
-              >
-                <span className="captura__modo-copy">
-                  <span className="captura__modo-title">
-                    <strong>En el celular del cliente</strong>
-                    <span className="captura__modo-badge">Recomendado</span>
-                  </span>
-                  <small>
-                    El cliente escanea el QR o abre el enlace y captura con su
-                    propio celular.
-                  </small>
-                </span>
-              </button>
-
-              <button
-                type="button"
-                role="tab"
-                aria-selected={modo === 'tablet'}
-                onClick={() => setModo('tablet')}
-                className={`captura__modo${modo === 'tablet' ? ' is-selected' : ''}`}
-              >
-                <span className="captura__modo-copy">
-                  <span className="captura__modo-title">
-                    <strong>En este dispositivo</strong>
-                    <span className="captura__modo-badge captura__modo-badge--soft">
-                      Alternativa
-                    </span>
-                  </span>
-                  <small>
-                    Abre la página de captura aquí y entrega el dispositivo al
-                    cliente.
-                  </small>
-                </span>
-              </button>
-            </div>
-
             {expirada ? (
               <div className="captura__error-panel" role="alert">
                 <div className="captura__error-copy">
@@ -308,7 +248,7 @@ function CapturaCedula({
                   </div>
                 </div>
               </div>
-            ) : modo === 'handoff' ? (
+            ) : (
               <div className="captura__handoff">
                 <div className="captura__qr">
                   <div className="captura__qr-frame">
@@ -353,7 +293,14 @@ function CapturaCedula({
                   </ol>
 
                   <p className="captura__enlace">
-                    Enlace: <code>{link}</code>
+                    Enlace:{' '}
+                    <a
+                      href={link ?? '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {link}
+                    </a>
                   </p>
                   <div className="captura__esperando" role="status">
                     <span
@@ -363,53 +310,6 @@ function CapturaCedula({
                     Esperando captura del cliente…
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div className="captura__idle">
-                <div className="captura__instrucciones" role="note">
-                  <h3>Captura en este dispositivo</h3>
-                  <ol className="captura__instrucciones-list">
-                    <li>
-                      <span
-                        className="captura__instrucciones-num"
-                        aria-hidden="true"
-                      >
-                        1
-                      </span>
-                      <span>
-                        Se abre la página de captura en una pestaña nueva.
-                      </span>
-                    </li>
-                    <li>
-                      <span
-                        className="captura__instrucciones-num"
-                        aria-hidden="true"
-                      >
-                        2
-                      </span>
-                      <span>
-                        Entrega el dispositivo al cliente para capturar.
-                      </span>
-                    </li>
-                    <li>
-                      <span
-                        className="captura__instrucciones-num"
-                        aria-hidden="true"
-                      >
-                        3
-                      </span>
-                      <span>Esta ventana se actualiza sola al terminar.</span>
-                    </li>
-                  </ol>
-                </div>
-                <Boton
-                  type="button"
-                  onClick={() =>
-                    link && window.open(link, '_blank', 'noopener')
-                  }
-                >
-                  Abrir página de captura
-                </Boton>
               </div>
             )}
 
@@ -546,18 +446,16 @@ function CapturaCedula({
                 Volver al paso anterior
               </Boton>
             )}
-            <p className="captura__actions-note">
-              <span
-                className={`captura__dot${!completada ? ' captura__dot--live' : ''}`}
-                aria-hidden="true"
-              />
-              {completada &&
-                (compacto
-                  ? 'Puedes continuar a la revisión de datos.'
-                  : 'Puedes continuar al procesamiento OCR.')}
-              {expirada && 'Enlace expirado — genera uno nuevo.'}
-              {!completada && !expirada && 'Esperando evidencias del cliente…'}
-            </p>
+            {(completada || expirada) && (
+              <p className="captura__actions-note">
+                <span className="captura__dot" aria-hidden="true" />
+                {completada &&
+                  (compacto
+                    ? 'Puedes continuar a la revisión de datos.'
+                    : 'Puedes continuar al procesamiento OCR.')}
+                {expirada && 'Enlace expirado — genera uno nuevo.'}
+              </p>
+            )}
             {/* Atajo solo en desarrollo: permite recorrer el wizard sin
                 completar la captura remota. No existe en build de producción. */}
             {MODO_DEMO && !completada && (

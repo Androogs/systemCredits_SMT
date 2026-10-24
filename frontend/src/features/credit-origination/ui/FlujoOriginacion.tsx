@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import {
+  ArrowRight,
+  Clock3,
+  FilePen,
+  History,
+  Info,
+  RotateCcw,
+  ShieldCheck,
+  UserRound,
+} from 'lucide-react'
 import ValidacionInicial from './ValidacionInicial'
 import AutorizacionDatos from './AutorizacionDatos'
 import EvidenciaYDatos from './EvidenciaYDatos'
@@ -13,7 +23,10 @@ import {
   guardarBorrador,
   limpiarBorrador,
 } from '../model/borrador'
-import type { PasoOriginacion } from '../model/etapas-originacion'
+import {
+  etapasOriginacion,
+  type PasoOriginacion,
+} from '../model/etapas-originacion'
 import {
   normalizarFecha,
   tipoDocumentoUi,
@@ -237,6 +250,17 @@ function FlujoOriginacion() {
     setFormalizacionIniciada(false)
   }
 
+  // Rechazo confirmado: la solicitud ya quedó evaluada en el backend, así
+  // que el proceso termina — se limpia el borrador (sin esto la pestaña
+  // volvería a ofrecer "retomar") y se va al expediente de la solicitud.
+  const finalizarProceso = () => {
+    const id = contexto.idSolicitud
+    reiniciar()
+    if (id) {
+      navigate(`/solicitudes/${id}`)
+    }
+  }
+
   const modificarSolicitud = () => {
     setContexto((actual) => {
       const contextoPrevio = { ...actual }
@@ -282,27 +306,139 @@ function FlujoOriginacion() {
           timeStyle: 'short',
         })
 
+    const paso = Math.min(5, Math.max(1, borradorPendiente!.paso))
+    const estado = ctx.idSolicitud
+      ? ctx.resultadoEvaluacion
+        ? 'Evaluada'
+        : 'Radicada'
+      : 'Borrador local'
+
     return (
-      <section className="flujo-originacion__pendiente">
-        <span aria-hidden="true">
-          {String(borradorPendiente!.paso).padStart(2, '0')}
-        </span>
-        <p>Solicitud en curso</p>
-        <h1>Retomar originación</h1>
-        <p>
-          Hay una solicitud sin terminar de <strong>{nombre}</strong> guardada
-          en el paso {borradorPendiente!.paso} de 5{hora ? ` (${hora})` : ''}.
-          {ctx.idSolicitud
-            ? ctx.resultadoEvaluacion
-              ? ' La solicitud ya fue evaluada; retomarás el resultado y la oferta.'
-              : ' La solicitud ya fue radicada en el sistema; puedes continuar desde la evaluación.'
-            : ''}
+      <section className="flujo-originacion__pendiente retomar">
+        <header className="retomar__cabecera">
+          <span className="retomar__icono" aria-hidden="true">
+            <History size={24} strokeWidth={2.1} />
+          </span>
+          <div className="retomar__cabecera-texto">
+            <p className="retomar__eyebrow">
+              <span className="retomar__pulso" aria-hidden="true" />
+              Solicitud en curso
+            </p>
+            <h1>Retomar originación</h1>
+          </div>
+          <div className="retomar__avance" title={`Paso ${paso} de 5`}>
+            <svg viewBox="0 0 40 40" aria-hidden="true">
+              <circle
+                className="retomar__avance-fondo"
+                cx="20"
+                cy="20"
+                r="16"
+              />
+              <circle
+                className="retomar__avance-relleno"
+                cx="20"
+                cy="20"
+                r="16"
+                pathLength={100}
+                strokeDasharray={`${paso * 20} 100`}
+              />
+            </svg>
+            <span>
+              {paso}
+              <small>/5</small>
+            </span>
+          </div>
+        </header>
+
+        <p className="retomar__descripcion">
+          Hay una solicitud sin terminar de <strong>{nombre}</strong>. Tu avance
+          está guardado en este dispositivo: continúa justo donde la dejaste o
+          descártala para empezar de cero.
         </p>
-        <div className="flujo-originacion__acciones">
-          <button type="button" onClick={retomarBorrador}>
+
+        <div className="retomar__progreso">
+          <div className="retomar__progreso-head">
+            <span className="retomar__progreso-label">Avance guardado</span>
+            <span className="retomar__progreso-paso">
+              Paso <strong>{paso}</strong> de 5 ·{' '}
+              {etapasOriginacion[paso - 1].titulo}
+            </span>
+          </div>
+          <div
+            className="retomar__barra"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={5}
+            aria-valuenow={paso}
+            aria-label="Progreso de la solicitud"
+          >
+            {etapasOriginacion.map((etapa, indice) => (
+              <span
+                key={etapa.titulo}
+                className={
+                  indice + 1 < paso
+                    ? 'retomar__segmento retomar__segmento--hecho'
+                    : indice + 1 === paso
+                      ? 'retomar__segmento retomar__segmento--actual'
+                      : 'retomar__segmento'
+                }
+              />
+            ))}
+          </div>
+        </div>
+
+        <ul className="retomar__meta">
+          <li>
+            <UserRound size={17} aria-hidden="true" />
+            <div>
+              <span>Solicitante</span>
+              <strong>{nombre}</strong>
+            </div>
+          </li>
+          <li>
+            <Clock3 size={17} aria-hidden="true" />
+            <div>
+              <span>Último guardado</span>
+              <strong>{hora || 'Sin registrar'}</strong>
+            </div>
+          </li>
+          <li>
+            {ctx.idSolicitud ? (
+              <ShieldCheck size={17} aria-hidden="true" />
+            ) : (
+              <FilePen size={17} aria-hidden="true" />
+            )}
+            <div>
+              <span>Estado</span>
+              <strong>{estado}</strong>
+            </div>
+          </li>
+        </ul>
+
+        {ctx.idSolicitud ? (
+          <p className="retomar__nota">
+            <Info size={15} aria-hidden="true" />
+            {ctx.resultadoEvaluacion
+              ? 'La solicitud ya fue evaluada; retomarás el resultado y la oferta.'
+              : 'La solicitud ya fue radicada en el sistema; puedes continuar desde la evaluación.'}
+          </p>
+        ) : null}
+
+        <div className="retomar__acciones">
+          <button
+            type="button"
+            className="retomar__btn retomar__btn--primario"
+            onClick={retomarBorrador}
+          >
             Continuar donde quedó
+            <ArrowRight size={16} aria-hidden="true" />
           </button>
-          <button type="button" onClick={descartarBorrador}>
+          <button
+            type="button"
+            className="retomar__btn retomar__btn--secundario"
+            onClick={descartarBorrador}
+          >
+            <RotateCcw size={15} aria-hidden="true" />
             Descartar y empezar de cero
           </button>
         </div>
@@ -391,6 +527,7 @@ function FlujoOriginacion() {
             // consulta ya no se puede reabrir para modificarla.
             setFormalizacionIniciada(true)
           }}
+          onFinalizar={finalizarProceso}
         />
       )
     }

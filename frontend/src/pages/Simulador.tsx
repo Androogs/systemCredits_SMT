@@ -44,6 +44,7 @@ const initial = {
   valorVehiculo: 10_000_000,
   cuotaInicial: 1_000_000,
   adicionales: 1_150_000,
+  gastosAdministrativos: 0,
   tasaMensual: TASA_PRODUCTO,
   plazoMeses: 48,
 }
@@ -107,7 +108,10 @@ export default function Simulador() {
     // El cargo administrativo es interno: no entra en la vista del asesor.
     const montoFinanciar = Math.max(
       0,
-      form.valorVehiculo + form.adicionales - form.cuotaInicial,
+      form.valorVehiculo +
+        form.adicionales +
+        form.gastosAdministrativos -
+        form.cuotaInicial,
     )
     const plazoSeguro = Math.max(1, form.plazoMeses)
     const cuotaFinanciacion = cuotaAnualidad(
@@ -172,6 +176,17 @@ export default function Simulador() {
       setForm((prev) => ({ ...prev, tasaMensual: usuraOperativa }))
     }
   }, [usuraOperativa])
+
+  // La tasa simulada nunca supera el tope aprobado vigente (usura
+  // operativa): si quedó por encima — p. ej. digitada antes de que
+  // llegara la referencia oficial — se corrige sola.
+  useEffect(() => {
+    setForm((prev) =>
+      prev.tasaMensual > tasaMaxEfectiva
+        ? { ...prev, tasaMensual: tasaMaxEfectiva }
+        : prev,
+    )
+  }, [tasaMaxEfectiva])
 
   const alertaMonto =
     resultado.montoFinanciar > rangos.montoMax
@@ -305,6 +320,12 @@ export default function Simulador() {
                   </dt>
                   <dd className="font-medium tabular-nums">
                     {currency(form.adicionales)}
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3 py-2">
+                  <dt className="text-cyan-100/70">Gastos administrativos</dt>
+                  <dd className="font-medium tabular-nums">
+                    {currency(form.gastosAdministrativos)}
                   </dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-3 py-2">
@@ -489,6 +510,15 @@ export default function Simulador() {
                 maximo={500_000_000}
                 value={form.adicionales}
                 onValor={(n) => actualizarValor('adicionales', n)}
+              />
+              <CampoNumerico
+                className="input-base"
+                label="Gastos administrativos (COP)"
+                formatoMiles
+                minimo={0}
+                maximo={500_000_000}
+                value={form.gastosAdministrativos}
+                onValor={(n) => actualizarValor('gastosAdministrativos', n)}
               />
               <CampoNumerico
                 className="input-base"

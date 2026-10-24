@@ -1162,3 +1162,39 @@ CREATE INDEX ix_sesion_captura_estado    ON sesion_captura (estado);
 CREATE INDEX ix_sesion_captura_solicitud ON sesion_captura (id_solicitud);
 CREATE INDEX ix_evidencia_sesion         ON documento_evidencia (id_sesion);
 CREATE INDEX ix_evidencia_solicitud      ON documento_evidencia (id_solicitud);
+
+-- =====================================================================
+-- Sesiones persistidas y recuperación de clave (migración 0015).
+-- refresh_token: sesión revocable en servidor; solo se guarda el hash
+-- SHA-256 del token opaco y `reemplazado_por` encadena la rotación para
+-- detectar reuso de un token viejo.
+-- token_recuperacion: enlace de "olvidé mi clave" de un solo uso con
+-- ventana corta; también solo el hash.
+-- =====================================================================
+CREATE TABLE refresh_token (
+    id_refresh       BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_usuario       UUID         NOT NULL REFERENCES usuario (id_usuario),
+    token_hash       CHAR(64)     NOT NULL UNIQUE,
+    expira_en        TIMESTAMPTZ  NOT NULL,
+    revocado         BOOLEAN      NOT NULL DEFAULT FALSE,
+    ip               VARCHAR(45),
+    fecha_creacion   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    fecha_revocacion TIMESTAMPTZ,
+    reemplazado_por  BIGINT       REFERENCES refresh_token (id_refresh)
+);
+
+CREATE INDEX idx_refresh_token_usuario ON refresh_token (id_usuario);
+
+CREATE TABLE token_recuperacion (
+    id_token        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_usuario      UUID        NOT NULL REFERENCES usuario (id_usuario),
+    token_hash      CHAR(64)    NOT NULL,
+    expira_en       TIMESTAMPTZ NOT NULL,
+    usado           BOOLEAN     NOT NULL DEFAULT FALSE,
+    ip              VARCHAR(45),
+    fecha_creacion  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    fecha_uso       TIMESTAMPTZ
+);
+
+CREATE INDEX idx_recuperacion_hash    ON token_recuperacion (token_hash);
+CREATE INDEX idx_recuperacion_usuario ON token_recuperacion (id_usuario);

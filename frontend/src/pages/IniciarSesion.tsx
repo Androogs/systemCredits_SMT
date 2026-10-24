@@ -3,14 +3,7 @@
   <span>demo1234</span>*/
 }
 
-import {
-  ArrowRight,
-  Eye,
-  EyeOff,
-  LockKeyhole,
-  Mail,
-  ShieldCheck,
-} from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { FormEvent } from 'react'
@@ -77,21 +70,13 @@ export default function IniciarSesion() {
 
         <section className="access-form-panel" aria-labelledby="login-heading">
           <div className="access-form-content">
-            <div className="access-security">
-              <span className="access-security-icon">
-                <ShieldCheck size={17} aria-hidden="true" />
-              </span>
-              <span>Acceso seguro | Tus datos están protegidos</span>
-            </div>
-
             <header className="access-form-header">
               <p className="access-welcome">¡Qué bueno tenerte de vuelta!</p>
               <h2 id="login-heading" className="access-form-title">
                 Inicia sesión
               </h2>
               <p className="access-form-subtitle">
-                Ingresa tus credenciales para continuar en tu espacio de
-                trabajo.
+                Ingresa tus datos para continuar en tu espacio de trabajo.
               </p>
             </header>
 
@@ -185,16 +170,10 @@ export default function IniciarSesion() {
                 disabled={loading}
                 aria-busy={loading}
               >
-                <span>
-                  {loading ? 'Verificando acceso...' : 'Ingresar a mi cuenta'}
-                </span>
+                <span>{loading ? 'Verificando acceso...' : 'Ingresar'}</span>
                 <ArrowRight size={18} aria-hidden="true" />
               </button>
             </form>
-
-            <div className="access-form-footer">
-              <span>Desarrollado por GaRi Software</span>
-            </div>
           </div>
         </section>
       </main>

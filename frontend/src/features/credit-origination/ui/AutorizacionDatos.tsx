@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import { correoSchema, telefonoSchema } from '../schemas/persona'
@@ -48,12 +48,11 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
   const { asesor, sede } = contextoRadicacion()
   const [marcaRegistro] = useState(marcaTiempoActual)
   const [autoriza, setAutoriza] = useState(false)
-  const [telefono, setTelefono] = useState(MODO_DEMO ? '3001234567' : '')
-  const [correo, setCorreo] = useState(
-    MODO_DEMO ? 'carlos.restrepo@correo.com' : '',
-  )
+  const [telefono, setTelefono] = useState('')
+  const [correo, setCorreo] = useState('')
   const [intentado, setIntentado] = useState(false)
   const [registrado, setRegistrado] = useState(false)
+  const [legalDesplegado, setLegalDesplegado] = useState(false)
 
   const error = intentado && !autoriza
   const errorTelefono = intentado
@@ -100,11 +99,6 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
           <p className="autorizacion__subtitle">
             Tratamiento de Datos Personales
           </p>
-          <p className="autorizacion__lede">
-            El cliente debe conocer y firmar formalmente el consentimiento
-            informado para consulta en centrales de riesgo nacionales (CIFIN /
-            Datacrédito).
-          </p>
         </div>
 
         <aside
@@ -131,8 +125,8 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
           <div>
             <h2>Resumen de Finalidad y Consentimiento Legal</h2>
             <p>
-              El cliente debe leer y aceptar verbalmente las finalidades antes
-              de continuar.
+              El cliente debe leer y aceptar estas finalidades antes de
+              continuar.
             </p>
           </div>
         </div>
@@ -151,58 +145,79 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
         )}
 
         <div className="autorizacion__legal">
-          <ol className="autorizacion__legal-list">
-            {finalidades.map((item) => (
-              <li key={item.number} className="autorizacion__legal-item">
-                <span className="autorizacion__legal-number" aria-hidden="true">
-                  {item.number}
-                </span>
-                <div className="autorizacion__legal-body">
-                  <h3>{item.title}</h3>
-                  <p>{item.body}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-
-          <a
-            className="autorizacion__legal-link"
-            href="/documentos/autorizacion-consulta-centrales-habeas-data.docx"
-            download="Autorizacion consulta centrales - Habeas Data - Inversiones Pacifico.docx"
+          <button
+            type="button"
+            className="autorizacion__legal-toggle"
+            onClick={() => setLegalDesplegado(!legalDesplegado)}
+            aria-expanded={legalDesplegado}
           >
-            <svg
-              className="autorizacion__legal-icon"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-              focusable="false"
-            >
-              <path
-                d="M12 3v12"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="m7 10 5 5 5-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M5 21h14"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            Descargar el documento legal completo de Habeas Data (DOCX)
-          </a>
+            <span>Documentos Legales</span>
+            {legalDesplegado ? (
+              <ChevronUp size={20} aria-hidden="true" />
+            ) : (
+              <ChevronDown size={20} aria-hidden="true" />
+            )}
+          </button>
+
+          {legalDesplegado && (
+            <div className="autorizacion__legal-content">
+              <ol className="autorizacion__legal-list">
+                {finalidades.map((item) => (
+                  <li key={item.number} className="autorizacion__legal-item">
+                    <span
+                      className="autorizacion__legal-number"
+                      aria-hidden="true"
+                    >
+                      {item.number}
+                    </span>
+                    <div className="autorizacion__legal-body">
+                      <h3>{item.title}</h3>
+                      <p>{item.body}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+
+              <a
+                className="autorizacion__legal-link"
+                href="/documentos/autorizacion-consulta-centrales-habeas-data.docx"
+                download="Autorizacion consulta centrales - Habeas Data - Inversiones Pacifico.docx"
+              >
+                <svg
+                  className="autorizacion__legal-icon"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path
+                    d="M12 3v12"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="m7 10 5 5 5-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M5 21h14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                Descargar el documento legal completo de Habeas Data (DOCX)
+              </a>
+            </div>
+          )}
         </div>
 
         <fieldset className="autorizacion__contacto">
@@ -317,36 +332,6 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
               Debes marcar la autorización del cliente para continuar.
             </p>
           )}
-        </div>
-
-        <div className="autorizacion__audit" role="note">
-          <svg
-            className="autorizacion__audit-icon"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-            focusable="false"
-          >
-            <circle
-              cx="12"
-              cy="12"
-              r="9"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-            />
-            <path
-              d="M12 7v5l3 2"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          <p>
-            <span>Registro Auditoría:</span> {marcaRegistro} | IP del Nodo de
-            Solicitud Asesor: {IP_NO_CAPTURADA}
-          </p>
         </div>
 
         <div className="autorizacion__actions">

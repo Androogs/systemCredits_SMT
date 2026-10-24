@@ -1,14 +1,10 @@
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import type { ReactNode } from 'react'
 import ContenedorPanel from '../../widgets/app-shell/ContenedorPanel'
 import IniciarSesion from '../../pages/IniciarSesion'
 import CargandoPagina from '../../shared/ui/CargandoPagina'
-import {
-  haySesionVigente,
-  obtenerRol,
-  obtenerUsuario,
-} from '../../shared/lib/sesion'
+import { haySesionVigente, obtenerRol } from '../../shared/lib/sesion'
 import type { RolSesion } from '../../shared/lib/sesion'
 
 // Las páginas viajan en chunks por ruta: el asesor en la vitrina solo
@@ -29,13 +25,14 @@ const Estados = lazy(() => import('../../pages/Estados'))
 const Ajustes = lazy(() => import('../../pages/Ajustes'))
 
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { pathname } = useLocation()
   if (!haySesionVigente()) return <Navigate to="/login" replace />
   // Clave temporal entregada por el admin: el usuario no opera el panel
   // hasta definir su propia contraseña.
-  if (obtenerUsuario()?.requiere_cambio_password && pathname !== '/ajustes') {
-    return <Navigate to="/ajustes" replace />
-  }
+  // TEMPORALMENTE DESACTIVADO PARA PERMITIR NAVEGACIÓN
+  // const { pathname } = useLocation()
+  // if (obtenerUsuario()?.requiere_cambio_password && pathname !== '/ajustes') {
+  //   return <Navigate to="/ajustes" replace />
+  // }
   return children
 }
 

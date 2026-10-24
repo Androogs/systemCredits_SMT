@@ -10,6 +10,19 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  AlertTriangle,
+  Camera,
+  CheckCircle2,
+  Lock,
+  RefreshCw,
+  RotateCcw,
+  Send,
+  ShieldCheck,
+  Square,
+  Video,
+  X,
+} from 'lucide-react'
+import {
   estadoCaptura,
   subirEvidencia,
   type EstadoCapturaApi,
@@ -63,10 +76,18 @@ export default function CapturaMovil() {
 
   if (consulta.isLoading) {
     return (
-      <main className="captura-movil">
-        <p className="captura-movil__aviso" role="status">
-          Verificando enlace de captura…
-        </p>
+      <main className="captura-movil captura-movil--aviso">
+        <img
+          className="captura-movil__logo"
+          src="/brand/pacifico-azules.png"
+          alt="Inversiones Pacífico"
+          width="897"
+          height="431"
+        />
+        <div className="captura-movil__aviso" role="status">
+          <span className="captura-movil__spinner" aria-hidden="true" />
+          <p>Verificando enlace de captura…</p>
+        </div>
       </main>
     )
   }
@@ -78,11 +99,24 @@ export default function CapturaMovil() {
         'expir',
       )
     return (
-      <main className="captura-movil">
+      <main className="captura-movil captura-movil--aviso">
+        <img
+          className="captura-movil__logo"
+          src="/brand/pacifico-azules.png"
+          alt="Inversiones Pacífico"
+          width="897"
+          height="431"
+        />
         <div
           className="captura-movil__aviso captura-movil__aviso--error"
           role="alert"
         >
+          <span
+            className="captura-movil__aviso-icono captura-movil__aviso-icono--error"
+            aria-hidden="true"
+          >
+            <AlertTriangle size={24} />
+          </span>
           <h1>{expirado ? 'El enlace expiró' : 'Enlace no válido'}</h1>
           <p>
             {expirado
@@ -97,25 +131,37 @@ export default function CapturaMovil() {
   return (
     <main className="captura-movil">
       <header className="captura-movil__header">
-        <p className="captura-movil__marca">Inversiones Pacífico · SUMOTO</p>
+        <img
+          className="captura-movil__logo"
+          src="/brand/pacifico-azules.png"
+          alt="Inversiones Pacífico"
+          width="897"
+          height="431"
+        />
         <h1>Verificación de identidad</h1>
-        <p>
+        <p className="captura-movil__lede">
           Toma las fotos de tu cédula y graba un video corto sosteniéndola junto
           a tu rostro. Las evidencias se envían directo al asesor.
         </p>
+        <span className="captura-movil__sello">
+          <ShieldCheck size={14} aria-hidden="true" />
+          Enlace seguro y temporal
+        </span>
       </header>
 
       <TarjetaFoto
         token={token}
         tipo="cedula_frontal"
-        titulo="1 · Cédula — parte frontal"
+        paso={1}
+        titulo="Cédula — parte frontal"
         ayuda="Encuadra la cara con tu foto y datos. Sin brillos ni sombras."
         subidaInicial={datos}
       />
       <TarjetaFoto
         token={token}
         tipo="cedula_reverso"
-        titulo="2 · Cédula — parte posterior"
+        paso={2}
+        titulo="Cédula — parte posterior"
         ayuda="Encuadra la cara con el código de barras."
         subidaInicial={datos}
       />
@@ -126,6 +172,12 @@ export default function CapturaMovil() {
           className="captura-movil__aviso captura-movil__aviso--ok"
           role="status"
         >
+          <span
+            className="captura-movil__aviso-icono captura-movil__aviso-icono--ok"
+            aria-hidden="true"
+          >
+            <CheckCircle2 size={26} />
+          </span>
           <h2>Captura completada</h2>
           <p>
             Recibimos las tres evidencias. Ya puedes cerrar esta página y avisar
@@ -134,6 +186,7 @@ export default function CapturaMovil() {
         </div>
       ) : (
         <p className="captura-movil__nota">
+          <Lock size={13} aria-hidden="true" />
           El enlace es personal y caduca en pocos minutos. No lo compartas.
         </p>
       )}
@@ -146,6 +199,7 @@ export default function CapturaMovil() {
 interface TarjetaFotoProps {
   token: string
   tipo: TipoEvidencia
+  paso: number
   titulo: string
   ayuda: string
   subidaInicial: EstadoCapturaApi
@@ -154,6 +208,7 @@ interface TarjetaFotoProps {
 function TarjetaFoto({
   token,
   tipo,
+  paso,
   titulo,
   ayuda,
   subidaInicial,
@@ -202,7 +257,17 @@ function TarjetaFoto({
     <section
       className={`captura-movil__card captura-movil__card--${estado.subida}`}
     >
-      <h2>{titulo}</h2>
+      <div className="captura-movil__card-head">
+        <span className="captura-movil__paso" aria-hidden="true">
+          {paso}
+        </span>
+        <h2>{titulo}</h2>
+        <Camera
+          className="captura-movil__card-icono"
+          size={19}
+          aria-hidden="true"
+        />
+      </div>
       <p className="captura-movil__ayuda">{ayuda}</p>
 
       <input
@@ -226,7 +291,8 @@ function TarjetaFoto({
       <div className="captura-movil__acciones">
         {estado.subida === 'ok' ? (
           <span className="captura-movil__ok" role="status">
-            ✓ Recibida
+            <CheckCircle2 size={18} aria-hidden="true" />
+            Recibida
           </span>
         ) : archivo ? (
           <>
@@ -236,11 +302,19 @@ function TarjetaFoto({
               onClick={() => subida.mutate(archivo)}
               disabled={estado.subida === 'subiendo'}
             >
-              {estado.subida === 'subiendo'
-                ? 'Subiendo…'
-                : estado.subida === 'error'
-                  ? 'Reintentar subida'
-                  : 'Enviar foto'}
+              {estado.subida === 'subiendo' ? (
+                'Subiendo…'
+              ) : estado.subida === 'error' ? (
+                <>
+                  <RefreshCw size={15} aria-hidden="true" />
+                  Reintentar subida
+                </>
+              ) : (
+                <>
+                  <Send size={15} aria-hidden="true" />
+                  Enviar foto
+                </>
+              )}
             </button>
             <button
               type="button"
@@ -248,6 +322,7 @@ function TarjetaFoto({
               onClick={() => inputRef.current?.click()}
               disabled={estado.subida === 'subiendo'}
             >
+              <RotateCcw size={15} aria-hidden="true" />
               Tomar otra
             </button>
           </>
@@ -257,6 +332,7 @@ function TarjetaFoto({
             className="captura-movil__boton"
             onClick={() => inputRef.current?.click()}
           >
+            <Camera size={17} aria-hidden="true" />
             Abrir cámara
           </button>
         )}
@@ -414,7 +490,17 @@ function TarjetaVideo({
     <section
       className={`captura-movil__card captura-movil__card--${fase === 'ok' ? 'ok' : 'idle'}`}
     >
-      <h2>3 · Video de verificación</h2>
+      <div className="captura-movil__card-head">
+        <span className="captura-movil__paso" aria-hidden="true">
+          3
+        </span>
+        <h2>Video de verificación</h2>
+        <Video
+          className="captura-movil__card-icono"
+          size={19}
+          aria-hidden="true"
+        />
+      </div>
       <p className="captura-movil__ayuda">
         Graba un video corto (máx. {DURACION_VIDEO_MAX_SEG}s) con la cámara
         frontal: tu rostro visible y la cédula sostenida a un lado de tu cara.
@@ -443,6 +529,7 @@ function TarjetaVideo({
             className="captura-movil__boton"
             onClick={iniciarCamara}
           >
+            <Video size={17} aria-hidden="true" />
             Abrir cámara frontal
           </button>
         )}
@@ -458,6 +545,7 @@ function TarjetaVideo({
               className="captura-movil__boton"
               onClick={grabar}
             >
+              <Video size={16} aria-hidden="true" />
               Grabar video
             </button>
             <button
@@ -468,6 +556,7 @@ function TarjetaVideo({
                 setFase('idle')
               }}
             >
+              <X size={15} aria-hidden="true" />
               Cancelar
             </button>
           </>
@@ -478,6 +567,7 @@ function TarjetaVideo({
             className="captura-movil__boton captura-movil__boton--sec"
             onClick={() => recorderRef.current?.stop()}
           >
+            <Square size={14} aria-hidden="true" />
             Detener ahora
           </button>
         )}
@@ -488,6 +578,7 @@ function TarjetaVideo({
               className="captura-movil__boton"
               onClick={() => blobRef.current && subida.mutate(blobRef.current)}
             >
+              <Send size={15} aria-hidden="true" />
               Enviar video
             </button>
             <button
@@ -495,6 +586,7 @@ function TarjetaVideo({
               className="captura-movil__boton captura-movil__boton--sec"
               onClick={regrabar}
             >
+              <RotateCcw size={15} aria-hidden="true" />
               Regrabar
             </button>
           </>
@@ -506,7 +598,8 @@ function TarjetaVideo({
         )}
         {fase === 'ok' && (
           <span className="captura-movil__ok" role="status">
-            ✓ Video recibido
+            <CheckCircle2 size={18} aria-hidden="true" />
+            Video recibido
           </span>
         )}
       </div>

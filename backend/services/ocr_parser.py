@@ -345,7 +345,8 @@ def _es_linea2(s: str) -> str | None:
         return None
     s = s[desfase:]
     nacimiento = s[0:7].translate(_A_DIGITO)
-    sexo = s[7] if s[7] in "MF<" else {"H": "M", "N": "M", "P": "F", "E": "F"}.get(s[7], "<")
+    # Sexo MRZ (1 char): M/F/T y X (ICAO "no especificado" → no binario).
+    sexo = s[7] if s[7] in "MFTX<" else {"H": "M", "N": "M", "P": "F", "E": "F"}.get(s[7], "<")
     expira = s[8:15].translate(_A_DIGITO)
     resto = s[18:]
     opcional = re.match(r"[^<]*", resto).group().translate(_A_DIGITO)
@@ -353,7 +354,7 @@ def _es_linea2(s: str) -> str | None:
     corregida = (nacimiento + sexo + expira + "COL" + resto)[:30]
     if len(corregida) == 29:
         return None if not corregida.endswith("<") else corregida + "<"
-    if not re.fullmatch(r"\d{7}[MF<]\d{7}COL.*", corregida):
+    if not re.fullmatch(r"\d{7}[MFTX<]\d{7}COL.*", corregida):
         return None
     if len(corregida) == 30 and not corregida[29].isdigit():
         corregida = corregida[:29] + corregida[29].translate(_A_DIGITO)
@@ -407,8 +408,8 @@ def parsear_mrz(texto_o_lineas: str | list[str]) -> dict:
     if nac:
         salida["fecha_nacimiento"] = nac
     salida["control_nacimiento"] = bool(nac) and ctrl_nac
-    if linea2[7] in "MF":
-        salida["sexo"] = linea2[7]
+    if linea2[7] in "MFTX":
+        salida["sexo"] = "NB" if linea2[7] == "X" else linea2[7]
     exp = _iso_yymmdd(linea2[8:14], nacimiento=False)
     if exp:
         salida["fecha_expiracion"] = exp
@@ -635,8 +636,8 @@ def _fecha_y_ciudad(palabras: list[Palabra], tipo: str) -> tuple[Valor | None, V
 def _sexo_cerca(linea: Linea, xc: float) -> Valor | None:
     candidatos = [
         p for p in linea.palabras
-        if re.sub(r"[^A-Za-z]", "", p.texto).upper() in ("M", "F")
-        and len(re.sub(r"[^A-Za-z0-9]", "", p.texto)) == 1
+        if re.sub(r"[^A-Za-z]", "", p.texto).upper() in ("M", "F", "T", "NB")
+        and len(re.sub(r"[^A-Za-z0-9]", "", p.texto)) <= 2
     ]
     if not candidatos:
         return None
@@ -650,8 +651,8 @@ def _sexo_cerca(linea: Linea, xc: float) -> Valor | None:
 # Clasificación
 # --------------------------------------------------------------------------
 
-_RE_LINEA_CODIGO = re.compile(r"P-?\d{5,8}-?\d{6,9}-?([MF])-?(\d{6,10})-?\d{8}")
-_RE_LINEA_CODIGO_LAXA = re.compile(r"-([MF])-(\d{6,10})-(?:19|20)\d{6}")
+_RE_LINEA_CODIGO = re.compile(r"P-?\d{5,8}-?\d{6,9}-?((?:NB)|[MFT])-?(\d{6,10})-?\d{8}")
+_RE_LINEA_CODIGO_LAXA = re.compile(r"-((?:NB)|[MFT])-(\d{6,10})-(?:19|20)\d{6}")
 
 
 def _linea_codigo(lineas: list[Linea]) -> tuple[str, str, float] | None:

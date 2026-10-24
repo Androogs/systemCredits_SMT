@@ -50,6 +50,8 @@ interface EvaluacionYResultadoProps {
   onResultado?: (resultado: ResultadoEvaluacionCredito) => void
   /** Avisa al flujo que el proceso se cerró (oferta formalizada). */
   onFormalizar?: (oferta: OfertaSeleccionada) => void
+  /** Avisa al flujo que el proceso se cerró tras un rechazo. */
+  onFinalizar?: () => void
 }
 
 const ESCENARIOS_POR_DEFECTO: Record<string, string> = {
@@ -68,6 +70,7 @@ export default function EvaluacionYResultado({
   onModificar,
   onResultado,
   onFormalizar,
+  onFinalizar,
 }: EvaluacionYResultadoProps) {
   // Un borrador retomado con resultado previo muestra esa consulta tal
   // como quedó: la evaluación ya está persistida y no se puede volver a
@@ -360,6 +363,7 @@ export default function EvaluacionYResultado({
             setFormalizacionIniciada(true)
             onFormalizar?.(oferta)
           }}
+          onFinalizar={onFinalizar}
         />
       )}
 
