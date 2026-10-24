@@ -11,18 +11,16 @@ import {
   ApiError,
   evaluarSolicitud,
   listarAuditoriaSolicitud,
-  listarBancos,
   obtenerAuditoria,
   obtenerSolicitud,
   cancelarSolicitud,
-  registrarDesembolso,
   seleccionarOferta,
   listarEvidenciasSolicitud,
+  tasaMercado,
   urlEvidenciaContenido,
   urlPaqueteLegalizacion,
   type EvaluarSolicitudPayload,
   type EvidenciaApi,
-  type RegistrarDesembolsoPayload,
   type SolicitudDetalleApi,
 } from '../features/credit-origination/api/originacionApi'
 import {
@@ -39,7 +37,7 @@ import {
   OCUPACION_LABELS,
 } from '../entities/credit/model/solicitudesPanel'
 import { currency, dateShort, dateTime } from '../shared/lib/formatters'
-import { cuotaAnualidad } from '../shared/lib/finanzas'
+import { cuotaAnualidad, tasaProductoMv } from '../shared/lib/finanzas'
 import { puedeOperar, useRol } from '../shared/lib/sesion'
 import {
   descargarArchivoAutenticado,
@@ -132,9 +130,6 @@ export default function DetalleSolicitud() {
   const { id } = useParams()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const [bancoAch, setBancoAch] = useState('')
-  const [numeroCuenta, setNumeroCuenta] = useState('')
-  const [referenciaPago, setReferenciaPago] = useState('')
   const [montoTomar, setMontoTomar] = useState('')
   const [plazoTomar, setPlazoTomar] = useState('')
   // Re-evaluación con parámetros editables (solo administrador).
@@ -178,13 +173,6 @@ export default function DetalleSolicitud() {
         : 'Error consultando la solicitud'
       : null
 
-  const { data: bancos = [] } = useQuery({
-    queryKey: ['bancos'],
-    queryFn: listarBancos,
-    staleTime: Infinity,
-    retry: 0,
-  })
-
   const { data: evidencias = [] } = useQuery<EvidenciaApi[]>({
     queryKey: ['evidencias-solicitud', datos?.id_solicitud],
     enabled: datos != null,
@@ -210,6 +198,18 @@ export default function DetalleSolicitud() {
     queryFn: () => obtenerAuditoria(auditorias[0].evaluacion_id),
   })
 
+  // Tasa del producto = usura de consumo y ordinario vigente (SFC);
+  // respaldo: la referencia fija. Es la tasa con la que se re-evalúa.
+  const consultaTasa = useQuery({
+    queryKey: ['tasa-mercado'],
+    queryFn: tasaMercado,
+    staleTime: 6 * 60 * 60_000,
+    retry: 1,
+  })
+  const tasaOperativa =
+    tasaProductoMv(consultaTasa.data?.ordinario.usura_ea) ??
+    TASA_MENSUAL_REFERENCIA
+
   /** Tras una mutación el detalle y la lista del panel quedan frescos. */
   function invalidar() {
     qc.invalidateQueries({ queryKey: ['solicitud', id] })
@@ -229,11 +229,6 @@ export default function DetalleSolicitud() {
         vars.monto,
         vars.plazo,
       ),
-    onSuccess: invalidar,
-  })
-  const mutDesembolso = useMutation({
-    mutationFn: (payload: RegistrarDesembolsoPayload) =>
-      registrarDesembolso(datos!.id_solicitud, payload),
     onSuccess: invalidar,
   })
   const mutCancelar = useMutation({
@@ -305,8 +300,6 @@ export default function DetalleSolicitud() {
   const ofertaSeleccionada = datos.ofertas.find((o) => o.seleccionada)
   const ofertaElegible =
     ofertaSeleccionada ?? datos.ofertas.find((o) => o.elegible)
-  const puedeDesembolsar =
-    datos.estado === 'aprobada' && ofertaSeleccionada != null
   const puedeSeleccionarOferta =
     datos.estado === 'aprobada' &&
     !ofertaSeleccionada &&
@@ -378,7 +371,7 @@ export default function DetalleSolicitud() {
     mutEvaluar.mutate({
       saldo_financiar: Math.max(monto, 1),
       plazo,
-      tasa: TASA_MENSUAL_REFERENCIA,
+      tasa: tasaOperativa,
       consultar_experian: true,
     })
   }
@@ -400,7 +393,7 @@ export default function DetalleSolicitud() {
     )
     return Number.isFinite(tasaRequest) && tasaRequest > 0
       ? tasaRequest
-      : TASA_MENSUAL_REFERENCIA
+      : tasaOperativa
   })()
 
   /* Vista previa de la retoma: con los valores vigentes (o los que el
@@ -457,15 +450,6 @@ export default function DetalleSolicitud() {
       tasa: reTasa !== '' ? Number(reTasa) : reTasaDef,
       consultar_experian: origen.startsWith('experian'),
       escenario_mock: escenarioMock,
-    })
-  }
-
-  function confirmarDesembolso() {
-    if (!datos || !bancoAch || !numeroCuenta.trim()) return
-    mutDesembolso.mutate({
-      codigo_ach_banco: bancoAch,
-      numero_cuenta_cliente: numeroCuenta.trim(),
-      referencia_pago: referenciaPago.trim() || undefined,
     })
   }
 
@@ -1770,126 +1754,6 @@ export default function DetalleSolicitud() {
                   {mutSeleccionar.isPending
                     ? 'Confirmando…'
                     : 'Confirmar oferta seleccionada'}
-                </button>
-              </Tarjeta>
-            )}
-
-            {!datos.desembolso && puedeDesembolsar && (
-              <Tarjeta>
-                <h3 className="font-semibold mb-1 flex items-center gap-2">
-                  <Landmark size={18} /> Confirmar desembolso
-                </h3>
-                <p className="text-xs text-slate-500 mb-4">
-                  Formaliza el crédito sobre la oferta seleccionada y registra
-                  la transferencia a la cuenta de ahorros del cliente.
-                </p>
-                {ofertaSeleccionada && (
-                  <dl className="grid sm:grid-cols-4 gap-x-8 gap-y-1 text-sm mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                    <div>
-                      <dt className="text-xs uppercase text-slate-500">
-                        Monto a desembolsar
-                      </dt>
-                      <dd className="text-lg font-bold text-slate-900">
-                        {ofertaSeleccionada.monto_aprobado != null
-                          ? currency(Number(ofertaSeleccionada.monto_aprobado))
-                          : '—'}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs uppercase text-slate-500">
-                        Cuota
-                      </dt>
-                      <dd className="text-lg font-semibold text-slate-900">
-                        {ofertaSeleccionada.cuota_mensual != null
-                          ? currency(Number(ofertaSeleccionada.cuota_mensual))
-                          : '—'}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs uppercase text-slate-500">
-                        Tasa / plazo
-                      </dt>
-                      <dd className="text-lg font-semibold text-slate-900">
-                        {ofertaSeleccionada.tasa_ofrecida != null
-                          ? `${Number(ofertaSeleccionada.tasa_ofrecida)}% m.v.`
-                          : '—'}
-                        {ofertaSeleccionada.plazo_ofrecido != null
-                          ? ` · ${ofertaSeleccionada.plazo_ofrecido} meses`
-                          : ''}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs uppercase text-slate-500">
-                        Receptor
-                      </dt>
-                      <dd className="text-sm font-semibold text-slate-900 mt-1">
-                        {datos.nombre_cliente}
-                      </dd>
-                    </div>
-                  </dl>
-                )}
-                <div className="grid sm:grid-cols-3 gap-3 text-sm">
-                  <label className="block">
-                    <span className="text-xs uppercase text-slate-500">
-                      Banco
-                    </span>
-                    <select
-                      className="input-base mt-1 w-full"
-                      value={bancoAch}
-                      onChange={(e) => setBancoAch(e.target.value)}
-                    >
-                      <option value="">Seleccionar…</option>
-                      {bancos.map((b) => (
-                        <option key={b.id_banco} value={b.codigo_ach ?? ''}>
-                          {b.nombre}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="text-xs uppercase text-slate-500">
-                      Cuenta de ahorros del cliente
-                    </span>
-                    <input
-                      className="input-base mt-1 w-full"
-                      value={numeroCuenta}
-                      onChange={(e) => setNumeroCuenta(e.target.value)}
-                      placeholder="Número de cuenta"
-                      inputMode="numeric"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs uppercase text-slate-500">
-                      Referencia de pago (opcional)
-                    </span>
-                    <input
-                      className="input-base mt-1 w-full"
-                      value={referenciaPago}
-                      onChange={(e) => setReferenciaPago(e.target.value)}
-                      placeholder="TRX-…"
-                    />
-                  </label>
-                </div>
-                {mutDesembolso.error && (
-                  <p role="alert" className="mt-3 text-sm text-red-600">
-                    {mensajeError(
-                      mutDesembolso.error,
-                      'Error registrando el desembolso',
-                    )}
-                  </p>
-                )}
-                <button
-                  className="btn-primary mt-4"
-                  disabled={
-                    mutDesembolso.isPending ||
-                    !bancoAch ||
-                    numeroCuenta.trim().length < 4
-                  }
-                  onClick={confirmarDesembolso}
-                >
-                  {mutDesembolso.isPending
-                    ? 'Registrando…'
-                    : 'Confirmar desembolso'}
                 </button>
               </Tarjeta>
             )}

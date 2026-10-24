@@ -1,12 +1,18 @@
+import { lazy, Suspense } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle } from 'lucide-react'
 import Tarjeta from '../../shared/ui/Tarjeta'
-import { currency, number } from '../../shared/lib/formatters'
+import Skeleton from '../../shared/ui/Skeleton'
+import { number } from '../../shared/lib/formatters'
 import {
   obtenerMetricasEmbudo,
+  type EmbudoCausalApi,
   type MetricasEmbudoApi,
 } from '../../features/credit-origination/api/originacionApi'
 import type { FiltroPanel } from './GraficasResumen'
+
+// Recharts solo se descarga cuando hay datos de asesor que graficar.
+const RankingAsesores = lazy(() => import('./RankingAsesores'))
 
 const REFRESCO_MS = 30_000
 
@@ -42,10 +48,13 @@ function BarrasEmbudo({
   onFiltrar: (claveEtapa: string) => void
 }) {
   const max = metricas.radicadas || 1
+  // La etapa de desembolso no se muestra: es mecánica de financiera y
+  // la base compartida cierra el ciclo en la formalización.
+  const etapas = metricas.etapas.filter((e) => e.clave !== 'desembolsadas')
   return (
     <div className="space-y-3">
-      {metricas.etapas.map((etapa, i) => {
-        const anterior = i > 0 ? metricas.etapas[i - 1].total : 0
+      {etapas.map((etapa, i) => {
+        const anterior = i > 0 ? etapas[i - 1].total : 0
         const conversion =
           i > 0 && anterior > 0
             ? Math.round((etapa.total / anterior) * 100)
@@ -112,6 +121,126 @@ function BarrasEmbudo({
   )
 }
 
+function CausalesRechazo({ causales }: { causales: EmbudoCausalApi[] }) {
+  if (causales.length === 0) {
+    return null
+  }
+  const max = causales[0].total || 1
+  return (
+    <div className="mt-4 border-t border-slate-100 pt-3">
+      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+        Causales de rechazo
+      </p>
+      <div className="space-y-1.5">
+        {causales.map((causal) => (
+          <div key={causal.codigo} title={causal.descripcion}>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="min-w-0 flex-1 truncate text-xs text-slate-600">
+                {causal.descripcion}
+              </span>
+              <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-900">
+                {number(causal.total)}
+              </span>
+            </div>
+            <div className="mt-0.5 h-[3px] rounded-full bg-slate-100">
+              <div
+                aria-hidden="true"
+                className="h-full rounded-full bg-rose-400/80"
+                style={{
+                  width: `${Math.max((causal.total / max) * 100, 4)}%`,
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function RescateReevaluacion({ metricas }: { metricas: MetricasEmbudoApi }) {
+  const { reevaluadas, rescatadas } = metricas.reevaluacion
+  if (reevaluadas === 0) {
+    return null
+  }
+  const pct = Math.round((rescatadas / reevaluadas) * 100)
+  return (
+    <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-lg bg-slate-50 px-3 py-2">
+      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        Re-evaluación
+      </span>
+      <span className="text-sm text-slate-700">
+        <strong className="font-semibold">{number(reevaluadas)}</strong>{' '}
+        {reevaluadas === 1 ? 'rectificada' : 'rectificadas'}
+      </span>
+      <span className="text-sm text-slate-700">
+        <strong className="font-semibold text-[#176b46]">
+          {number(rescatadas)}
+        </strong>{' '}
+        {rescatadas === 1 ? 'rescatada' : 'rescatadas'} ({pct}%)
+      </span>
+    </div>
+  )
+}
+
+function TablaAsesores({ metricas }: { metricas: MetricasEmbudoApi }) {
+  if (metricas.por_asesor.length === 0) {
+    return null
+  }
+  return (
+    <details className="group mt-3">
+      <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-slate-500 transition hover:text-slate-700 [&::-webkit-details-marker]:hidden">
+        Tabla completa · {number(metricas.por_asesor.length)}{' '}
+        {metricas.por_asesor.length === 1 ? 'persona' : 'personas'}{' '}
+        <span className="text-slate-400 group-open:hidden">+</span>
+        <span className="hidden text-slate-400 group-open:inline">−</span>
+      </summary>
+      <div className="mt-2 max-h-80 overflow-y-auto overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+              <th className="pb-2 font-medium">Asesor</th>
+              <th className="pb-2 text-right font-medium">Radicadas</th>
+              <th className="pb-2 text-right font-medium">Aprobadas</th>
+              <th className="pb-2 text-right font-medium">% aprob.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {metricas.por_asesor.map((fila, i) => (
+              <tr
+                key={fila.cedula ?? `sin-cedula-${i}`}
+                className="border-t border-slate-50"
+              >
+                <td className="py-2 font-medium text-slate-700">
+                  <span className={fila.titular_anterior ? 'italic' : ''}>
+                    {fila.asesor}
+                  </span>
+                  {fila.cedula && (
+                    <span className="block text-xs font-normal text-slate-400">
+                      CC {fila.cedula}
+                    </span>
+                  )}
+                </td>
+                <td className="py-2 text-right text-slate-600 tabular-nums">
+                  {number(fila.radicadas)}
+                </td>
+                <td className="py-2 text-right text-slate-600 tabular-nums">
+                  {number(fila.aprobadas)}
+                </td>
+                <td className="py-2 text-right font-semibold text-slate-900 tabular-nums">
+                  {fila.radicadas > 0
+                    ? `${Math.round((fila.aprobadas / fila.radicadas) * 100)}%`
+                    : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  )
+}
+
 function TablaAliados({ metricas }: { metricas: MetricasEmbudoApi }) {
   if (metricas.por_aliado.length === 0) {
     return (
@@ -129,8 +258,6 @@ function TablaAliados({ metricas }: { metricas: MetricasEmbudoApi }) {
             <th className="pb-2 font-medium">Aliado</th>
             <th className="pb-2 text-right font-medium">Con oferta</th>
             <th className="pb-2 text-right font-medium">Formalizadas</th>
-            <th className="pb-2 text-right font-medium">Desembolsadas</th>
-            <th className="pb-2 text-right font-medium">Valor girado</th>
           </tr>
         </thead>
         <tbody>
@@ -140,14 +267,8 @@ function TablaAliados({ metricas }: { metricas: MetricasEmbudoApi }) {
               <td className="py-2 text-right text-slate-600 tabular-nums">
                 {number(fila.con_oferta)}
               </td>
-              <td className="py-2 text-right text-slate-600 tabular-nums">
-                {number(fila.formalizadas)}
-              </td>
               <td className="py-2 text-right font-semibold text-slate-900 tabular-nums">
-                {number(fila.desembolsadas)}
-              </td>
-              <td className="py-2 text-right text-slate-600 tabular-nums">
-                {currency(Number(fila.valor_desembolsado))}
+                {number(fila.formalizadas)}
               </td>
             </tr>
           ))}
@@ -157,10 +278,11 @@ function TablaAliados({ metricas }: { metricas: MetricasEmbudoApi }) {
   )
 }
 
-/** Embudo originación → desembolso: conteos reales del servidor (el
-    listado del panel solo trae 200 filas). Se refresca cada 30 s, se
-    acota al mes del filtro global y cada etapa filtra la tabla. La
-    tabla por aliado es de negocio: solo la ve el administrador. */
+/** Embudo originación → formalización: conteos reales del servidor
+    (el listado del panel solo trae 200 filas). Se refresca cada 30 s,
+    se acota al mes del filtro global y cada etapa filtra la tabla.
+    Las tablas por asesor y por aliado son de negocio: no las ve el
+    asesor. */
 export default function EmbudoOriginacion({
   vistaBinaria,
   rango,
@@ -216,7 +338,23 @@ export default function EmbudoOriginacion({
       ) : data ? (
         <>
           <BarrasEmbudo metricas={data} filtro={filtro} onFiltrar={onFiltrar} />
-          {!vistaBinaria && <TablaAliados metricas={data} />}
+          {!vistaBinaria && (
+            <>
+              <CausalesRechazo causales={data.por_causal} />
+              <RescateReevaluacion metricas={data} />
+              {data.por_asesor.length > 0 && (
+                <Suspense
+                  fallback={
+                    <Skeleton className="mt-4 h-48 w-full rounded-xl" />
+                  }
+                >
+                  <RankingAsesores asesores={data.por_asesor} />
+                </Suspense>
+              )}
+              <TablaAsesores metricas={data} />
+              <TablaAliados metricas={data} />
+            </>
+          )}
         </>
       ) : null}
     </Tarjeta>

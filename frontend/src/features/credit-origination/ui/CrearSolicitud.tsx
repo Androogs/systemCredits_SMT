@@ -65,19 +65,15 @@ interface CrearSolicitudProps {
   idSolicitud?: string
 }
 
-const lineasCredito = [
-  'Inversiones Pacífico',
-  'Libre Inversión',
-  'Vivienda Pacífico',
-  'Educación Pacífico',
-]
+const lineasCredito = ['Motocicleta']
 
 const destinosCredito = [
-  'Financiamiento de Vehículos',
-  'Capital de Trabajo',
-  'Libre Destino',
-  'Mejoras de Vivienda',
-  'Consolidación de Deudas',
+  'El sueño de tener motocicleta',
+  'Una solución de movilidad',
+  'Un medio para generar ingresos adicionales',
+  'Un medio para sustento económico',
+  'La oportunidad de construir historial crediticio',
+  'Un medio de transporte amigable con el medio ambiente',
 ]
 
 // Fuente única: OCUPACIONES del schema laboral (validación y select
@@ -118,8 +114,8 @@ const PLAZO_FIJO_MESES = 24
 // en el build de producción los campos económicos arrancan vacíos.
 const valoresIniciales: DatosSolicitud = MODO_DEMO
   ? {
-      lineaCredito: 'Inversiones Pacífico',
-      destinoCredito: 'Financiamiento de Vehículos',
+      lineaCredito: 'Motocicleta',
+      destinoCredito: 'El sueño de tener motocicleta',
       plazoMeses: PLAZO_FIJO_MESES,
       ocupacion: 'Empleado',
       tipoContrato: 'Indefinido',
@@ -131,8 +127,8 @@ const valoresIniciales: DatosSolicitud = MODO_DEMO
       entidadPagadora: '',
     }
   : {
-      lineaCredito: 'Inversiones Pacífico',
-      destinoCredito: 'Financiamiento de Vehículos',
+      lineaCredito: 'Motocicleta',
+      destinoCredito: 'El sueño de tener motocicleta',
       plazoMeses: PLAZO_FIJO_MESES,
       ocupacion: '',
       tipoContrato: '',
@@ -151,7 +147,7 @@ const EMPLEADOR_LABELS: Record<string, { label: string; placeholder: string }> =
       placeholder: 'Ej. Inversiones Pacífico',
     },
     Independiente: {
-      label: 'Negocio o actividad',
+      label: 'Nombre del negocio o actividad',
       placeholder: 'Ej. Tienda de barrio, consultoría…',
     },
     Pensionado: {
@@ -170,16 +166,6 @@ const formatoCOP = new Intl.NumberFormat('es-CO', {
   minimumFractionDigits: 0,
   maximumFractionDigits: 0,
 })
-
-const formatoCOPCompacto = (valor: number) => {
-  if (valor >= 1_000_000) {
-    return `$${(valor / 1_000_000).toFixed(valor % 1_000_000 === 0 ? 0 : 1)}M`
-  }
-  if (valor >= 1_000) {
-    return `$${(valor / 1_000).toFixed(0)}K`
-  }
-  return `$${valor}`
-}
 
 function CrearSolicitud({
   onContinue,
@@ -302,11 +288,6 @@ function CrearSolicitud({
           <p className="solicitud__eyebrow">Originación Individual · Paso 4</p>
           <h1>Perfil económico del solicitante</h1>
           <p className="solicitud__subtitle">Producto, ocupación y capacidad</p>
-          <p className="solicitud__lede">
-            Registra el producto y la información económica del solicitante. Con
-            estos datos se evaluará la solicitud y se sugerirá el cupo máximo
-            que el cliente podrá tomar.
-          </p>
         </div>
 
         <aside
@@ -342,7 +323,7 @@ function CrearSolicitud({
               </dd>
             </div>
             <div>
-              <dt>Sede</dt>
+              <dt>Concesionario</dt>
               <dd>{sede}</dd>
             </div>
           </dl>
@@ -359,7 +340,7 @@ function CrearSolicitud({
           >
             <strong>Solicitud registrada correctamente.</strong>
             <span>
-              Pasa a la etapa de <strong>Firma y desembolso</strong> para
+              Pasa a la etapa de <strong>Formalización y firma</strong> para
               completar el proceso.
             </span>
           </div>
@@ -485,9 +466,6 @@ function CrearSolicitud({
               <h2 id="solicitud-sec-2">
                 Información Económica del Solicitante
               </h2>
-              <p>
-                Datos declarados por el cliente para el análisis de capacidad.
-              </p>
             </div>
           </header>
 
@@ -834,20 +812,15 @@ function CrearSolicitud({
           >
             <div className="solicitud__analisis-head">
               <h3>Capacidad de pago estimada</h3>
-              <span className="solicitud__analisis-hint">
-                Cálculo estimado · no vinculante
-              </span>
             </div>
 
             <div className="solicitud__analisis-grid">
               <div className="solicitud__analisis-card solicitud__analisis-card--destacado">
-                <span className="solicitud__analisis-label">
-                  Cupo estimado a {PLAZO_FIJO_MESES} meses
-                </span>
+                <span className="solicitud__analisis-label">Cupo estimado</span>
                 <strong className="solicitud__analisis-valor">
-                  {formatoCOPCompacto(capacidad.monto)}
+                  {formatoCOP.format(capacidad.monto)}
                 </strong>
-                <small>Tope $20M · se define tras la evaluación</small>
+                <small>Cupo máximo · se define tras la evaluación</small>
               </div>
 
               <div className="solicitud__analisis-card solicitud__analisis-card--primary">

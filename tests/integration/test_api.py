@@ -40,7 +40,9 @@ ESPERADO = {
     "castigada": ("Rechazado", ["R4"]),
     "mora_30": ("Rechazado", ["E2"]),
     "perfil_bajo": ("Aprobado", ["E4"]),
-    "sin_valor_ingreso": ("Rechazado", ["RC1"]),
+    # Empleado sin Valor Ingreso: ni Quanto ni el declarado lo rescatan;
+    # sin fuente de ingreso la evaluación cae en cadena (E3 → R15 → R18/R19).
+    "sin_valor_ingreso": ("Rechazado", ["E3", "R15", "R18", "R19"]),
     "endeudamiento_alto": ("Rechazado", ["R17"]),
     # El pre-filtro SIMIT corre antes del buró: deuda pendiente -> R22
     # sin que se llegue a construir el escenario del buró.
@@ -355,6 +357,56 @@ def test_seleccion_oferta_con_monto_y_plazo(client):
     assert float(oferta["cuota_mensual"]) == cuota_esperada
 
 
+def test_seleccion_oferta_plazo_dentro_del_rango_del_producto(client):
+    """El cliente puede pactar cualquier plazo que el producto
+    comercialice (12–48), no solo hasta el término evaluado: la
+    evaluación a 36 meses no impide pagar la moto en 48. Fuera del
+    rango comercial del producto sigue rechazando con 422."""
+    db = db_session.SessionLocal()
+    aliado = AliadoFinanciero(
+        nit="900000003", nombre="Aliado Plazo", tipo="banco"
+    )
+    db.add(aliado)
+    db.flush()
+    db.add(
+        AliadoProducto(
+            id_aliado=aliado.id_aliado,
+            nombre="Producto Plazo",
+            tasa_min=1.5,
+            tasa_max=2.2,
+            plazo_min_meses=12,
+            plazo_max_meses=48,
+            monto_min=500000,
+            monto_max=20000000,
+        )
+    )
+    db.commit()
+    db.close()
+
+    id_solicitud = _crear_solicitud(client)
+    client.post(f"/api/solicitudes/{id_solicitud}/evaluar", json=CREDITO)
+    elegible = next(
+        o
+        for o in client.get(f"/api/solicitudes/{id_solicitud}/ofertas").json()
+        if o["elegible"]
+    )
+    # La evaluación corrió a 36 meses; el producto comercializa hasta 48.
+    assert elegible["plazo_ofrecido"] == 36
+
+    r = client.post(
+        f"/api/solicitudes/{id_solicitud}/ofertas/seleccionar",
+        json={"id_oferta": elegible["id_oferta"], "plazo": 48},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["plazo_ofrecido"] == 48
+
+    r = client.post(
+        f"/api/solicitudes/{id_solicitud}/ofertas/seleccionar",
+        json={"id_oferta": elegible["id_oferta"], "plazo": 60},
+    )
+    assert r.status_code == 422
+
+
 def test_oferta_vigencia_y_expiracion(client):
     """La oferta se genera con fecha_vigencia futura; si ya venció, la
     selección responde 409 y la API la reporta como expirada."""
@@ -518,6 +570,80 @@ def test_metricas_embudo_vacio(client):
     assert data["radicadas"] == 0
     assert all(e["total"] == 0 for e in data["etapas"])
     assert data["por_aliado"] == []
+    assert data["por_asesor"] == []
+
+
+def test_metricas_embudo_causales_rechazo(client):
+    """Top causales de rechazo: agrupa las causales activas de las
+    solicitudes rechazadas por código + descripción (una aprobada no
+    aporta causales)."""
+    rechazada = _crear_solicitud(client)
+    client.post(
+        f"/api/solicitudes/{rechazada}/evaluar",
+        json={**CREDITO, "escenario_mock": "embargo"},
+    )
+    aprobada = _crear_solicitud(client)
+    client.post(f"/api/solicitudes/{aprobada}/evaluar", json=CREDITO)
+
+    data = client.get("/api/solicitudes/metricas/embudo").json()
+    assert len(data["por_causal"]) == 1
+    assert data["por_causal"][0]["total"] == 1
+    assert data["por_causal"][0]["codigo"]
+    assert data["por_causal"][0]["descripcion"]
+
+    # Una segunda rechazada con la misma causa suma al mismo código.
+    otra = _crear_solicitud(client)
+    client.post(
+        f"/api/solicitudes/{otra}/evaluar",
+        json={**CREDITO, "escenario_mock": "embargo"},
+    )
+    data = client.get("/api/solicitudes/metricas/embudo").json()
+    [causal] = data["por_causal"]
+    assert causal["total"] == 2
+
+
+def test_metricas_embudo_causales_solo_admin(client, client_asesor):
+    """La causal de rechazo es dato sensible: el admin la ve en el
+    embudo; el asesor no la recibe ni en la respuesta."""
+    rechazada = client_asesor.post("/api/solicitudes", json=SOLICITUD)
+    assert rechazada.status_code == 201, rechazada.text
+    id_solicitud = rechazada.json()["id_solicitud"]
+    client_asesor.post(
+        f"/api/solicitudes/{id_solicitud}/evaluar",
+        json={**CREDITO, "escenario_mock": "embargo"},
+    )
+
+    assert client.get("/api/solicitudes/metricas/embudo").json()[
+        "por_causal"
+    ] != []
+    assert client_asesor.get("/api/solicitudes/metricas/embudo").json()[
+        "por_causal"
+    ] == []
+
+
+def test_metricas_embudo_reevaluacion(client):
+    """Rescate por re-evaluación: cuenta las solicitudes con versión
+    vigente >1 y, de ellas, las que hoy están aprobadas."""
+    data = client.get("/api/solicitudes/metricas/embudo").json()
+    assert data["reevaluacion"] == {"reevaluadas": 0, "rescatadas": 0}
+
+    rechazada = _crear_solicitud(client)
+    client.post(
+        f"/api/solicitudes/{rechazada}/evaluar",
+        json={**CREDITO, "escenario_mock": "embargo"},
+    )
+    # Una sola evaluación: todavía no entra al conteo.
+    assert client.get("/api/solicitudes/metricas/embudo").json()[
+        "reevaluacion"
+    ]["reevaluadas"] == 0
+
+    # El admin rectifica y re-evalúa: versión 2 aprobada = rescate.
+    client.put(f"/api/solicitudes/{rechazada}", json=SOLICITUD)
+    ev = client.post(f"/api/solicitudes/{rechazada}/evaluar", json=CREDITO)
+    assert ev.json()["decision"] == "Aprobado"
+
+    data = client.get("/api/solicitudes/metricas/embudo").json()
+    assert data["reevaluacion"] == {"reevaluadas": 1, "rescatadas": 1}
 
 
 def test_metricas_embudo_rango(client):

@@ -36,14 +36,6 @@
   font-weight: 600;
 }
 
-.validacion__lede {
-  max-width: 38rem;
-  margin: 0.65rem 0 0;
-  color: var(--demo-muted, var(--slate-soft));
-  font-size: 0.9rem;
-  line-height: 1.6;
-}
-
 .validacion__panel {
   display: grid;
   gap: 0.85rem;
@@ -387,8 +379,7 @@
 }
 /* Compactacion movil: el seguimiento ya muestra la etapa; se ocultan duplicados */
 @media (max-width: 680px) {
-  .validacion__eyebrow,
-  .validacion__lede {
+  .validacion__eyebrow {
     display: none;
   }
 }

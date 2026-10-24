@@ -339,3 +339,78 @@ def test_concesionario_ve_todo_su_sede_sin_importar_cedula(
         for fila in client_concesionario.get("/api/solicitudes").json()
     }
     assert id_radicada in ids
+
+
+# ------------------------------------------------------------------
+# Embudo: desglose por persona asesora
+# ------------------------------------------------------------------
+
+
+def test_embudo_desglosa_por_persona_asesora(client, client_asesor):
+    """El desglose por asesor del embudo agrupa por PERSONA (cédula en
+    la foto de la solicitud), no por cuenta: el sucesor y el
+    predecesor de la misma cuenta son filas distintas, y las legadas
+    previas al corte `persona_desde` quedan en 'titular anterior'."""
+    # 1) Radicación del titular original (foto cédula 80000001).
+    primera = client_asesor.post("/api/solicitudes", json=SOLICITUD)
+    assert primera.status_code == 201, primera.text
+    # 2) Legada sin foto de la misma cuenta, previa al cambio.
+    _radicar(_sede(), "80000999", id_asesor=_asesor_id())
+
+    # 3) Cambio de titular y una radicación del sucesor.
+    client.put(
+        f"/api/usuarios/{_id_usuario('asesor')}",
+        json={
+            "nombre": "Persona Relevo",
+            "cedula": "80000123",
+            "telefono": "3004443322",
+        },
+    )
+    nueva = client_asesor.post("/api/solicitudes", json=SOLICITUD)
+    assert nueva.status_code == 201, nueva.text
+
+    data = client.get("/api/solicitudes/metricas/embudo").json()
+    por_cedula = {f["cedula"]: f for f in data["por_asesor"]}
+    assert por_cedula["80000123"]["radicadas"] == 1
+    assert por_cedula["80000123"]["asesor"] == "Persona Relevo"
+    assert por_cedula["80000123"]["titular_anterior"] is False
+    assert por_cedula["80000001"]["radicadas"] == 1
+    # La legada pre-corte no se le achaca al sucesor ni al cédula del
+    # predecesor: forma su propio grupo 'titular anterior'.
+    [anterior] = [f for f in data["por_asesor"] if f["titular_anterior"]]
+    assert anterior["radicadas"] == 1
+    assert anterior["cedula"] is None
+    assert "anterior" in anterior["asesor"].lower()
+
+
+def test_embudo_por_asesor_cuenta_estados(client, client_asesor):
+    """Cada fila del desglose trae radicadas, aprobadas, formalizadas
+    y desembolsadas de esa persona."""
+    from tests.integration.test_api import CREDITO
+
+    radicada = client_asesor.post("/api/solicitudes", json=SOLICITUD)
+    assert radicada.status_code == 201, radicada.text
+    id_solicitud = radicada.json()["id_solicitud"]
+    r = client_asesor.post(
+        f"/api/solicitudes/{id_solicitud}/evaluar", json=CREDITO
+    )
+    assert r.status_code == 200, r.text
+
+    with SessionLocal() as db:
+        fila = db.execute(
+            text(
+                "UPDATE solicitud_credito SET fecha_hora_firma=:f, "
+                "estado='desembolsada' WHERE id_solicitud=:s"
+            ),
+            {"f": "2026-10-23 10:00:00", "s": uuid.UUID(id_solicitud).hex},
+        )
+        assert fila.rowcount == 1
+        db.commit()
+
+    data = client.get("/api/solicitudes/metricas/embudo").json()
+    [fila] = [f for f in data["por_asesor"] if f["cedula"] == "80000001"]
+    assert fila["asesor"] == "Asesor Prueba"
+    assert fila["radicadas"] == 1
+    assert fila["aprobadas"] == 1
+    assert fila["formalizadas"] == 1
+    assert fila["desembolsadas"] == 1

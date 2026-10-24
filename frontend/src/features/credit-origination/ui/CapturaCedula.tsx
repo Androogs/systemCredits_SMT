@@ -124,7 +124,7 @@ function CapturaCedula({
   useEffect(() => {
     if (!link || !qrRef.current) return
     QRCode.toCanvas(qrRef.current, link, {
-      width: 192,
+      width: 148,
       margin: 1,
       errorCorrectionLevel: 'M',
     }).catch(() => undefined)

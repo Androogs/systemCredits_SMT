@@ -11,14 +11,26 @@ import {
 import type { ResultadoEvaluacionApi } from '../api/originacionApi'
 import { esResultadoInterno } from '../api/originacionApi'
 
-/** Alineada con `cupo_sugerido_tasa_pct` de parametros.json (motor). */
-export const TASA_MENSUAL_REFERENCIA = 2
+/**
+ * Tasa comercial del producto y referencia del motor: la usura de
+ * consumo y ordinario vigente (28,59% EA → 2,1176% m.v.) menos un punto
+ * base (`tasaProductoMv`): la máxima cobrable que pasa la guarda
+ * `tasa < usura` del backend. Alineada con `cupo_sugerido_tasa_pct` de
+ * parametros.json (motor). Cuando la consulta SFC responde, la
+ * evaluación se corre con la usura vigente en vivo; esta constante es
+ * el respaldo.
+ */
+export const TASA_MENSUAL_REFERENCIA = 2.1175
 /**
  * Prima del seguro de vida deudores incluida en la cuota: % mensual
  * sobre el saldo financiado. Espeja `seguro_producto.tasa_prima`
  * del catálogo (prima vigente del negocio: 0,35 %).
  */
 export const PRIMA_SEGURO_VIDA_PCT = 0.35
+/** Gastos administrativos de originación: cargo fijo que se financia
+ *  dentro del saldo. Espeja `GASTOS_ADMINISTRATIVOS` del backend
+ *  (desembolso_service) — queda descompuesto en el crédito. */
+export const GASTOS_ADMINISTRATIVOS = 200_000
 export const RATIO_CUOTA_INGRESO_MAX = 0.4
 export const CUPO_MAXIMO = 20_000_000
 
@@ -61,7 +73,7 @@ export interface ResultadoEvaluacionCredito {
   endeudamiento?: number
   capacidadPago?: number
   disponible?: number
-  /** Ingreso final depurado por el motor y su fuente (valor_ingreso, quanto, declarado). */
+  /** Ingreso final depurado por el motor y su fuente (valor_ingreso o quanto; el declarado no es fuente). */
   ingresoFinal?: number
   fuenteIngreso?: string
   ingresoFinalSmmlv?: number

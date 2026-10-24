@@ -19,13 +19,13 @@ from backend.services.reglas_perfil import (
 @pytest.mark.parametrize(
     "score,perfil",
     [
-        (750, PerfilScore.A),
-        (749, PerfilScore.B),
-        (680, PerfilScore.B),
-        (679, PerfilScore.C),
-        (600, PerfilScore.C),
-        (599, PerfilScore.D),
-        (500, PerfilScore.D),
+        (770, PerfilScore.A),
+        (769, PerfilScore.B),
+        (700, PerfilScore.B),
+        (699, PerfilScore.C),
+        (620, PerfilScore.C),
+        (619, PerfilScore.D),
+        (520, PerfilScore.D),
     ],
 )
 def test_escalera_empleado(solicitud_empleado, parametros_demo, score, perfil):

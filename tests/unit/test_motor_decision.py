@@ -36,7 +36,7 @@ def test_aprobado_limpio(motor, solicitud_empleado, hdc_basico, vi_con_continuid
         "matriz_decision",
         "capacidad_pago",
     ]
-    assert r.parametros_usados["score_ep_1"] == 750
+    assert r.parametros_usados["score_ep_1"] == 770
 
 
 def test_perfil_bajo_aprueba_con_causal_de_trazabilidad(motor, solicitud_empleado, hdc_basico, parametros_demo):
@@ -82,7 +82,7 @@ def test_ordenar_causales_deduplica():
 @pytest.mark.parametrize(
     "ingreso,causal,tipo",
     [
-        (Decimal("5000000"), Causal.E7, Decision.RECHAZADO),  # >= 1.4 SMMLV
+        (Decimal("5000000"), Causal.E7, Decision.RECHAZADO),  # >= 1.6 SMMLV (ALTO)
         # D185: las RC (antes "Requiere Codeudor") rechazan directo.
         (Decimal("1300000"), Causal.RC3, Decision.RECHAZADO),
     ],
@@ -98,7 +98,7 @@ def test_exclusion_score_depende_del_ingreso(
     assert r.indicadores_buro["score_codigo_exclusion"] == 0
 
 
-def test_exclusion_independiente_usa_umbral_ingreso_i_2(motor, solicitud_empleado, hdc_basico, parametros_demo):
+def test_exclusion_independiente_usa_umbral_ingreso_i_1(motor, solicitud_empleado, hdc_basico, parametros_demo):
     s = solicitud_empleado.model_copy(update={"ocupacion": Ocupacion.INDEPENDIENTE})
     hdc_basico.scores = [Score(tipo="67", puntaje=Decimal("4"))]
     vi = crear_valor_ingreso(Decimal(SMMLV_PRUEBAS) * Decimal("1.8"))  # >= 1.4 pero < 2.0
@@ -136,15 +136,19 @@ def test_sin_ningun_ingreso(motor, solicitud_empleado, hdc_basico, parametros_de
 
 
 def test_ingreso_por_quanto_en_pesos(motor, solicitud_empleado, hdc_basico, parametros_demo):
-    r = _eval(motor, solicitud_empleado, hdc_basico, None, parametros_demo)
+    # FFMM siempre toma Quanto 3 Medio (PPT v4: no tienen Valor Ingreso).
+    s = solicitud_empleado.model_copy(update={"ocupacion": Ocupacion.FUERZAS_MILITARES})
+    r = _eval(motor, s, hdc_basico, None, parametros_demo)
     assert r.fuente_ingreso_final == "quanto3_medio"
     assert r.ingreso_final == Decimal("5000000.00")  # 5000 miles
 
 
-def test_ingreso_declarado_como_ultimo_recurso(motor, solicitud_empleado, hdc_basico, parametros_demo):
+def test_ingreso_declarado_no_es_fuente(motor, solicitud_empleado, hdc_basico, parametros_demo):
+    # PPT v4: el ingreso declarado se captura pero no alimenta el motor.
     hdc_basico.quanto = None
     r = _eval(motor, solicitud_empleado, hdc_basico, None, parametros_demo)
-    assert r.fuente_ingreso_final == "ingresos_declarados"
+    assert r.fuente_ingreso_final == "ninguna"
+    assert Causal.E3 in r.causales
 
 
 def test_independiente_aprobado_con_camara(motor, solicitud_empleado, hdc_basico, parametros_demo):

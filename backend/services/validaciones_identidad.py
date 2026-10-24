@@ -70,7 +70,8 @@ def advertencias_consistencia(
             )
     if valor_ingreso is not None and not valor_ingreso.aportantes:
         advertencias.append(
-            "Valor Ingreso no contiene aportantes; el ingreso final usa Quanto o los "
-            "ingresos declarados según la PPT v4."
+            "Valor Ingreso no contiene aportantes; el ingreso final cae a "
+            "Quanto 3 Medio solo para independiente no cotizante (para "
+            "empleado/pensionado Valor Ingreso = 0 rechaza)."
         )
     return advertencias

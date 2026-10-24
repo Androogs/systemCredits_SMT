@@ -89,11 +89,7 @@ const camposBase: DefinicionCampo[] = [
     ],
   },
   { id: 'fechaNacimiento', label: 'Fecha de Nacimiento', tipo: 'date' },
-  {
-    id: 'lugarNacimiento',
-    label: 'Lugar de Nacimiento',
-    tipo: 'text',
-  },
+  { id: 'lugarNacimiento', label: 'Lugar de Nacimiento', tipo: 'text' },
   {
     id: 'fechaExpedicion',
     label: 'Fecha de Expedición',
@@ -365,7 +361,7 @@ function RevisionDatos({
                 <dd>{asesor}</dd>
               </div>
               <div>
-                <dt>Sede</dt>
+                <dt>Concesionario</dt>
                 <dd>{sede}</dd>
               </div>
             </dl>
@@ -400,18 +396,14 @@ function RevisionDatos({
             <span className="revision__confianza-label">
               Nivel de Confianza Global del Procesamiento
             </span>
-            <small>
-              Basado en legibilidad del documento anverso y reverso.
-              {camposDudosos.length > 0 && (
-                <>
-                  {' '}
-                  {dudososConfirmadosCount}/{camposDudosos.length} campo
-                  {camposDudosos.length > 1 ? 's' : ''} dudoso
-                  {camposDudosos.length > 1 ? 's' : ''} confirmado
-                  {dudososConfirmadosCount === 1 ? '' : 's'} manualmente.
-                </>
-              )}
-            </small>
+            {camposDudosos.length > 0 && (
+              <small>
+                {dudososConfirmadosCount}/{camposDudosos.length} campo
+                {camposDudosos.length > 1 ? 's' : ''} dudoso
+                {camposDudosos.length > 1 ? 's' : ''} confirmado
+                {dudososConfirmadosCount === 1 ? '' : 's'} manualmente.
+              </small>
+            )}
           </div>
 
           <div className="revision__confianza-metrica">

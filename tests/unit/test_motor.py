@@ -25,12 +25,12 @@ def test_ingreso_final_sin_datos_fuerza_rechazo(solicitud_empleado):
     assert r.causal_forzada == Causal.E3  # Sin Valor Ingreso, Quanto ni declarado
 
 
-def test_ingreso_final_empleado_sin_valor_ingreso_usa_quanto(solicitud_empleado):
-    # Empleado sin Valor Ingreso usa Quanto como respaldo
+def test_ingreso_final_empleado_sin_valor_ingreso_rechaza(solicitud_empleado):
+    # PPT v4: el empleado solo usa Valor Ingreso; Quanto no lo rescata.
     r = calcular_ingreso_final(solicitud_empleado, Decimal("0"), Decimal("3000000"))
-    assert r.ingreso_final == Decimal("3000000")
-    assert r.decision_forzada is None
-    assert r.causal_forzada is None
+    assert r.ingreso_final == Decimal("0")
+    assert r.decision_forzada == Decision.RECHAZADO
+    assert r.causal_forzada == Causal.E3
 
 
 def test_perfil_score_A(solicitud_empleado, parametros_demo):
@@ -106,12 +106,12 @@ def test_motor_aprobado(solicitud_empleado, hdc_basico, parametros_demo):
     assert r.tiempo_ms >= 0
 
 
-def test_motor_empleado_sin_valor_ingreso_cae_a_gris_rc1(solicitud_empleado, hdc_basico, parametros_demo):
-    """Sin Valor Ingreso no hay continuidad → GRIS → Rechazado RC1"""
+def test_motor_empleado_sin_valor_ingreso_rechaza_e3(solicitud_empleado, hdc_basico, parametros_demo):
+    """Sin Valor Ingreso el empleado no tiene fuente de ingreso → Rechazado E3"""
     motor = MotorDecision(smmlv=1300000)
     r = motor.evaluar(solicitud_empleado, hdc_basico, None, parametros_demo)
     assert r.decision == Decision.RECHAZADO
-    assert Causal.RC1 in r.causales
+    assert Causal.E3 in r.causales
 
 
 def test_motor_score_bajo_rechaza(solicitud_empleado, hdc_basico, parametros_demo):

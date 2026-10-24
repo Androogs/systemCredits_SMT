@@ -340,6 +340,34 @@ class EmbudoAliadoResponse(BaseModel):
     valor_desembolsado: Decimal
 
 
+class EmbudoAsesorResponse(BaseModel):
+    """Producción por persona asesora: la clave es la cédula de quien
+    radicó (foto de la solicitud), no la cuenta. Las legadas sin foto
+    solo se le atribuyen al titular actual cuando son posteriores al
+    corte `persona_desde`; las anteriores forman un grupo propio
+    (`titular_anterior`) porque pertenecen a quien ya no tiene la
+    cuenta."""
+
+    asesor: str
+    cedula: str | None = None
+    titular_anterior: bool = False
+    radicadas: int
+    aprobadas: int
+    formalizadas: int
+    desembolsadas: int
+
+
+class EmbudoCausalResponse(BaseModel):
+    codigo: str
+    descripcion: str
+    total: int
+
+
+class EmbudoReevaluacionResponse(BaseModel):
+    reevaluadas: int
+    rescatadas: int
+
+
 class MetricasEmbudoResponse(BaseModel):
     """Agregados del embudo completo: originación → evaluación →
     aprobación → formalización (firma OTP) → desembolso."""
@@ -350,3 +378,6 @@ class MetricasEmbudoResponse(BaseModel):
     etapas: list[EtapaEmbudoResponse]
     por_estado: dict[str, int]
     por_aliado: list[EmbudoAliadoResponse]
+    por_asesor: list[EmbudoAsesorResponse] = []
+    por_causal: list[EmbudoCausalResponse] = []
+    reevaluacion: EmbudoReevaluacionResponse

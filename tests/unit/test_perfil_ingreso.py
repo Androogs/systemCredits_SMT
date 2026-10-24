@@ -35,15 +35,15 @@ def test_empleado_medio(parametros_demo):
 def test_empleado_bajo_con_continuidad_cumplida(parametros_demo):
     """BAJO requiere cumplir continuidad (ppt 2026, p.2)."""
     s = _solicitud(Ocupacion.EMPLEADO, TipoContrato.FIJO)
-    # meses_cont_2 = 10
-    r = asignar_perfil_ingreso(Decimal("1.2"), s, parametros_demo, meses_continuidad=10)
+    # meses_cont_2 = 12
+    r = asignar_perfil_ingreso(Decimal("1.2"), s, parametros_demo, meses_continuidad=12)
     assert r.perfil == PerfilIngreso.BAJO
 
 
 def test_empleado_gris_por_no_cumplir_continuidad(parametros_demo):
     """Ingreso suficiente pero sin continuidad → GRIS (ppt 2026, p.2)."""
     s = _solicitud(Ocupacion.EMPLEADO, TipoContrato.FIJO)
-    # 1 < meses_cont_2 = 6 → NO cumple continuidad
+    # 1 < meses_cont_2 = 12 → NO cumple continuidad
     r = asignar_perfil_ingreso(Decimal("1.6"), s, parametros_demo, meses_continuidad=1)
     assert r.perfil == PerfilIngreso.GRIS
 

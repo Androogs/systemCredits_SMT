@@ -37,7 +37,7 @@ function CabeceraEtapaOriginacion({
             <dd>{asesor}</dd>
           </div>
           <div>
-            <dt>Sede</dt>
+            <dt>Concesionario</dt>
             <dd>{sede}</dd>
           </div>
         </dl>
