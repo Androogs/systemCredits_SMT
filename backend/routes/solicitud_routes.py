@@ -174,6 +174,9 @@ def metricas_embudo(
         aliado_ids=usuario.aliado_ids() if "aliado" in usuario.roles else None,
         filtro_id_concesionario=id_concesionario,
         filtro_id_asesor=id_asesor,
+        # Las causales de rechazo son dato sensible: solo el admin
+        # las ve; el resto de roles recibe la lista vacía.
+        ver_causales=usuario.es_admin(),
     )
 
 

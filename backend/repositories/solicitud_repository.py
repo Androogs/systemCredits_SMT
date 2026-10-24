@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import String, and_, case, cast, func, or_
+from sqlalchemy import String, and_, case, cast, func, literal, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from backend.db_models.auth_models import Asesor
@@ -16,7 +16,9 @@ from backend.db_models.models import (
     CreditoFinanciacion,
     DatosLaborales,
     Desembolso,
+    EvaluacionCredito,
     OfertaCredito,
+    SolicitudCausal,
     SolicitudContactoVivienda,
     SolicitudCredito,
 )
@@ -386,6 +388,18 @@ class SolicitudRepository:
             if capacidad is not None and capacidad.plazo_cupo
             else oferta.plazo_ofrecido
         )
+        # El plazo se acota al rango comercial del producto, no al
+        # término evaluado: la evaluación sugirió un plazo, pero el
+        # cliente puede pactar cualquier término que el producto venda
+        # (la moto evaluada a 36 se puede pagar en 48). Si el producto
+        # no define límites, se conserva el tope evaluado.
+        producto = oferta.producto
+        plazo_min_producto = (
+            producto.plazo_min_meses if producto is not None else None
+        )
+        plazo_max_producto = (
+            producto.plazo_max_meses if producto is not None else None
+        )
         if monto is not None:
             if tope_monto and monto > tope_monto:
                 raise ValidacionError(
@@ -393,7 +407,19 @@ class SolicitudRepository:
                 )
             oferta.monto_aprobado = monto
         if plazo is not None:
-            if tope_plazo and plazo > tope_plazo:
+            if plazo_min_producto is not None and plazo < plazo_min_producto:
+                raise ValidacionError(
+                    f"El plazo solicitado ({plazo}) está por debajo del mínimo del producto ({plazo_min_producto} meses)."
+                )
+            if plazo_max_producto is not None and plazo > plazo_max_producto:
+                raise ValidacionError(
+                    f"El plazo solicitado ({plazo}) supera el máximo del producto ({plazo_max_producto} meses)."
+                )
+            if (
+                plazo_max_producto is None
+                and tope_plazo
+                and plazo > tope_plazo
+            ):
                 raise ValidacionError(
                     f"El plazo solicitado ({plazo}) supera el plazo ofrecido ({tope_plazo})."
                 )
@@ -627,6 +653,303 @@ class SolicitudRepository:
             }
             for nombre, con_oferta, formalizadas, desembolsadas in filas
         ]
+
+    def conteos_por_asesor(
+        self,
+        desde: datetime | None = None,
+        hasta: datetime | None = None,
+        concesionario_ids: set[int] | None = None,
+        aliado_ids: set[int] | None = None,
+        asesor_ids: set[int] | None = None,
+        asesor_cedula: str | None = None,
+        persona_desde: datetime | None = None,
+        filtro_id_concesionario: int | None = None,
+        filtro_id_asesor: int | None = None,
+    ) -> list[dict]:
+        """Producción por PERSONA asesora, no por cuenta: cada solicitud
+        se agrupa bajo la cédula de quien la radicó (`asesor_cedula`,
+        la foto del momento). Las legadas sin foto caen en el titular
+        actual solo cuando son posteriores al corte `persona_desde`;
+        si no, forman el grupo 'titular anterior' de su cuenta (clave
+        `~id_asesor`). Una cuenta sin cédula agrupa sus legadas bajo
+        `#id_asesor`: sin foto no hay cómo discriminar titulares."""
+        es_titular_actual = or_(
+            Asesor.persona_desde.is_(None),
+            SolicitudCredito.fecha_hora >= Asesor.persona_desde,
+        )
+        cuenta = cast(Asesor.id_asesor, String)
+        persona_key = case(
+            (
+                SolicitudCredito.asesor_cedula.isnot(None),
+                SolicitudCredito.asesor_cedula,
+            ),
+            (
+                es_titular_actual,
+                func.coalesce(Asesor.num_cedula, literal("#") + cuenta),
+            ),
+            else_=literal("~") + cuenta,
+        )
+        nombre_persona = case(
+            (
+                SolicitudCredito.asesor_cedula.isnot(None),
+                func.coalesce(
+                    SolicitudCredito.asesor_nombre, Asesor.nombre
+                ),
+            ),
+            (
+                es_titular_actual,
+                func.coalesce(
+                    Asesor.nombre, SolicitudCredito.asesor_nombre
+                ),
+            ),
+            else_=SolicitudCredito.asesor_nombre,
+        )
+        q = (
+            self.db.query(
+                persona_key.label("clave"),
+                func.max(nombre_persona).label("asesor"),
+                func.count(SolicitudCredito.id_solicitud),
+                func.count().filter(
+                    SolicitudCredito.decision == "aprobado"
+                ),
+                func.count().filter(
+                    SolicitudCredito.fecha_hora_firma.isnot(None)
+                ),
+                func.count().filter(
+                    SolicitudCredito.estado == "desembolsada"
+                ),
+            )
+            .outerjoin(
+                Asesor, SolicitudCredito.id_asesor == Asesor.id_asesor
+            )
+            .group_by(persona_key)
+        )
+        if concesionario_ids is not None:
+            q = q.filter(SolicitudCredito.id_concesionario.in_(concesionario_ids))
+        if asesor_ids is not None:
+            q = q.filter(
+                _predicado_radicador(asesor_ids, asesor_cedula, persona_desde)
+            )
+        if filtro_id_concesionario is not None:
+            q = q.filter(
+                SolicitudCredito.id_concesionario == filtro_id_concesionario
+            )
+        if filtro_id_asesor is not None:
+            q = q.filter(_predicado_filtro_asesor(self.db, filtro_id_asesor))
+        if aliado_ids is not None:
+            q = (
+                q.join(
+                    OfertaCredito,
+                    (
+                        OfertaCredito.id_solicitud
+                        == SolicitudCredito.id_solicitud
+                    )
+                    & OfertaCredito.seleccionada.is_(True),
+                )
+                .join(
+                    AliadoProducto,
+                    OfertaCredito.id_aliado_producto
+                    == AliadoProducto.id_aliado_producto,
+                )
+                .filter(AliadoProducto.id_aliado.in_(aliado_ids))
+            )
+        if desde is not None:
+            q = q.filter(SolicitudCredito.fecha_hora >= desde)
+        if hasta is not None:
+            q = q.filter(SolicitudCredito.fecha_hora < hasta)
+        filas = q.all()
+        resultado = []
+        for clave, nombre, radicadas, aprobadas, formalizadas, desembolsadas in filas:
+            if clave is None:
+                resultado.append(
+                    {
+                        "asesor": nombre or "Sin asesor",
+                        "cedula": None,
+                        "titular_anterior": False,
+                        "radicadas": radicadas,
+                        "aprobadas": aprobadas,
+                        "formalizadas": formalizadas,
+                        "desembolsadas": desembolsadas,
+                    }
+                )
+            elif clave.startswith("~"):
+                resultado.append(
+                    {
+                        "asesor": (
+                            f"{nombre} (titular anterior)"
+                            if nombre
+                            else "Titular anterior"
+                        ),
+                        "cedula": None,
+                        "titular_anterior": True,
+                        "radicadas": radicadas,
+                        "aprobadas": aprobadas,
+                        "formalizadas": formalizadas,
+                        "desembolsadas": desembolsadas,
+                    }
+                )
+            elif clave.startswith("#"):
+                resultado.append(
+                    {
+                        "asesor": nombre or "Sin asesor",
+                        "cedula": None,
+                        "titular_anterior": False,
+                        "radicadas": radicadas,
+                        "aprobadas": aprobadas,
+                        "formalizadas": formalizadas,
+                        "desembolsadas": desembolsadas,
+                    }
+                )
+            else:
+                resultado.append(
+                    {
+                        "asesor": nombre or "Asesor",
+                        "cedula": clave,
+                        "titular_anterior": False,
+                        "radicadas": radicadas,
+                        "aprobadas": aprobadas,
+                        "formalizadas": formalizadas,
+                        "desembolsadas": desembolsadas,
+                    }
+                )
+        resultado.sort(key=lambda f: (-f["radicadas"], f["asesor"]))
+        return resultado
+
+    def conteos_por_causal(
+        self,
+        desde: datetime | None = None,
+        hasta: datetime | None = None,
+        concesionario_ids: set[int] | None = None,
+        aliado_ids: set[int] | None = None,
+        asesor_ids: set[int] | None = None,
+        asesor_cedula: str | None = None,
+        persona_desde: datetime | None = None,
+        filtro_id_concesionario: int | None = None,
+        filtro_id_asesor: int | None = None,
+    ) -> list[dict]:
+        """Causales de rechazo vigentes agrupadas por código. Solo
+        cuentan solicitudes cuya decisión actual es 'rechazado': la
+        re-evaluación desactiva las causales viejas, así la métrica
+        refleja el motivo por el que hoy se está perdiendo gente."""
+        q = (
+            self.db.query(
+                SolicitudCausal.codigo,
+                SolicitudCausal.descripcion,
+                func.count(SolicitudCausal.id_solicitud_causal),
+            )
+            .join(
+                SolicitudCredito,
+                SolicitudCausal.id_solicitud == SolicitudCredito.id_solicitud,
+            )
+            .filter(
+                SolicitudCausal.activa.is_(True),
+                SolicitudCredito.decision == "rechazado",
+            )
+            .group_by(SolicitudCausal.codigo, SolicitudCausal.descripcion)
+        )
+        if concesionario_ids is not None:
+            q = q.filter(SolicitudCredito.id_concesionario.in_(concesionario_ids))
+        if asesor_ids is not None:
+            q = q.filter(
+                _predicado_radicador(asesor_ids, asesor_cedula, persona_desde)
+            )
+        if filtro_id_concesionario is not None:
+            q = q.filter(
+                SolicitudCredito.id_concesionario == filtro_id_concesionario
+            )
+        if filtro_id_asesor is not None:
+            q = q.filter(_predicado_filtro_asesor(self.db, filtro_id_asesor))
+        if aliado_ids is not None:
+            q = (
+                q.join(
+                    OfertaCredito,
+                    (
+                        OfertaCredito.id_solicitud
+                        == SolicitudCredito.id_solicitud
+                    )
+                    & OfertaCredito.seleccionada.is_(True),
+                )
+                .join(
+                    AliadoProducto,
+                    OfertaCredito.id_aliado_producto
+                    == AliadoProducto.id_aliado_producto,
+                )
+                .filter(AliadoProducto.id_aliado.in_(aliado_ids))
+            )
+        if desde is not None:
+            q = q.filter(SolicitudCredito.fecha_hora >= desde)
+        if hasta is not None:
+            q = q.filter(SolicitudCredito.fecha_hora < hasta)
+        q = q.order_by(
+            func.count(SolicitudCausal.id_solicitud_causal).desc()
+        ).limit(8)
+        return [
+            {"codigo": codigo, "descripcion": descripcion, "total": total}
+            for codigo, descripcion, total in q.all()
+        ]
+
+    def conteos_reevaluacion(
+        self,
+        desde: datetime | None = None,
+        hasta: datetime | None = None,
+        concesionario_ids: set[int] | None = None,
+        aliado_ids: set[int] | None = None,
+        asesor_ids: set[int] | None = None,
+        asesor_cedula: str | None = None,
+        persona_desde: datetime | None = None,
+        filtro_id_concesionario: int | None = None,
+        filtro_id_asesor: int | None = None,
+    ) -> dict:
+        """Rescate por re-evaluación: solicitudes cuya evaluación
+        vigente es versión >1 (rectificadas y vueltas a evaluar) y,
+        de ellas, cuántas quedaron aprobadas al final."""
+        q = self.db.query(
+            func.count(SolicitudCredito.id_solicitud),
+            func.count().filter(SolicitudCredito.decision == "aprobado"),
+        ).join(
+            EvaluacionCredito,
+            (
+                EvaluacionCredito.id_solicitud
+                == SolicitudCredito.id_solicitud
+            )
+            & EvaluacionCredito.vigente.is_(True)
+            & (EvaluacionCredito.version > 1),
+        )
+        if concesionario_ids is not None:
+            q = q.filter(SolicitudCredito.id_concesionario.in_(concesionario_ids))
+        if asesor_ids is not None:
+            q = q.filter(
+                _predicado_radicador(asesor_ids, asesor_cedula, persona_desde)
+            )
+        if filtro_id_concesionario is not None:
+            q = q.filter(
+                SolicitudCredito.id_concesionario == filtro_id_concesionario
+            )
+        if filtro_id_asesor is not None:
+            q = q.filter(_predicado_filtro_asesor(self.db, filtro_id_asesor))
+        if aliado_ids is not None:
+            q = (
+                q.join(
+                    OfertaCredito,
+                    (
+                        OfertaCredito.id_solicitud
+                        == SolicitudCredito.id_solicitud
+                    )
+                    & OfertaCredito.seleccionada.is_(True),
+                )
+                .join(
+                    AliadoProducto,
+                    OfertaCredito.id_aliado_producto
+                    == AliadoProducto.id_aliado_producto,
+                )
+                .filter(AliadoProducto.id_aliado.in_(aliado_ids))
+            )
+        if desde is not None:
+            q = q.filter(SolicitudCredito.fecha_hora >= desde)
+        if hasta is not None:
+            q = q.filter(SolicitudCredito.fecha_hora < hasta)
+        fila = q.one()
+        return {"reevaluadas": fila[0], "rescatadas": fila[1]}
 
     def productos_activos(self) -> list[AliadoProducto]:
         return (
