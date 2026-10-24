@@ -11,7 +11,7 @@ from backend.services.motor_parametros import PARAMETROS_DEFAULT, MotorParametro
 
 def test_defaults_ppt_v4():
     p = MotorParametros()
-    assert (p.score_ep_1, p.score_ep_2, p.score_ep_3, p.score_ep_4) == (750, 680, 600, 500)
+    assert (p.score_ep_1, p.score_ep_2, p.score_ep_3, p.score_ep_4) == (770, 700, 620, 520)
     assert (p.score_if_1, p.score_if_2, p.score_if_3, p.score_if_4) == (770, 700, 620, 520)
     assert (p.ingreso_e_1, p.ingreso_e_2, p.ingreso_e_3) == (Decimal("1.6"), Decimal("1.4"), Decimal("1.0"))
     assert (p.ingreso_i_1, p.ingreso_i_2, p.ingreso_i_3, p.ingreso_i_4) == (
@@ -20,7 +20,7 @@ def test_defaults_ppt_v4():
         Decimal("1.6"),
         Decimal("1.4"),
     )
-    assert (p.meses_cont_1, p.meses_cont_2) == (5, 10)
+    assert (p.meses_cont_1, p.meses_cont_2) == (6, 12)
     assert (p.anios_cam_1, p.anios_cam_2, p.anios_cam_3, p.anios_cam_4) == (1, 2, 3, 4)
     assert (p.edad_minima_be, p.edad_maxima_be) == (18, 66)
     assert (p.endeu_1, p.endeu_2) == (90, 86)
@@ -37,7 +37,7 @@ def test_defaults_ppt_v4():
     assert p.capacidad_pago_pct_region_andina == 72
     assert p.capacidad_pago_pct_region_pacifico == 69
     assert p.saldo_mora_be == 300000
-    assert (p.cupo_sugerido_tasa_pct, p.cupo_sugerido_plazo_meses, p.cupo_sugerido_tope) == (2, 24, 20000000)
+    assert (p.cupo_sugerido_tasa_pct, p.cupo_sugerido_plazo_meses, p.cupo_sugerido_tope) == (Decimal("2.1175"), 24, 20000000)
     assert p.scores_exclusion == [0, 4]
     assert p.calificaciones_negativas == ["C", "D", "E", "K"]
 
@@ -52,7 +52,7 @@ def test_archivo_parametros_del_proyecto_coincide_con_defaults():
 @pytest.mark.parametrize(
     "cambio",
     [
-        {"score_ep_2": 760},  # escalera no descendente
+        {"score_ep_2": 780},  # escalera no descendente
         {"ingreso_i_4": 1.7},  # gris por encima de bajo
         {"anios_cam_1": 5},  # cámara no ascendente
         {"endeu_2": 95},  # estudio >= rechazo
@@ -94,7 +94,7 @@ def test_archivo_parcial_completa_con_defaults(tmp_path):
     ruta = tmp_path / "p.json"
     ruta.write_text(json.dumps({"endeu_1": 88}))
     p = ParametrosStore(ruta).cargar()
-    assert p.endeu_1 == 88 and p.score_ep_1 == 750
+    assert p.endeu_1 == 88 and p.score_ep_1 == 770
 
 
 def test_json_invalido(tmp_path):
@@ -118,7 +118,7 @@ def test_override_por_entorno(tmp_path, monkeypatch):
 
 def test_snapshot_es_json_numerico():
     snap = MotorParametros().snapshot()
-    assert snap["score_ep_1"] == 750 and isinstance(snap["score_ep_1"], int)
+    assert snap["score_ep_1"] == 770 and isinstance(snap["score_ep_1"], int)
     assert snap["ingreso_e_1"] == 1.6
     json.dumps(snap)
 

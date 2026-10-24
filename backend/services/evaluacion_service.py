@@ -13,7 +13,8 @@ Fuentes de reportes:
 
 Ahorro de consumo (BRD): con consulta en línea, si HDC+ ya dispara una
 causal de RECHAZO, no se consulta Valor Ingreso; el motor completa la
-evaluación con Quanto / ingresos declarados y lo deja advertido.
+evaluación con la fuente aplicable a la ocupación (VI o Quanto) y lo
+deja advertido.
 
 Persistencia:
     - Siempre: fila en motor_evaluacion_auditoria.

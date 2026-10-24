@@ -163,10 +163,14 @@ class MotorDecision:
 
         # --- 2. Exclusión de score 0 / 4 ---
         if exclusion.es_exclusion:
-            # Score 0 o 4 -> Estudio o Codeudor según el ingreso final en SMMLV
-            umbral_exclusion = (
-                parametros.ingreso_i_2 if solicitud.ocupacion == Ocupacion.INDEPENDIENTE else parametros.ingreso_e_2
-            )
+            # "Sin Experiencia con Ingreso Alto" solo aplica cuando el
+            # ingreso alcanza el perfil ALTO de su ocupación (PPT v4).
+            if solicitud.ocupacion == Ocupacion.INDEPENDIENTE:
+                umbral_exclusion = parametros.ingreso_i_1
+            elif solicitud.ocupacion in (Ocupacion.PENSIONADO, Ocupacion.FUERZAS_MILITARES):
+                umbral_exclusion = parametros.ingreso_pf_1
+            else:
+                umbral_exclusion = parametros.ingreso_e_1
             causal_exclusion = Causal.E7 if ingreso_smmlv >= umbral_exclusion else Causal.RC3
             causales.append(causal_exclusion)  # La salida pública continúa siendo binaria
             traza.append(

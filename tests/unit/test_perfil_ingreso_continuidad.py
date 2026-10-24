@@ -39,8 +39,8 @@ def parametros_ppt(parametros_demo: ParametrosIP) -> ParametrosIP:
     """
     return parametros_demo.model_copy(
         update={
-            "meses_cont_1": 5,
-            "meses_cont_2": 10,
+            "meses_cont_1": 6,
+            "meses_cont_2": 12,
             "ingreso_e_1": Decimal("1.6"),
             "ingreso_e_2": Decimal("1.4"),
             "ingreso_e_3": Decimal("1.0"),
@@ -79,12 +79,12 @@ class TestContinuidadFijoObra:
     # ---- Cumple continuidad → perfil por banda de ingreso ----
 
     def test_cumple_continuidad_ingreso_alto(self, tipo_contrato, parametros_ppt):
-        # meses_continuidad = 10 == meses_cont_2 → cumple
+        # meses_continuidad = 12 == meses_cont_2 → cumple
         r = asignar_perfil_ingreso(
             ingreso_final_smmlv=Decimal("2.0"),
             solicitud=_solicitud(tipo_contrato),
             params=parametros_ppt,
-            meses_continuidad=10,
+            meses_continuidad=12,
         )
         assert r.perfil == PerfilIngreso.ALTO
         assert r.decision_forzada is None
@@ -95,7 +95,7 @@ class TestContinuidadFijoObra:
             ingreso_final_smmlv=Decimal("1.5"),
             solicitud=_solicitud(tipo_contrato),
             params=parametros_ppt,
-            meses_continuidad=10,
+            meses_continuidad=12,
         )
         assert r.perfil == PerfilIngreso.MEDIO
 
@@ -105,12 +105,12 @@ class TestContinuidadFijoObra:
             ingreso_final_smmlv=Decimal("1.2"),
             solicitud=_solicitud(tipo_contrato),
             params=parametros_ppt,
-            meses_continuidad=10,
+            meses_continuidad=12,
         )
         assert r.perfil == PerfilIngreso.BAJO
 
     def test_cumple_continuidad_sobre_umbral_no_cambia(self, tipo_contrato, parametros_ppt):
-        # 15 >= 10 → mismo resultado que con 10, no hay bonus por exceso
+        # 15 >= 12 → mismo resultado que con 12, no hay bonus por exceso
         r = asignar_perfil_ingreso(
             ingreso_final_smmlv=Decimal("2.0"),
             solicitud=_solicitud(tipo_contrato),
@@ -122,12 +122,12 @@ class TestContinuidadFijoObra:
     # ---- NO cumple continuidad → GRIS si el ingreso alcanza el piso ----
 
     def test_no_cumple_continuidad_un_mes_antes_del_umbral_da_gris(self, tipo_contrato, parametros_ppt):
-        # 9 = meses_cont_2 - 1 → NO cumple, ingreso alto → GRIS
+        # 11 = meses_cont_2 - 1 → NO cumple, ingreso alto → GRIS
         r = asignar_perfil_ingreso(
             ingreso_final_smmlv=Decimal("2.0"),
             solicitud=_solicitud(tipo_contrato),
             params=parametros_ppt,
-            meses_continuidad=9,
+            meses_continuidad=11,
         )
         assert r.perfil == PerfilIngreso.GRIS
         assert r.decision_forzada is None  # GRIS no rechaza aquí; se decide en cruce
@@ -189,30 +189,29 @@ class TestContinuidadIndefinido:
             ingreso_final_smmlv=Decimal("2.0"),
             solicitud=_solicitud(TipoContrato.INDEFINIDO),
             params=parametros_ppt,
-            meses_continuidad=5,  # == meses_cont_1
+            meses_continuidad=6,  # == meses_cont_1
         )
         assert r.perfil == PerfilIngreso.ALTO
 
     def test_no_cumple_meses_cont_1_da_gris(self, parametros_ppt):
-        # 4 < 5 → no cumple, pero sí cumpliría el 10 de FIJO (por si acaso
-        # se mezclaran umbrales). Debe dar GRIS por el umbral 1.
-        r = asignar_perfil_ingreso(
-            ingreso_final_smmlv=Decimal("2.0"),
-            solicitud=_solicitud(TipoContrato.INDEFINIDO),
-            params=parametros_ppt,
-            meses_continuidad=4,
-        )
-        assert r.perfil == PerfilIngreso.GRIS
-
-    def test_no_usa_umbral_de_fijo(self, parametros_ppt):
-        """INDEFINIDO con 5 meses NO debe caer al umbral 10 de FIJO."""
+        # 5 < 6 → no cumple. Debe dar GRIS por el umbral 1.
         r = asignar_perfil_ingreso(
             ingreso_final_smmlv=Decimal("2.0"),
             solicitud=_solicitud(TipoContrato.INDEFINIDO),
             params=parametros_ppt,
             meses_continuidad=5,
         )
-        assert r.perfil == PerfilIngreso.ALTO  # si usara umbral 10, daría GRIS
+        assert r.perfil == PerfilIngreso.GRIS
+
+    def test_no_usa_umbral_de_fijo(self, parametros_ppt):
+        """INDEFINIDO con 6 meses NO debe caer al umbral 12 de FIJO."""
+        r = asignar_perfil_ingreso(
+            ingreso_final_smmlv=Decimal("2.0"),
+            solicitud=_solicitud(TipoContrato.INDEFINIDO),
+            params=parametros_ppt,
+            meses_continuidad=6,
+        )
+        assert r.perfil == PerfilIngreso.ALTO  # si usara umbral 12, daría GRIS
 
 
 # ---------------------------------------------------------------------------

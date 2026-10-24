@@ -70,11 +70,11 @@ class MotorParametros(BaseModel):
     codigos_reestructuracion: list[str] = Field(default_factory=lambda: ["12", "1", "2", "5", "6"])
     tokens_reestructuracion: list[str] = Field(default_factory=lambda: ["REESTRUCT", "REFINANC", "RENEGOCI"])
 
-    # --- Perfil de score: Empleado / Pensionado (BRD 2.4.5) ---
-    score_ep_1: Decimal = Decimal("750")  # >= -> A
-    score_ep_2: Decimal = Decimal("680")  # >= -> B
-    score_ep_3: Decimal = Decimal("600")  # >= -> C
-    score_ep_4: Decimal = Decimal("500")  # >= -> D ; < -> Rechazo
+    # --- Perfil de score: Empleado / Pensionado (PPT v4) ---
+    score_ep_1: Decimal = Decimal("770")  # >= -> A
+    score_ep_2: Decimal = Decimal("700")  # >= -> B
+    score_ep_3: Decimal = Decimal("620")  # >= -> C
+    score_ep_4: Decimal = Decimal("520")  # >= -> D ; < -> Rechazo
     # --- Perfil de score: Independiente / Fuerzas Militares ---
     score_if_1: Decimal = Decimal("770")
     score_if_2: Decimal = Decimal("700")
@@ -100,8 +100,8 @@ class MotorParametros(BaseModel):
     ingreso_i_4: Decimal = Decimal("1.4")  # Independiente GRIS (> exclusivo)
 
     # --- Continuidad laboral (Valor Ingreso), meses ---
-    meses_cont_1: int = Field(5, ge=0)  # Contrato indefinido
-    meses_cont_2: int = Field(10, ge=0)  # Contrato fijo / obra o labor
+    meses_cont_1: int = Field(6, ge=0)  # Contrato indefinido
+    meses_cont_2: int = Field(12, ge=0)  # Contrato fijo / obra o labor
 
     # --- Años mínimos de Cámara de Comercio (Independiente) ---
     anios_cam_1: Decimal = Decimal("1")  # perfil ALTO
@@ -148,7 +148,9 @@ class MotorParametros(BaseModel):
     capacidad_pago_limite_ingresos_pct: Decimal = Decimal("0.85")  # No puede exceder 85% de los ingresos
     
     # --- Cupo sugerido (PPT v4) ---
-    cupo_sugerido_tasa_pct: Decimal = Decimal("2")
+    # Tasa del producto: usura de consumo y ordinario (28,59% EA → 2,1176%
+    # m.v.) menos un punto base — queda estrictamente bajo la usura.
+    cupo_sugerido_tasa_pct: Decimal = Decimal("2.1175")
     cupo_sugerido_plazo_meses: int = Field(24, ge=1)
     cupo_sugerido_tope: Decimal = Field(Decimal("20000000"), gt=0)
     

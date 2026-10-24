@@ -24,7 +24,7 @@ SMMLV_PRUEBAS = 1_750_905  # valor fijo para que los cálculos de las pruebas no
 
 @pytest.fixture
 def parametros_demo() -> MotorParametros:
-    """Parámetros por defecto del motor (PPT v4): 750/680/600/500, 1.6/1.4/1.0, etc."""
+    """Parámetros por defecto del motor (PPT v4): 770/700/620/520, 1.6/1.4/1.0, etc."""
     return MotorParametros()
 
 
