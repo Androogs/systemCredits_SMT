@@ -26,7 +26,11 @@ import CampoNumerico from '../../../shared/ui/CampoNumerico'
 import type { ResultadoEvaluacionCredito } from '../model/resultado-evaluacion'
 import { PRIMA_SEGURO_VIDA_PCT } from '../model/resultado-evaluacion'
 import type { SimulacionPrevia } from '../model/borrador'
-import { CONCESIONARIOS, MARCAS_VEHICULO } from '../model/concesionarios'
+import {
+  CONCESIONARIOS,
+  MARCAS_VEHICULO,
+  REFERENCIAS_VEHICULO,
+} from '../model/concesionarios'
 import {
   generarOtp,
   guardarDatosFormalizacion,
@@ -61,6 +65,8 @@ interface ResultadoCreditoProps {
   formalizacionIniciada: boolean
   onModificar: () => void
   onFormalizar: (oferta: OfertaSeleccionada) => void
+  /** Cierra el proceso tras un rechazo: el veredicto ya quedó persistido. */
+  onFinalizar?: () => void
   /** Simulación de origen: precarga valor de la moto y plazo. */
   simulacion?: SimulacionPrevia
   /** Datos del paso 4: la ocupación adapta la sección laboral y la empresa
@@ -97,6 +103,7 @@ function ResultadoCredito({
   formalizacionIniciada,
   onModificar,
   onFormalizar,
+  onFinalizar,
   simulacion,
   solicitud,
   compacto = false,
@@ -262,10 +269,22 @@ function ResultadoCredito({
   const saldoInvalido = saldoFinanciar <= 0
   const superaCupo = cupoMaximo > 0 && saldoFinanciar > cupoMaximo
 
-  // El plazo se pacta dentro del rango comercial del producto (12–48):
-  // el término evaluado era solo la sugerencia inicial. El backend
-  // valida contra el catálogo del producto.
-  const plazoMaximo = 48
+  // El plazo que el cliente puede tomar nunca supera al ofertado: el
+  // motor evaluó ese término (capacidad.plazo_cupo) y el backend lo
+  // rechaza con 422. Si el simulador traía más, se topa aquí.
+  useEffect(() => {
+    if (ofertaElegible?.plazo_ofrecido) {
+      setPlazo((p) =>
+        p
+          ? Math.min(p, ofertaElegible.plazo_ofrecido!)
+          : ofertaElegible.plazo_ofrecido!,
+      )
+    }
+  }, [ofertaElegible?.plazo_ofrecido])
+
+  // El máximo de plazo no es un rango comercial quemado: es el plazo
+  // que el motor evaluó y la oferta fijó (el cliente solo puede bajar).
+  const plazoMaximo = ofertaElegible?.plazo_ofrecido ?? 48
   const plazoInvalido = plazo < 12 || plazo > plazoMaximo
   const cuotaMensual = useMemo(
     // La cuota del pagaré/carta es la total: anualidad + prima de
@@ -562,6 +581,11 @@ function ResultadoCredito({
           <section className="resultado-credito__oferta">
             <header>
               <h2>Información de crédito</h2>
+              <span>
+                {resultado.esDemo
+                  ? 'Aprobado viable · Demostración'
+                  : `Aprobado · ${ofertaElegible ? 'Oferta real generada' : 'Evaluación real'}`}
+              </span>
             </header>
 
             <div className="resultado-credito__seleccion">
@@ -742,8 +766,14 @@ function ResultadoCredito({
                       value={referencia}
                       disabled={formalizacionIniciada || confirmando}
                       placeholder="PULSAR NS 160FI UG"
+                      list="rc-referencias"
                       onChange={(e) => setReferencia(e.target.value)}
                     />
+                    <datalist id="rc-referencias">
+                      {(REFERENCIAS_VEHICULO[marca] ?? []).map((r) => (
+                        <option key={r} value={r} />
+                      ))}
+                    </datalist>
                   </label>
                   <label>
                     Modelo (año)
@@ -925,7 +955,8 @@ function ResultadoCredito({
               )}
               {pasoFirma === 'vehiculo' && plazoInvalido && (
                 <p className="resultado-credito__plazo-error" role="alert">
-                  El plazo debe estar entre 12 y {plazoMaximo} meses.
+                  El plazo debe estar entre 12 y {plazoMaximo} meses, el término
+                  que la evaluación aprobó.
                 </p>
               )}
               {pasoFirma === 'vehiculo' && saldoInvalido && (
@@ -1168,6 +1199,16 @@ function ResultadoCredito({
           <ArrowLeft size={15} aria-hidden="true" />
           {rechazado ? 'Reabrir solicitud' : 'Modificar oferta'}
         </button>
+        {rechazado && onFinalizar && (
+          <button
+            className="resultado-credito__primario"
+            type="button"
+            onClick={onFinalizar}
+          >
+            Finalizar proceso
+            <Check size={15} aria-hidden="true" />
+          </button>
+        )}
         {aprobado && pasoFirma === 'vehiculo' && (
           <button
             className="resultado-credito__primario"
