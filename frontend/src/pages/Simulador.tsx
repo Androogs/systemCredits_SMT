@@ -6,14 +6,22 @@ import Tarjeta from '../shared/ui/Tarjeta'
 import CampoNumerico from '../shared/ui/CampoNumerico'
 import Boton from '../shared/ui/Boton'
 import { currency } from '../shared/lib/formatters'
-import { cuotaAnualidad, tablaAmortizacion } from '../shared/lib/finanzas'
+import {
+  cuotaAnualidad,
+  tablaAmortizacion,
+  tasaProductoMv,
+} from '../shared/lib/finanzas'
 import { useCuentaAscendente } from '../shared/lib/useCuentaAscendente'
 import {
   listarProductos,
   tasaMercado,
   type ProductoApi,
 } from '../features/credit-origination/api/originacionApi'
-import { PRIMA_SEGURO_VIDA_PCT } from '../features/credit-origination/model/resultado-evaluacion'
+import {
+  GASTOS_ADMINISTRATIVOS,
+  PRIMA_SEGURO_VIDA_PCT,
+  TASA_MENSUAL_REFERENCIA,
+} from '../features/credit-origination/model/resultado-evaluacion'
 import type { SimulacionPrevia } from '../features/credit-origination/model/borrador'
 import { Calculator, ArrowRight, AlertTriangle, Landmark } from 'lucide-react'
 
@@ -38,7 +46,7 @@ function plazosDel(min: number, max: number): number[] {
 // (28,59% EA → (1+TEA)^(1/12)−1 = 2,1176% m.v. exacto) truncada a 4
 // decimales, para quedar siempre un pelo por debajo del límite legal.
 // Si la consulta SFC responde, la tasa operativa se recalcula en vivo.
-const TASA_PRODUCTO = 2.1176
+const TASA_PRODUCTO = TASA_MENSUAL_REFERENCIA
 
 const initial = {
   valorVehiculo: 10_000_000,
@@ -103,11 +111,14 @@ export default function Simulador() {
     setForm((prev) => ({ ...prev, [key]: n ?? 0 }))
 
   const resultado = useMemo(() => {
-    // Saldo a financiar = valor moto + adicionales − cuota inicial.
-    // El cargo administrativo es interno: no entra en la vista del asesor.
+    // Saldo a financiar = valor moto + adicionales + gastos
+    // administrativos de originación − cuota inicial.
     const montoFinanciar = Math.max(
       0,
-      form.valorVehiculo + form.adicionales - form.cuotaInicial,
+      form.valorVehiculo +
+        form.adicionales +
+        GASTOS_ADMINISTRATIVOS -
+        form.cuotaInicial,
     )
     const plazoSeguro = Math.max(1, form.plazoMeses)
     const cuotaFinanciacion = cuotaAnualidad(
@@ -146,32 +157,29 @@ export default function Simulador() {
     }
   }, [form])
 
-  // Tasa operativa: usura de consumo y ordinario en m.v. truncada a 4
-  // decimales — siempre por debajo del límite legal (la conversión da
-  // 2,11760008…%, el floor deja 2,1176%). Se aplica a todo monto: la
-  // tasa del producto es una sola, referenciada a la usura ordinaria.
-  const usuraOperativa = useMemo(() => {
-    const usuraEa = consultaTasa.data?.ordinario.usura_ea
-    if (!usuraEa) return null
-    const mv = ((1 + usuraEa / 100) ** (1 / 12) - 1) * 100
-    return Math.floor(mv * 1e4) / 1e4
-  }, [consultaTasa.data])
+  // Tasa operativa: la del producto — usura de consumo y ordinario en
+  // m.v. menos un punto base (2,1175% cuando la usura es 28,59% EA) —
+  // para quedar estrictamente bajo el límite que valida la evaluación.
+  const tasaOperativa = useMemo(
+    () => tasaProductoMv(consultaTasa.data?.ordinario.usura_ea),
+    [consultaTasa.data],
+  )
 
-  // Tope editable: nunca sobre la usura operativa; el rango comercial
-  // del producto puede acotar más por debajo.
+  // Tope editable: nunca sobre la tasa del producto; el rango comercial
+  // puede acotar más por debajo.
   const tasaMaxEfectiva =
-    usuraOperativa != null
-      ? Math.min(rangos.tasaMax, usuraOperativa)
+    tasaOperativa != null
+      ? Math.min(rangos.tasaMax, tasaOperativa)
       : rangos.tasaMax
 
   // Precarga la tasa operativa apenas llega la referencia oficial;
   // respeta la edición manual del asesor.
   const tasaEditadaRef = useRef(false)
   useEffect(() => {
-    if (usuraOperativa != null && !tasaEditadaRef.current) {
-      setForm((prev) => ({ ...prev, tasaMensual: usuraOperativa }))
+    if (tasaOperativa != null && !tasaEditadaRef.current) {
+      setForm((prev) => ({ ...prev, tasaMensual: tasaOperativa }))
     }
-  }, [usuraOperativa])
+  }, [tasaOperativa])
 
   const alertaMonto =
     resultado.montoFinanciar > rangos.montoMax
@@ -205,7 +213,7 @@ export default function Simulador() {
     <>
       <Encabezado
         title="Simulador de crédito"
-        subtitle="Cuota francesa sobre el saldo a financiar: moto + adicionales − cuota inicial"
+        subtitle="Cuota francesa sobre el saldo a financiar: moto + adicionales + gastos administrativos − cuota inicial"
       />
       <div className="p-4 sm:p-6 space-y-6 overflow-auto">
         <div className="grid gap-5 lg:grid-cols-5">
@@ -305,6 +313,12 @@ export default function Simulador() {
                   </dt>
                   <dd className="font-medium tabular-nums">
                     {currency(form.adicionales)}
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3 py-2">
+                  <dt className="text-cyan-100/70">Gastos administrativos</dt>
+                  <dd className="font-medium tabular-nums">
+                    {currency(GASTOS_ADMINISTRATIVOS)}
                   </dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-3 py-2">

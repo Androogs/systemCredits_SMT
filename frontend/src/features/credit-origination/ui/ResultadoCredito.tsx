@@ -24,7 +24,10 @@ import { MODO_DEMO } from '../../../env'
 import Alerta from '../../../shared/ui/Alerta'
 import CampoNumerico from '../../../shared/ui/CampoNumerico'
 import type { ResultadoEvaluacionCredito } from '../model/resultado-evaluacion'
-import { PRIMA_SEGURO_VIDA_PCT } from '../model/resultado-evaluacion'
+import {
+  GASTOS_ADMINISTRATIVOS,
+  PRIMA_SEGURO_VIDA_PCT,
+} from '../model/resultado-evaluacion'
 import type { SimulacionPrevia } from '../model/borrador'
 import { CONCESIONARIOS, MARCAS_VEHICULO } from '../model/concesionarios'
 import {
@@ -240,22 +243,9 @@ function ResultadoCredito({
   const [impuestos, setImpuestos] = useState<number | null>(0)
   const [avalPct, setAvalPct] = useState<number | null>(0)
 
-  // El plazo que el cliente puede tomar nunca supera al ofertado: el
-  // motor evaluó ese término (capacidad.plazo_cupo) y el backend lo
-  // rechaza con 422. Si el simulador traía más, se topa aquí.
-  useEffect(() => {
-    if (ofertaElegible?.plazo_ofrecido) {
-      setPlazo((p) =>
-        p
-          ? Math.min(p, ofertaElegible.plazo_ofrecido!)
-          : ofertaElegible.plazo_ofrecido!,
-      )
-    }
-  }, [ofertaElegible?.plazo_ofrecido])
-
   // Saldo a financiar = valor neto de la moto tras descuentos, más los
-  // adicionales financiados (accesorios, matrícula, SOAT, impuestos) y el
-  // aval.
+  // adicionales financiados (accesorios, matrícula, SOAT, impuestos),
+  // el aval y los gastos administrativos de originación.
   const descuentoAplicado =
     tipoDescuento === 'valor'
       ? (descuento ?? 0)
@@ -268,14 +258,16 @@ function ResultadoCredito({
       (matricula ?? 0) +
       (soat ?? 0) +
       (impuestos ?? 0) +
-      avalValor,
+      avalValor +
+      GASTOS_ADMINISTRATIVOS,
   )
   const saldoInvalido = saldoFinanciar <= 0
   const superaCupo = cupoMaximo > 0 && saldoFinanciar > cupoMaximo
 
-  // El máximo de plazo no es un rango comercial quemado: es el plazo
-  // que el motor evaluó y la oferta fijó (el cliente solo puede bajar).
-  const plazoMaximo = ofertaElegible?.plazo_ofrecido ?? 48
+  // El plazo se pacta dentro del rango comercial del producto (12–48):
+  // el término evaluado era solo la sugerencia inicial. El backend
+  // valida contra el catálogo del producto.
+  const plazoMaximo = 48
   const plazoInvalido = plazo < 12 || plazo > plazoMaximo
   const cuotaMensual = useMemo(
     // La cuota del pagaré/carta es la total: anualidad + prima de
@@ -289,8 +281,29 @@ function ResultadoCredito({
           ),
     [saldoFinanciar, plazo, tasaOferta, plazoInvalido, saldoInvalido],
   )
-  // La financiera gira el saldo completo al concesionario.
-  const desembolsoEstimado = saldoFinanciar
+  // El concesionario recibe el saldo menos el fee de originación, que
+  // queda en la financiera.
+  const desembolsoEstimado = Math.max(
+    0,
+    saldoFinanciar - GASTOS_ADMINISTRATIVOS,
+  )
+
+  // Desglose de la cuota y totales para el panel de la moto — la misma
+  // organización del simulador: anualidad + seguro de vida, intereses
+  // y total a pagar sobre el plazo elegido.
+  const calculosValidos = !saldoInvalido && !plazoInvalido
+  const cuotaFinanciacion = calculosValidos
+    ? cuotaAnualidad(saldoFinanciar, tasaOferta, plazo)
+    : 0
+  const primaVida = saldoInvalido
+    ? 0
+    : (saldoFinanciar * PRIMA_SEGURO_VIDA_PCT) / 100
+  const totalIntereses = calculosValidos
+    ? Math.max(0, cuotaFinanciacion * plazo - saldoFinanciar)
+    : 0
+  const totalSeguros = calculosValidos ? primaVida * plazo : 0
+  const totalPagar = calculosValidos ? cuotaMensual * plazo : 0
+  const tasaEA = (Math.pow(1 + tasaOferta / 100, 12) - 1) * 100
   // El cupo aprobado cuenta de 0 → valor para dar emoción al resultado.
   const cupoAnim = useCuentaAscendente(aprobado ? cupoMaximo : 0)
 
@@ -447,13 +460,13 @@ function ResultadoCredito({
             onClick={() => setHeroeEstado('expandido')}
           >
             <BadgeCheck size={14} aria-hidden="true" />
-            Crédito aprobado
+            Crédito Aprobado
           </button>
         ) : aprobado && heroeEstado === 'tira' ? (
           <div className="resultado-credito__resumen" role="status">
             <BadgeCheck size={18} aria-hidden="true" />
             <span className="resultado-credito__resumen-texto">
-              <strong>Crédito aprobado</strong>
+              <strong>Crédito Aprobado</strong>
               <span>
                 Cupo {currency(cupoMaximo)}
                 {idSolicitud
@@ -506,7 +519,7 @@ function ResultadoCredito({
               {aprobado ? '¡Buenas noticias!' : 'Resultado de la evaluación'}
             </span>
             <strong className="resultado-credito__veredicto-titulo">
-              {aprobado ? '¡Crédito aprobado!' : 'Crédito no aprobado'}
+              {aprobado ? '¡Crédito Aprobado!' : 'Crédito no Aprobado'}
             </strong>
             {aprobado ? (
               <span className="resultado-credito__veredicto-cupo">
@@ -515,12 +528,12 @@ function ResultadoCredito({
               </span>
             ) : (
               <p className="resultado-credito__veredicto-sub">
-                Puedes reabrir la solicitud para revisar cuánto se le podría
-                prestar ajustando los parámetros de decisión.
+                Puedes solicitar análisis individual a crédito si consideras que
+                el cliente tiene una novedad especial.
               </p>
             )}
             <span className="resultado-credito__veredicto-pill">
-              {aprobado ? 'Aprobado' : 'No aprobado'}
+              {aprobado ? 'Aprobado' : 'No Aprobado'}
             </span>
             <small className="resultado-credito__veredicto-radicado">
               {idSolicitud
@@ -537,11 +550,9 @@ function ResultadoCredito({
           {idSolicitud && (
             <>
               {' '}
-              El siguiente paso es la firma del pagaré y la confirmación del
-              desembolso en el detalle de la solicitud:{' '}
-              <Link to={`/solicitudes/${idSolicitud}`}>
-                Ir a formalización y desembolso
-              </Link>
+              El siguiente paso es la firma del pagaré en el detalle de la
+              solicitud:{' '}
+              <Link to={`/solicitudes/${idSolicitud}`}>Ir a formalización</Link>
               .
             </>
           )}
@@ -555,22 +566,7 @@ function ResultadoCredito({
           <section className="resultado-credito__oferta">
             <header>
               <h2>Información de crédito</h2>
-              <span>
-                {resultado.esDemo
-                  ? 'Aprobado viable · Demostración'
-                  : `Aprobado · ${ofertaElegible ? 'Oferta real generada' : 'Evaluación real'}`}
-              </span>
             </header>
-
-            <div className="resultado-credito__cupo">
-              <small>Cupo máximo aprobado</small>
-              <strong>{currency(cupoMaximo)}</strong>
-              <p>
-                Cuota de referencia {currency(resultado.cuotaSugerida)} a{' '}
-                {resultado.plazoMeses} meses, según la capacidad de pago
-                evaluada.
-              </p>
-            </div>
 
             <div className="resultado-credito__seleccion">
               <div className="resultado-credito__seleccion-head">
@@ -915,16 +911,13 @@ function ResultadoCredito({
                       aria-invalid={plazoInvalido}
                       aria-describedby="rc-plazo-ayuda"
                     />
-                    <small id="rc-plazo-ayuda">
-                      meses · 12–{plazoMaximo} (máximo evaluado)
-                    </small>
+                    <small id="rc-plazo-ayuda">meses · 12–{plazoMaximo}</small>
                   </div>
                 </div>
               )}
               {pasoFirma === 'vehiculo' && plazoInvalido && (
                 <p className="resultado-credito__plazo-error" role="alert">
-                  El plazo debe estar entre 12 y {plazoMaximo} meses, el término
-                  que la evaluación aprobó.
+                  El plazo debe estar entre 12 y {plazoMaximo} meses.
                 </p>
               )}
               {pasoFirma === 'vehiculo' && saldoInvalido && (
@@ -959,7 +952,15 @@ function ResultadoCredito({
                 <dd>{plazoInvalido ? '—' : `${plazo} meses`}</dd>
               </div>
               <div>
-                <dt>Desembolso al concesionario</dt>
+                <dt>Tasa de crédito</dt>
+                <dd>{tasaOferta.toFixed(2)}% M.V.</dd>
+              </div>
+              <div>
+                <dt>Gastos administrativos</dt>
+                <dd>{currency(GASTOS_ADMINISTRATIVOS)}</dd>
+              </div>
+              <div>
+                <dt>Valor al concesionario</dt>
                 <dd>{saldoInvalido ? '—' : currency(desembolsoEstimado)}</dd>
               </div>
             </dl>
@@ -972,7 +973,7 @@ function ResultadoCredito({
             </p>
 
             <div className="resultado-credito__condiciones">
-              <strong>Condiciones obligatorias para desembolso</strong>
+              <strong>Condiciones obligatorias para formalizar</strong>
               <p>
                 1. Firma digital del pagaré desmaterializado. 2. Verificación de
                 una cuenta bancaria nacional de destino.
@@ -1001,40 +1002,124 @@ function ResultadoCredito({
               </div>
             </div>
 
-            <dl className="resultado-credito__vehiculo-datos">
+            <div className="resultado-credito__vehiculo-cuota">
+              <small>Cuota mensual estimada</small>
+              <strong>{calculosValidos ? currency(cuotaMensual) : '—'}</strong>
+              <span className="resultado-credito__vehiculo-dia">
+                ≈{' '}
+                {calculosValidos
+                  ? currency(Math.round(cuotaMensual / 30))
+                  : '—'}
+                <em> por día</em>
+              </span>
+            </div>
+
+            <dl className="resultado-credito__vehiculo-stats">
               <div>
-                <dt>Valor moto + IVA</dt>
-                <dd>{valorMoto ? currency(valorMoto) : '—'}</dd>
-              </div>
-              <div>
-                <dt>Saldo a financiar</dt>
-                <dd>{saldoInvalido ? '—' : currency(saldoFinanciar)}</dd>
-              </div>
-              <div>
-                <dt>Cuota mensual estimada</dt>
+                <dt>Cuota financiación</dt>
                 <dd>
-                  {plazoInvalido || saldoInvalido
-                    ? '—'
-                    : currency(cuotaMensual)}
+                  {calculosValidos
+                    ? currency(Math.round(cuotaFinanciacion))
+                    : '—'}
+                </dd>
+              </div>
+              <div>
+                <dt>Seguro de vida</dt>
+                <dd>
+                  {calculosValidos ? currency(Math.round(primaVida)) : '—'}
+                </dd>
+                <dd className="resultado-credito__vehiculo-nota">
+                  {PRIMA_SEGURO_VIDA_PCT}% m.v. del saldo
+                </dd>
+              </div>
+              <div>
+                <dt>Tasa mensual</dt>
+                <dd>{tasaOferta.toFixed(2)}% MV</dd>
+                <dd className="resultado-credito__vehiculo-nota">
+                  {tasaEA.toFixed(2)}% EA
                 </dd>
               </div>
               <div>
                 <dt>Plazo</dt>
                 <dd>{plazoInvalido ? '—' : `${plazo} meses`}</dd>
               </div>
+            </dl>
+
+            <dl className="resultado-credito__vehiculo-datos">
               <div>
-                <dt>Total estimado a pagar</dt>
+                <dt>Valor moto + IVA</dt>
+                <dd>{valorMoto ? currency(valorMoto) : '—'}</dd>
+              </div>
+              {descuentoAplicado > 0 && (
+                <div>
+                  <dt>Descuento</dt>
+                  <dd>− {currency(Math.round(descuentoAplicado))}</dd>
+                </div>
+              )}
+              {(accesorios ?? 0) > 0 && (
+                <div>
+                  <dt>Accesorios</dt>
+                  <dd>{currency(accesorios!)}</dd>
+                </div>
+              )}
+              {(matricula ?? 0) > 0 && (
+                <div>
+                  <dt>Matrícula</dt>
+                  <dd>{currency(matricula!)}</dd>
+                </div>
+              )}
+              {(soat ?? 0) > 0 && (
+                <div>
+                  <dt>SOAT</dt>
+                  <dd>{currency(soat!)}</dd>
+                </div>
+              )}
+              {(impuestos ?? 0) > 0 && (
+                <div>
+                  <dt>Impuesto por cilindraje</dt>
+                  <dd>{currency(impuestos!)}</dd>
+                </div>
+              )}
+              {avalValor > 0 && (
+                <div>
+                  <dt>Aval</dt>
+                  <dd>{currency(Math.round(avalValor))}</dd>
+                </div>
+              )}
+              <div>
+                <dt>Gastos administrativos</dt>
+                <dd>{currency(GASTOS_ADMINISTRATIVOS)}</dd>
+              </div>
+              <div className="resultado-credito__vehiculo-saldo">
+                <dt>Saldo a financiar</dt>
+                <dd>{saldoInvalido ? '—' : currency(saldoFinanciar)}</dd>
+              </div>
+            </dl>
+
+            <dl className="resultado-credito__vehiculo-totales">
+              <div>
+                <dt>Total intereses</dt>
                 <dd>
-                  {plazoInvalido || saldoInvalido
-                    ? '—'
-                    : currency(cuotaMensual * plazo)}
+                  {calculosValidos ? currency(Math.round(totalIntereses)) : '—'}
+                </dd>
+              </div>
+              <div>
+                <dt>Total seguros</dt>
+                <dd>
+                  {calculosValidos ? currency(Math.round(totalSeguros)) : '—'}
+                </dd>
+              </div>
+              <div>
+                <dt>Total a pagar</dt>
+                <dd>
+                  {calculosValidos ? currency(Math.round(totalPagar)) : '—'}
                 </dd>
               </div>
             </dl>
 
             <p className="resultado-credito__inclusion">
               La moto se entrega en {concesionario}; la entrega se agenda tras
-              la firma del pagaré y el desembolso.
+              la formalización.
             </p>
           </aside>
         </div>

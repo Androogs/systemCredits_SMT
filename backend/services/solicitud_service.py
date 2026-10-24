@@ -23,6 +23,9 @@ from backend.models.solicitud_models import (
     DatosFormalizacionRequest,
     DesembolsoResponse,
     EmbudoAliadoResponse,
+    EmbudoAsesorResponse,
+    EmbudoCausalResponse,
+    EmbudoReevaluacionResponse,
     EtapaEmbudoResponse,
     EvaluacionResumenSolicitud,
     MetricasEmbudoResponse,
@@ -509,10 +512,12 @@ class SolicitudService:
         persona_desde: datetime | None = None,
         filtro_id_concesionario: int | None = None,
         filtro_id_asesor: int | None = None,
+        ver_causales: bool = False,
     ) -> MetricasEmbudoResponse:
-        """Conversión del embudo originación → desembolso. Las etapas se
-        derivan de los hitos persistidos: decisión del motor, oferta
-        seleccionada (aliado), firma OTP y estado desembolsada."""
+        """Conversión del embudo originación → formalización. Las etapas
+        se derivan de los hitos persistidos: decisión del motor, oferta
+        seleccionada (aliado) y firma OTP. Las causales de rechazo son
+        dato sensible: solo viajan cuando `ver_causales` (admin)."""
         c = self.repo.conteos_embudo(
             desde=desde,
             hasta=hasta,
@@ -559,6 +564,49 @@ class SolicitudService:
                     filtro_id_asesor=filtro_id_asesor,
                 )
             ],
+            por_asesor=[
+                EmbudoAsesorResponse(**fila)
+                for fila in self.repo.conteos_por_asesor(
+                    desde=desde,
+                    hasta=hasta,
+                    concesionario_ids=concesionario_ids,
+                    aliado_ids=aliado_ids,
+                    asesor_ids=asesor_ids,
+                    asesor_cedula=asesor_cedula,
+                    persona_desde=persona_desde,
+                    filtro_id_concesionario=filtro_id_concesionario,
+                    filtro_id_asesor=filtro_id_asesor,
+                )
+            ],
+            por_causal=[
+                EmbudoCausalResponse(**fila)
+                for fila in self.repo.conteos_por_causal(
+                    desde=desde,
+                    hasta=hasta,
+                    concesionario_ids=concesionario_ids,
+                    aliado_ids=aliado_ids,
+                    asesor_ids=asesor_ids,
+                    asesor_cedula=asesor_cedula,
+                    persona_desde=persona_desde,
+                    filtro_id_concesionario=filtro_id_concesionario,
+                    filtro_id_asesor=filtro_id_asesor,
+                )
+            ]
+            if ver_causales
+            else [],
+            reevaluacion=EmbudoReevaluacionResponse(
+                **self.repo.conteos_reevaluacion(
+                    desde=desde,
+                    hasta=hasta,
+                    concesionario_ids=concesionario_ids,
+                    aliado_ids=aliado_ids,
+                    asesor_ids=asesor_ids,
+                    asesor_cedula=asesor_cedula,
+                    persona_desde=persona_desde,
+                    filtro_id_concesionario=filtro_id_concesionario,
+                    filtro_id_asesor=filtro_id_asesor,
+                )
+            ),
         )
 
     def detalle(

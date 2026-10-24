@@ -44,6 +44,40 @@ function extensionDe(mime: string): string {
   return mime.includes('mp4') ? 'mp4' : 'webm'
 }
 
+/** Lado largo máximo de la foto: sobra resolución para OCR y la subida
+ *  pasa de ~4-8 MB a ~0,3-0,6 MB — clave en datos móviles. */
+const LADO_MAX_FOTO = 1920
+
+/**
+ * Redimensiona la foto antes de subirla respetando la orientación EXIF
+ * (sin ella la cédula puede salir rotada). Si el resultado no ahorra
+ * peso o el navegador no soporta el pipeline, se sube el original.
+ */
+async function comprimirImagen(archivo: Blob): Promise<Blob> {
+  const bmp = await createImageBitmap(archivo, {
+    imageOrientation: 'from-image',
+  })
+  const escala = Math.min(1, LADO_MAX_FOTO / Math.max(bmp.width, bmp.height))
+  if (escala >= 1 && archivo.size < 1_000_000) {
+    bmp.close()
+    return archivo
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(bmp.width * escala))
+  canvas.height = Math.max(1, Math.round(bmp.height * escala))
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    bmp.close()
+    return archivo
+  }
+  ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height)
+  bmp.close()
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, 'image/jpeg', 0.88),
+  )
+  return blob && blob.size < archivo.size ? blob : archivo
+}
+
 export default function CapturaMovil() {
   const { token = '' } = useParams()
   const consulta = useQuery({
@@ -61,7 +95,7 @@ export default function CapturaMovil() {
   const datos = consulta.data
   const errorEstado = consulta.error as { status?: number } | undefined
 
-  if (consulta.isLoading) {
+  if (consulta.isLoading && !datos) {
     return (
       <main className="captura-movil">
         <p className="captura-movil__aviso" role="status">
@@ -71,7 +105,9 @@ export default function CapturaMovil() {
     )
   }
 
-  if (consulta.isError || !datos) {
+  // Un error transitorio del polling no desmonta las tarjetas: con datos
+  // previos el formulario sigue igual (foto elegida, preview, grabación).
+  if (!datos) {
     const expirado =
       errorEstado?.status === 422 &&
       String((errorEstado as { detalle?: string })?.detalle ?? '').includes(
@@ -120,6 +156,13 @@ export default function CapturaMovil() {
         subidaInicial={datos}
       />
       <TarjetaVideo token={token} estado={datos} />
+
+      {consulta.isError && (
+        <p className="captura-movil__nota" role="status">
+          Sin conexión estable — reintentando en segundo plano. Lo ya subido
+          está a salvo.
+        </p>
+      )}
 
       {datos.estado === 'completada' ? (
         <div
@@ -189,13 +232,19 @@ function TarjetaFoto({
       }),
   })
 
+  // Apenas el cliente toma la foto se sube de una: nada queda en estado
+  // "elegida pero no enviada" para perderse si la página se recarga o el
+  // SO mata el proceso al volver de la cámara.
   const alElegir = (files: FileList | null) => {
     const file = files?.[0]
     if (!file) return
     if (previsualizacion) URL.revokeObjectURL(previsualizacion)
     setArchivo(file)
     setPrevisualizacion(URL.createObjectURL(file))
-    setEstado({ subida: 'idle' })
+    setEstado({ subida: 'subiendo' })
+    comprimirImagen(file)
+      .then((blob) => subida.mutate(blob))
+      .catch(() => subida.mutate(file))
   }
 
   return (
@@ -228,25 +277,28 @@ function TarjetaFoto({
           <span className="captura-movil__ok" role="status">
             ✓ Recibida
           </span>
-        ) : archivo ? (
+        ) : estado.subida === 'subiendo' ? (
+          <span className="captura-movil__ayuda" role="status">
+            Enviando foto…
+          </span>
+        ) : estado.subida === 'error' && archivo ? (
           <>
             <button
               type="button"
               className="captura-movil__boton"
-              onClick={() => subida.mutate(archivo)}
-              disabled={estado.subida === 'subiendo'}
+              onClick={() => {
+                setEstado({ subida: 'subiendo' })
+                comprimirImagen(archivo)
+                  .then((blob) => subida.mutate(blob))
+                  .catch(() => subida.mutate(archivo))
+              }}
             >
-              {estado.subida === 'subiendo'
-                ? 'Subiendo…'
-                : estado.subida === 'error'
-                  ? 'Reintentar subida'
-                  : 'Enviar foto'}
+              Reintentar subida
             </button>
             <button
               type="button"
               className="captura-movil__boton captura-movil__boton--sec"
               onClick={() => inputRef.current?.click()}
-              disabled={estado.subida === 'subiendo'}
             >
               Tomar otra
             </button>

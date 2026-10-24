@@ -35,7 +35,7 @@ ESCENARIOS: dict[str, str] = {
     "castigada": "Cartera castigada (R4).",
     "mora_30": "Mora de 30 días vigente (E2).",
     "perfil_bajo": "Ingreso de 1,2 SMMLV con continuidad: perfil BAJO (E4).",
-    "sin_valor_ingreso": "Sin Valor Ingreso: ingreso por Quanto y sin continuidad -> GRIS (RC1) para empleado.",
+    "sin_valor_ingreso": "Empleado sin Valor Ingreso: no hay fuente de ingreso -> rechazo E3.",
     "endeudamiento_alto": "Obligaciones que llevan el endeudamiento a 86% (R17).",
     # No llega al buró: el pre-filtro SIMIT rechaza (R22) antes de
     # construir este reporte. Si el pre-filtro está deshabilitado, el

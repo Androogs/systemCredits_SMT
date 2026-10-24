@@ -7,7 +7,7 @@ import {
 interface CabeceraEtapaOriginacionProps {
   paso: number
   titulo: string
-  descripcion: string
+  descripcion?: string
 }
 
 function CabeceraEtapaOriginacion({
@@ -23,7 +23,7 @@ function CabeceraEtapaOriginacion({
       <div className="cabecera-etapa__texto">
         <p>Originación Individual · Paso {paso}</p>
         <h1>{titulo}</h1>
-        <span>{descripcion}</span>
+        {descripcion && <span>{descripcion}</span>}
       </div>
       <aside className="cabecera-etapa__contexto">
         <dl>
@@ -32,7 +32,7 @@ function CabeceraEtapaOriginacion({
             <dd>{asesor}</dd>
           </div>
           <div>
-            <dt>Sede</dt>
+            <dt>Concesionario</dt>
             <dd>{sede}</dd>
           </div>
         </dl>

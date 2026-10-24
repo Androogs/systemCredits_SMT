@@ -575,6 +575,27 @@ export interface EmbudoAliadoApi {
   valor_desembolsado: string
 }
 
+export interface EmbudoAsesorApi {
+  asesor: string
+  cedula: string | null
+  titular_anterior: boolean
+  radicadas: number
+  aprobadas: number
+  formalizadas: number
+  desembolsadas: number
+}
+
+export interface EmbudoCausalApi {
+  codigo: string
+  descripcion: string
+  total: number
+}
+
+export interface EmbudoReevaluacionApi {
+  reevaluadas: number
+  rescatadas: number
+}
+
 export interface MetricasEmbudoApi {
   generado_en: string
   radicadas: number
@@ -582,6 +603,9 @@ export interface MetricasEmbudoApi {
   etapas: EtapaEmbudoApi[]
   por_estado: Record<string, number>
   por_aliado: EmbudoAliadoApi[]
+  por_asesor: EmbudoAsesorApi[]
+  por_causal: EmbudoCausalApi[]
+  reevaluacion: EmbudoReevaluacionApi
 }
 
 /** Catálogos de los filtros dimensionales del panel, acotados al
@@ -649,18 +673,6 @@ export function listarProductos() {
   return request<ProductoApi[]>('/api/productos')
 }
 
-// ---------- Desembolso ----------
-
-export interface BancoApi {
-  id_banco: number
-  codigo_ach: string | null
-  nombre: string
-}
-
-export function listarBancos() {
-  return request<BancoApi[]>('/api/bancos')
-}
-
 // ---------- Tasa de mercado (TIBC SFC) ----------
 
 export interface TasaModalidadApi {
@@ -686,21 +698,6 @@ export function tasaMercado() {
   return request<TasaMercadoApi>('/api/tasa-mercado')
 }
 
-export interface RegistrarDesembolsoPayload {
-  codigo_ach_banco: string
-  numero_cuenta_cliente: string
-  titular_cuenta?: string
-  referencia_pago?: string
-  vehiculo?: {
-    producto_a_financiar: string
-    marca?: string
-    referencia?: string
-    modelo?: string
-    color?: string
-    valor_moto_iva?: number
-  }
-}
-
 export interface DesembolsoApi {
   id_desembolso: number
   num_desembolso: string | null
@@ -714,16 +711,6 @@ export interface DesembolsoApi {
   receptor: string
   referencia_pago: string | null
   fecha_desembolso: string | null
-}
-
-export function registrarDesembolso(
-  idSolicitud: string,
-  payload: RegistrarDesembolsoPayload,
-) {
-  return request<DesembolsoApi>(`/api/solicitudes/${idSolicitud}/desembolso`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
 }
 
 // ---------- Captura remota de evidencias (cédula + video) ----------

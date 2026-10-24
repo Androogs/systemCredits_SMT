@@ -36,14 +36,6 @@
   font-weight: 600;
 }
 
-.solicitud__lede {
-  max-width: 42rem;
-  margin: 0.65rem 0 0;
-  color: var(--demo-muted, var(--slate-soft));
-  font-size: 0.9rem;
-  line-height: 1.6;
-}
-
 .solicitud__panel {
   display: grid;
   gap: 0.85rem;
@@ -332,13 +324,6 @@
   font-weight: 700;
 }
 
-.solicitud__analisis-hint {
-  color: var(--slate);
-  font-size: 0.68rem;
-  font-weight: 500;
-  font-style: italic;
-}
-
 .solicitud__analisis-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -557,8 +542,7 @@
 }
 /* Compactacion movil: el seguimiento ya muestra la etapa; se ocultan duplicados */
 @media (max-width: 680px) {
-  .solicitud__eyebrow,
-  .solicitud__lede {
+  .solicitud__eyebrow {
     display: none;
   }
 }

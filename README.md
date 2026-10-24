@@ -129,8 +129,9 @@ umbrales de score, perfiles de ingreso por ocupación, continuidad
 |---|---|
 | `app/routing/` | `RutasAplicacion.tsx` — rutas protegidas bajo layout + públicas (`/login`, `/captura/:token`) |
 | `app/styles/` | Tailwind base |
-| **pages/** | `IniciarSesion`, `Resumen` (dashboard), `PanelAsesor`, `Originacion` (wizard), `Simulador`, `Solicitudes`, `DetalleSolicitud`, `Resultado`, `Clientes`, `Riesgo`, `Estados`, `Ajustes`, `CapturaMovil` (página pública del celular) |
+| **pages/** | `IniciarSesion`, `RecuperarClave`, `RestablecerClave`, `Resumen` (dashboard), `Originacion` (wizard), `Simulador`, `Solicitudes`, `DetalleSolicitud`, `Resultado`, `Clientes`, `Riesgo`, `Estados`, `Ajustes`, `CapturaMovil` (página pública del celular), `VerificarFirma` (página pública de verificación del pagaré) |
 | `widgets/app-shell/` | `BarraLateral` (sidebar único), `Encabezado`, `ContenedorPanel` — layout compartido |
+| `widgets/dashboard/` | `EmbudoOriginacion` (embudo + causales de rechazo + re-evaluación), `RankingAsesores`, `GraficasResumen`, `BarraFiltrosDimensionales`, `TablaSolicitudesPanel`, `AccionesRapidas` |
 | `features/credit-origination/` | Flujo SOCIP completo: `api/originacionApi.ts` (cliente HTTP: timeout 30s/120s evaluar, reintentos solo GET), `model/` (borrador, etapas, mapeos-api, schemas Zod), `schemas/` (validación por paso), `ui/` (pantallas del wizard: ValidacionInicial, CapturaCedula, CrearSolicitud, EvaluacionYResultado, ResultadoCredito, DatosClienteFormalizacion, EvidenciaYDatos, RevisionDatos, AutorizacionDatos, SeguimientoOriginacion) |
 | `features/auth/` | Login (`autenticacionApi.ts`) |
 | `features/settings/` | `EditorParametros.tsx` — edita `parametros.json` vía API |

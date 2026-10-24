@@ -25,6 +25,37 @@ export function valorPresenteAnualidad(
   return (cuota * (1 - Math.pow(1 + i, -plazoMeses))) / i
 }
 
+/**
+ * Usura operativa en m.v. a partir de la usura de consumo y ordinario
+ * en E.A. publicada por la SFC: se convierte a mensual y se trunca a 4
+ * decimales con floor para quedar siempre un pelo por debajo del límite
+ * legal (la conversión de 28,59% EA da 2,11760008…% → 2,1176%).
+ */
+export function usuraOperativaMv(
+  usuraEa: number | null | undefined,
+): number | null {
+  if (!usuraEa) return null
+  const mv = ((1 + usuraEa / 100) ** (1 / 12) - 1) * 100
+  return Math.floor(mv * 1e4) / 1e4
+}
+
+/** Holgura bajo la usura: la guarda de cumplimiento del backend rechaza
+ *  cualquier tasa que iguale la usura ya redondeada a 4 decimales, así
+ *  que la tasa del producto queda un punto base por debajo. */
+const MARGEN_BAJO_USURA_MV = 0.0001
+
+/**
+ * Tasa del producto en m.v.: la usura operativa menos la holgura — la
+ * máxima tasa legalmente cobrable que pasa la validación `tasa < usura`.
+ */
+export function tasaProductoMv(
+  usuraEa: number | null | undefined,
+): number | null {
+  const usura = usuraOperativaMv(usuraEa)
+  if (usura == null) return null
+  return Math.round((usura - MARGEN_BAJO_USURA_MV) * 1e4) / 1e4
+}
+
 export interface FilaAmortizacion {
   mes: number
   cuota: number

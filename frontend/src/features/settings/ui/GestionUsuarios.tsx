@@ -633,7 +633,7 @@ export default function GestionUsuarios() {
                       <label className="label-base" htmlFor="usuario-sede">
                         {form.roles.includes('concesionario') &&
                         !form.roles.includes('asesor')
-                          ? 'Sede que administra *'
+                          ? 'Concesionario que administra *'
                           : 'Concesionario del asesor *'}
                       </label>
                       <select

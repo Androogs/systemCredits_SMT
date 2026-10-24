@@ -26,7 +26,6 @@ import {
   CircleCheck,
   Clock3,
   FileText,
-  HandCoins,
   Plus,
   RefreshCw,
   TrendingDown,
@@ -65,7 +64,6 @@ function coincideFiltro(s: SolicitudResumenApi, filtro: FiltroPanel): boolean {
   if (filtro.campo === 'etapa') {
     if (filtro.valor === 'evaluadas') return s.decision != null
     if (filtro.valor === 'formalizadas') return s.fecha_hora_firma != null
-    if (filtro.valor === 'desembolsadas') return s.estado === 'desembolsada'
     return true
   }
   const d = new Date(s.fecha_hora)
@@ -82,11 +80,6 @@ const FILTRO_POR_ETAPA: Record<string, FiltroPanel | null> = {
     campo: 'etapa',
     valor: 'formalizadas',
     etiqueta: 'Formalizadas',
-  },
-  desembolsadas: {
-    campo: 'etapa',
-    valor: 'desembolsadas',
-    etiqueta: 'Desembolsadas',
   },
 }
 
@@ -154,7 +147,6 @@ export default function Resumen() {
   const pendientes = base.filter(
     (s) => estadoParaVista(s) === 'PENDIENTE',
   ).length
-  const colocadas = base.filter((s) => s.estado === 'desembolsada')
 
   const cupos = base
     .filter((s) => estadoParaVista(s) === 'APROBADO')
@@ -167,10 +159,6 @@ export default function Resumen() {
     ? capacidades.reduce((a, b) => a + b, 0) / capacidades.length
     : 0
   const sumaCupos = cupos.reduce((a, b) => a + b, 0)
-  const cupoColocado = colocadas.reduce(
-    (acc, s) => acc + (numero(s.evaluacion?.cupo_sugerido) ?? 0),
-    0,
-  )
 
   const byStatus = [
     {
@@ -230,7 +218,6 @@ export default function Resumen() {
       total: number
       aprobadas: number
       pendientes: number
-      desembolsadas: number
     }
   >()
   for (const s of solicitudes) {
@@ -240,13 +227,11 @@ export default function Resumen() {
       total: 0,
       aprobadas: 0,
       pendientes: 0,
-      desembolsadas: 0,
     }
     acc.total += 1
     const ev = estadoParaVista(s)
     if (ev === 'APROBADO') acc.aprobadas += 1
     else if (ev === 'PENDIENTE') acc.pendientes += 1
-    if (s.estado === 'desembolsada') acc.desembolsadas += 1
     porMes.set(k, acc)
   }
   const deltas: Record<string, number | null> = {}
@@ -258,7 +243,6 @@ export default function Resumen() {
     deltas.solicitudes = delta(total, prev?.total)
     deltas.aprobadas = delta(approved, prev?.aprobadas)
     deltas.pendientes = delta(pendientes, prev?.pendientes)
-    deltas.desembolsadas = delta(colocadas.length, prev?.desembolsadas)
   }
 
   // Series diarias por KPI sobre el scope vigente: los días del mes
@@ -282,7 +266,6 @@ export default function Resumen() {
       solicitudes: [] as number[],
       aprobadas: [] as number[],
       pendientes: [] as number[],
-      desembolsadas: [] as number[],
     }
     for (const dia of diasSerie) {
       const delDia = base.filter((s) => {
@@ -299,9 +282,6 @@ export default function Resumen() {
       )
       acum.pendientes.push(
         delDia.filter((s) => estadoParaVista(s) === 'PENDIENTE').length,
-      )
-      acum.desembolsadas.push(
-        delDia.filter((s) => s.estado === 'desembolsada').length,
       )
     }
     return acum
@@ -453,9 +433,7 @@ export default function Resumen() {
           total={total}
           aprobadas={approved}
           pendientes={pendientes}
-          colocadas={colocadas.length}
           montoAprobado={sumaCupos}
-          cupoColocado={cupoColocado}
           capacidadPromedio={avgCapacidad}
           rechazadas={rejected}
           ticketPromedio={ticketPromedio}
@@ -756,9 +734,7 @@ function BandaKpis({
   total,
   aprobadas,
   pendientes,
-  colocadas,
   montoAprobado,
-  cupoColocado,
   capacidadPromedio,
   rechazadas,
   ticketPromedio,
@@ -772,9 +748,7 @@ function BandaKpis({
   total: number
   aprobadas: number
   pendientes: number
-  colocadas: number
   montoAprobado: number
-  cupoColocado: number
   capacidadPromedio: number
   rechazadas: number
   ticketPromedio: number
@@ -784,7 +758,6 @@ function BandaKpis({
     solicitudes: number[]
     aprobadas: number[]
     pendientes: number[]
-    desembolsadas: number[]
   }
   filtro: FiltroPanel | null
   setFiltro: (f: FiltroPanel | null) => void
@@ -842,25 +815,10 @@ function BandaKpis({
       chip: 'bg-amber-50 text-amber-600 ring-amber-500/20',
       activo: filtro?.campo === 'estado' && filtro.valor === 'PENDIENTE',
     },
-    {
-      label: 'Desembolsadas',
-      valor: colocadas,
-      detalle: 'Desembolso confirmado',
-      filtroCelda: {
-        campo: 'etapa',
-        valor: 'desembolsadas',
-        etiqueta: 'Desembolsadas',
-      },
-      delta: deltas.desembolsadas ?? null,
-      serie: series.desembolsadas,
-      icono: HandCoins,
-      chip: 'bg-slate-100 text-[#176b46] ring-slate-400/30',
-      activo: filtro?.campo === 'etapa' && filtro.valor === 'desembolsadas',
-    },
   ]
   return (
     <div className="card overflow-hidden" aria-busy={cargando}>
-      <div className="grid grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3">
         {celdas.map((c) => {
           const Icono = c.icono
           return (
@@ -933,12 +891,6 @@ function BandaKpis({
               Monto aprobado{' '}
               <strong className="font-semibold text-slate-800">
                 {currency(Math.round(montoAprobado))}
-              </strong>
-            </span>
-            <span>
-              Colocado{' '}
-              <strong className="font-semibold text-slate-800">
-                {currency(Math.round(cupoColocado))}
               </strong>
             </span>
             <span>

@@ -47,6 +47,10 @@
   background: var(--success-bg);
 }
 
+.captura-movil__card--subiendo {
+  border-color: var(--border-tint, var(--navy-panel));
+}
+
 .captura-movil__card h2 {
   font-size: 16px;
   margin: 0 0 4px;
@@ -74,7 +78,7 @@
   border-radius: 8px;
   margin-bottom: 12px;
   background: var(--ink);
-  max-height: 320px;
+  max-height: 240px;
   object-fit: contain;
 }
 

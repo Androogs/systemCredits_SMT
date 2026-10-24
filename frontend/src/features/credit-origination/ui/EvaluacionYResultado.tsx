@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   ArrowLeft,
   ArrowRight,
@@ -12,6 +13,7 @@ import {
   listarAuditoriaSolicitud,
   listarEscenariosMock,
   obtenerAuditoria,
+  tasaMercado,
 } from '../api/originacionApi'
 import {
   construirEvaluacionPayload,
@@ -21,8 +23,10 @@ import {
 import {
   crearResultadoDemo,
   resultadoDesdeApi,
+  TASA_MENSUAL_REFERENCIA,
   type ResultadoEvaluacionCredito,
 } from '../model/resultado-evaluacion'
+import { tasaProductoMv } from '../../../shared/lib/finanzas'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import ResultadoCredito, { type OfertaSeleccionada } from './ResultadoCredito'
 import type { DatosSolicitud } from './CrearSolicitud'
@@ -91,6 +95,18 @@ export default function EvaluacionYResultado({
   // contexto (guardado antes de persistirlo): se consulta el backend y,
   // si la evaluación ya existe, se muestra en vez de repetir la consulta.
   const [recuperando, setRecuperando] = useState(false)
+
+  // Tasa del producto = usura de consumo y ordinario vigente (SFC,
+  // cacheada 6h por el backend); el fallback es la referencia fija.
+  const consultaTasa = useQuery({
+    queryKey: ['tasa-mercado'],
+    queryFn: tasaMercado,
+    staleTime: 6 * 60 * 60_000,
+    retry: 1,
+  })
+  const tasaOperativa =
+    tasaProductoMv(consultaTasa.data?.ordinario.usura_ea) ??
+    TASA_MENSUAL_REFERENCIA
 
   useEffect(() => {
     listarEscenariosMock()
@@ -164,6 +180,7 @@ export default function EvaluacionYResultado({
             : undefined,
           tieneMultasRunt: validacion?.multasPendientes ?? false,
         },
+        tasaOperativa,
       ),
     )
       .then((respuesta) => {

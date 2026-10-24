@@ -33,6 +33,12 @@ from backend.services.finanzas import cuota_anualidad
 from backend.services.motor_exceptions import SolicitudNoEncontradaError, ValidacionError
 
 
+# Gastos administrativos del crédito: cargo fijo de originación que
+# entra en el saldo a financiar (la UI lo suma al monto seleccionado y
+# aquí queda descompuesto para el pagaré y la hoja de formalización).
+GASTOS_ADMINISTRATIVOS = Decimal("200000")
+
+
 def _fecha_fin(desde: date, plazo_meses: int) -> date:
     """Suma `plazo_meses` meses conservando el día cuando sea posible."""
     meses = desde.year * 12 + desde.month - 1 + plazo_meses
@@ -251,6 +257,7 @@ class DesembolsoService:
             tasa=oferta.tasa_ofrecida,
             plazo=plazo,
             valor_financiar=monto,
+            gastos_administrativos=GASTOS_ADMINISTRATIVOS,
             saldo_financiar=monto,
             valor_financiacion=monto,
             seguro=valor_vida,
