@@ -282,7 +282,7 @@ export default function Resultado() {
                     acordada.
                   </Paso>
                   <Paso n={2}>
-                    Generar la documentación de crédito para firma y desembolso.
+                    Generar la documentación de crédito para la firma.
                   </Paso>
                   <Paso n={3}>
                     Coordinar la entrega del vehículo con el concesionario.

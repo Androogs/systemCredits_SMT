@@ -7,21 +7,19 @@
  */
 
 export const CONCESIONARIOS: string[] = [
-  'Suzuki Palmira',
-  'Hero Cali',
   'Bajaj Tuluá',
+  'Hero Cali',
+  'Suzuki Palmira',
 ]
 
 export const MARCAS_VEHICULO: string[] = [
-  'Suzuki',
-  'Hero',
-  'Bajaj',
-  'Yamaha',
-  'Honda',
-  'KTM',
-  'TVS',
   'AKT',
-  'Victory',
-  'Royal Enfield',
+  'Auteco',
+  'Bajaj',
+  'Fratelli',
+  'Hero',
+  'Honda',
+  'Suzuki',
+  'Yamaha',
   'Otra',
 ]

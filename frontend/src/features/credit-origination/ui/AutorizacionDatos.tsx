@@ -117,7 +117,7 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
               <dd>{asesor}</dd>
             </div>
             <div>
-              <dt>Sede</dt>
+              <dt>Concesionario</dt>
               <dd>{sede}</dd>
             </div>
           </dl>
@@ -209,7 +209,7 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
           <legend>Datos de contacto del cliente</legend>
           <p className="autorizacion__contacto-nota">
             El cliente autoriza estos canales para recibir notificaciones del
-            proceso (resultado, oferta y desembolso) y el código de firma del
+            proceso (resultado, oferta y formalización) y el código de firma del
             pagaré.
           </p>
           <div className="autorizacion__contacto-grid">

@@ -30,6 +30,29 @@ type Campo = 'numeroDocumento' | 'fechaNacimiento' | 'multas'
 // el build de producción.
 const DEMO = MODO_DEMO
 
+const NACIONALIDADES = ['Colombiano(a)', 'Venezolano(a)', 'Otra'] as const
+type Nacionalidad = (typeof NACIONALIDADES)[number]
+
+interface DocumentoOpcion {
+  codigo: string
+  nombre: string
+  /** Insignia corta junto al número de documento. */
+  insignia: string
+}
+
+// El tipo de documento depende de la nacionalidad: a un colombiano se le
+// exige CC; al extranjero, su cédula de extranjería (PPT/pasaporte aún no
+// habilitados para crédito).
+const DOCUMENTOS_POR_NACIONALIDAD: Record<Nacionalidad, DocumentoOpcion[]> = {
+  'Colombiano(a)': [
+    { codigo: 'CC', nombre: 'Cédula de Ciudadanía', insignia: 'CC COLOMBIANA' },
+  ],
+  'Venezolano(a)': [
+    { codigo: 'CE', nombre: 'Cédula de Extranjería', insignia: 'CE' },
+  ],
+  Otra: [{ codigo: 'CE', nombre: 'Cédula de Extranjería', insignia: 'CE' }],
+}
+
 function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
   const { asesor, sede } = contextoRadicacion()
   const [numeroDocumento, setNumeroDocumento] = useState(
@@ -39,6 +62,14 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
     DEMO ? '1991-08-15' : '',
   )
   const [multas, setMultas] = useState<'si' | 'no' | ''>(DEMO ? 'no' : '')
+  const [nacionalidad, setNacionalidad] = useState<Nacionalidad>(
+    NACIONALIDADES[0],
+  )
+  const documentos = DOCUMENTOS_POR_NACIONALIDAD[nacionalidad]
+  const [tipoDocumento, setTipoDocumento] = useState(documentos[0].codigo)
+  const insignia =
+    documentos.find((d) => d.codigo === tipoDocumento)?.insignia ??
+    tipoDocumento
   const [tocados, setTocados] = useState<Partial<Record<Campo, boolean>>>({})
   const [intentado, setIntentado] = useState(false)
   const [resultado, setResultado] = useState<'idle' | 'ok' | 'error'>('idle')
@@ -77,10 +108,10 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
 
     setResultado('ok')
     onContinue?.({
-      tipoDocumento: 'CC',
+      tipoDocumento,
       numeroDocumento,
       fechaNacimiento,
-      nacionalidad: 'Colombiana',
+      nacionalidad,
       multasPendientes: multas === 'si',
     })
   }
@@ -91,10 +122,8 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
         <div className="validacion__header-copy">
           <p className="validacion__eyebrow">Originación Individual · Paso 1</p>
           <h1>Validación Inicial</h1>
-          <p className="validacion__subtitle">Datos básicos y filtros</p>
-          <p className="validacion__lede">
-            Ingresa los datos iniciales obligatorios del solicitante para
-            validar los criterios mínimos antes del tratamiento de datos.
+          <p className="validacion__subtitle">
+            Datos y filtros básicos del cliente
           </p>
         </div>
 
@@ -108,7 +137,7 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
               <dd>{asesor}</dd>
             </div>
             <div>
-              <dt>Sede</dt>
+              <dt>Concesionario</dt>
               <dd>{sede}</dd>
             </div>
           </dl>
@@ -159,12 +188,25 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
                 *
               </span>
             </label>
-            <select id="tipo-documento" defaultValue="CC">
-              <option value="CC">Cédula de Ciudadanía</option>
+            <select
+              id="tipo-documento"
+              value={tipoDocumento}
+              onChange={(event) => {
+                setTipoDocumento(event.target.value)
+                limpiarResultado()
+              }}
+            >
+              {documentos.map((doc) => (
+                <option key={doc.codigo} value={doc.codigo}>
+                  {doc.nombre}
+                </option>
+              ))}
             </select>
-            <p className="validacion__hint">
-              Único documento aceptado por el momento.
-            </p>
+            {documentos.length === 1 && (
+              <p className="validacion__hint">
+                Único documento aceptado para esta nacionalidad.
+              </p>
+            )}
           </div>
 
           <div
@@ -192,7 +234,7 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
                 }}
                 onBlur={() => marcarTocado('numeroDocumento')}
               />
-              <span className="validacion__badge">CC COLOMBIANA</span>
+              <span className="validacion__badge">{insignia}</span>
             </div>
             {mostrarError('numeroDocumento') ? (
               <p className="validacion__error" role="alert">
@@ -243,8 +285,21 @@ function ValidacionInicial({ onContinue }: ValidacionInicialProps) {
                 *
               </span>
             </label>
-            <select id="nacionalidad" defaultValue="Colombiana">
-              <option value="Colombiana">Colombiana</option>
+            <select
+              id="nacionalidad"
+              value={nacionalidad}
+              onChange={(event) => {
+                const nueva = event.target.value as Nacionalidad
+                setNacionalidad(nueva)
+                setTipoDocumento(DOCUMENTOS_POR_NACIONALIDAD[nueva][0].codigo)
+                limpiarResultado()
+              }}
+            >
+              {NACIONALIDADES.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
             </select>
           </div>
 

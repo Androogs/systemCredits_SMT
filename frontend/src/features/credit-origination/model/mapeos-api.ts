@@ -166,6 +166,7 @@ export function construirEvaluacionPayload(
   solicitud: DatosSolicitud,
   origen: OrigenConsulta,
   extras?: { primerApellido?: string; tieneMultasRunt?: boolean },
+  tasa: number = TASA_MENSUAL_REFERENCIA,
 ): EvaluarSolicitudPayload {
   const { monto } = calcularCupoSugerido(
     solicitud.ingresosMensuales,
@@ -174,7 +175,7 @@ export function construirEvaluacionPayload(
   return {
     saldo_financiar: Math.max(monto, 1),
     plazo: solicitud.plazoMeses || 36,
-    tasa: TASA_MENSUAL_REFERENCIA,
+    tasa,
     primer_apellido: extras?.primerApellido,
     tiene_multas_runt: extras?.tieneMultasRunt ?? false,
     consultar_experian: origen.origen === 'experian',
