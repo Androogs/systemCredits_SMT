@@ -75,6 +75,22 @@ class CrearSolicitudRequest(BaseModel):
     id_asesor: int | None = Field(default=None, ge=1)
 
 
+class ClienteRechazoPoliticasInput(ClienteInput):
+    # El rechazo por políticas ocurre en el paso de datos y políticas,
+    # antes del perfil económico: la ocupación aún no se conoce.
+    ocupacion: Ocupacion | None = None
+
+
+class RechazoPoliticasRequest(CrearSolicitudRequest):
+    """Radica la solicitud ya rechazada por una política clave declarada
+    en originación (hoy: multas pendientes en SIMIT → R22), sin
+    perfil económico ni consulta al buró."""
+
+    cliente: ClienteRechazoPoliticasInput
+    datos_laborales: DatosLaboralesInput = DatosLaboralesInput()
+    causal: Literal["R22"] = "R22"
+
+
 class CrearSolicitudResponse(BaseModel):
     id_solicitud: UUID
     # Lo genera la base de datos (secuencia en schema.sql); puede venir
@@ -204,6 +220,13 @@ class SolicitudResumenResponse(BaseModel):
     destino_credito: str | None
     plazo_deseado_meses: int | None
     fecha_hora_firma: datetime | None = None
+    # Perfil laboral del radicado: alimenta las distribuciones del
+    # panel de resumen (mismo alcance que `datos_laborales` en detalle).
+    tipo_contrato: str | None = None
+    meses_continuidad: int | None = None
+    # Cuota TOTAL mensual (anualidad + seguro) de la oferta seleccionada;
+    # None hasta que el cliente elige financiación.
+    cuota_total: Decimal | None = None
     evaluacion: EvaluacionResumenSolicitud | None
 
 

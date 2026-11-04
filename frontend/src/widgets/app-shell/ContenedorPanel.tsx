@@ -3,6 +3,7 @@ import { Suspense, useEffect, useRef, useState } from 'react'
 import { Menu } from 'lucide-react'
 import BarraLateral from './BarraLateral'
 import CargandoPagina from '../../shared/ui/CargandoPagina'
+import { MARCA, tituloPagina } from '../../shared/lib/marca'
 import { cerrarSesionApi } from '../../features/auth/api/autenticacionApi'
 import { limpiarSesion, obtenerRefresh } from '../../shared/lib/sesion'
 
@@ -17,7 +18,7 @@ export default function ContenedorPanel() {
     const title = heading?.textContent?.trim()
     if (!heading || !title) return
 
-    document.title = `${title} | Inversiones Pacífico`
+    document.title = tituloPagina(title)
     heading.tabIndex = -1
     heading.focus({ preventScroll: true })
   }, [location.pathname])
@@ -44,7 +45,7 @@ export default function ContenedorPanel() {
           <button
             ref={botonMenuRef}
             onClick={() => setMobileMenuOpen(true)}
-            className="p-2 rounded-lg bg-[rgba(0,0,51,1)] border border-white/20 text-white shadow-sm"
+            className="p-2 rounded-lg bg-brand-900 border border-white/20 text-white shadow-sm"
             title="Abrir menú"
             aria-label="Abrir menú"
             aria-haspopup="dialog"
@@ -54,9 +55,13 @@ export default function ContenedorPanel() {
           >
             <Menu size={20} />
           </button>
-          <span className="text-sm font-semibold tracking-tight text-slate-800">
-            Inversiones Pacífico
-          </span>
+          <img
+            src={MARCA.logoClaro}
+            alt={MARCA.razonSocial}
+            width="900"
+            height="129"
+            className="h-5 w-auto object-contain"
+          />
         </header>
         <main
           key={location.pathname}

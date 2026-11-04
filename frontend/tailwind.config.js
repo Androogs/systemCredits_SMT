@@ -10,7 +10,7 @@ export default {
   content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
   theme: {
     extend: {
-      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+      fontFamily: { sans: ['Roboto', 'system-ui', 'sans-serif'] },
       colors: {
         brand: {
           50: tok('--brand-50-rgb'),
@@ -21,6 +21,11 @@ export default {
           700: tok('--brand-press-rgb'),
           800: tok('--brand-ink-rgb'),
           900: tok('--navy-rgb'),
+        },
+        /* Financiera aliada (Inversiones Pacífico): solo para su sello. */
+        aliado: {
+          500: tok('--aliado-rgb'),
+          900: tok('--aliado-navy-rgb'),
         },
         /* slate/emerald/red/amber se remapean a las rampas semánticas:
          * no existen como paleta propia en este producto. */

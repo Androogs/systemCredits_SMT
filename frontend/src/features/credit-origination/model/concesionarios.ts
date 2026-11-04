@@ -7,10 +7,45 @@
  */
 
 export const CONCESIONARIOS: string[] = [
-  'Bajaj Tuluá',
-  'Hero Cali',
-  'Suzuki Palmira',
+  'Sumoto Palmira',
+  'Pijaos Motos',
+  'Tuluá Motos',
 ]
+
+/** Catálogo comercial vigente: sedes disponibles por marca (usado en
+ *  los filtros del panel y en Ajustes → Concesionarios). */
+export const SEDES_POR_MARCA: Record<string, string[]> = {
+  AKT: [
+    'Principal',
+    'Centro',
+    'Cali',
+    'Buga',
+    'Yumbo',
+    'Candelaria',
+    'Pradera',
+  ],
+  Auteco: ['Cali'],
+  Bajaj: ['Palmira', 'Pradera', 'Florida'],
+  Fratelli: [],
+  Hero: ['Palmira', 'Cali', 'Florida'],
+  Honda: [],
+  Suzuki: [
+    'Principal',
+    'Centro',
+    'El Cerrito',
+    'Candelaria',
+    'Florida',
+    'Pradera',
+  ],
+}
+
+/** Concesionarios derivados del catálogo: nombre "<Marca> <Sede>" como
+ *  los registra el backend; marcas sin sede quedan con su nombre. */
+export const CONCESIONARIOS_CATALOGO: string[] = Object.entries(
+  SEDES_POR_MARCA,
+).flatMap(([marca, sedes]) =>
+  sedes.length ? sedes.map((sede) => `${marca} ${sede}`) : [marca],
+)
 
 export const MARCAS_VEHICULO: string[] = [
   'AKT',
@@ -20,8 +55,17 @@ export const MARCAS_VEHICULO: string[] = [
   'Hero',
   'Honda',
   'Suzuki',
-  'Yamaha',
   'Otra',
+]
+
+/** Marcas distribuidas por Auteco: se despliegan como submenú de
+ * 'Auteco' en el selector de marca de la formalización. */
+export const SUBMARCAS_AUTECO: string[] = [
+  'Ceronte',
+  'Kymco',
+  'TVS',
+  'Victory',
+  'Zontes',
 ]
 
 /** Referencias comerciales frecuentes por marca (sugerencias del asesor;
@@ -59,15 +103,6 @@ export const REFERENCIAS_VEHICULO: Record<string, string[]> = {
     'Platino 110',
     'Dominar 400',
   ],
-  Yamaha: [
-    'SZ-RR 150',
-    'FZ 150',
-    'FZ 250',
-    'N-Max 155',
-    'Crypton 115',
-    'Libero 125',
-    'MT-03',
-  ],
   Honda: [
     'CB 125F',
     'CBF 160',
@@ -77,15 +112,5 @@ export const REFERENCIAS_VEHICULO: Record<string, string[]> = {
     'Navi 110',
     'PCX 160',
   ],
-  KTM: ['Duke 200', 'Duke 250', 'Duke 390', 'RC 200', 'Adventure 250'],
-  TVS: [
-    'Sport 100',
-    'Raider 125',
-    'Apache RTR 160',
-    'Apache RTR 200',
-    'NTorq 125',
-  ],
   AKT: ['NKD 125', 'CR4 125', 'CR5 180', 'Dynamic Pro 150', 'Jet 125'],
-  Victory: ['MRX 150', 'Switch 150', 'Venom 18', 'Life 125'],
-  'Royal Enfield': ['Hunter 350', 'Classic 350', 'Meteor 350', 'Himalayan 411'],
 }

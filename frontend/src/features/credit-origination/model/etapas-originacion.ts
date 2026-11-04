@@ -1,7 +1,7 @@
 export const etapasOriginacion = [
-  { titulo: 'Validación Inicial', detalle: 'Documento y filtros' },
   { titulo: 'Autorización', detalle: 'Habeas Data' },
-  { titulo: 'Evidencia y Datos', detalle: 'Cédula, video y OCR' },
+  { titulo: 'Evidencia', detalle: 'Cédula y video' },
+  { titulo: 'Datos y Políticas', detalle: 'OCR y filtros clave' },
   { titulo: 'Perfil Económico', detalle: 'Ingresos y capacidad' },
   { titulo: 'Decisión y Moto', detalle: 'Decisión del motor' },
 ] as const

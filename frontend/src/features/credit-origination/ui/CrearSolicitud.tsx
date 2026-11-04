@@ -24,7 +24,6 @@ import {
 } from '../schemas/laboral'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import { contextoRadicacion, useRol } from '../../../shared/lib/sesion'
-import { MODO_DEMO } from '../../../env'
 import './CrearSolicitud.css'
 
 export interface DatosSolicitud {
@@ -38,9 +37,9 @@ export interface DatosSolicitud {
   subtipoIndependiente: string
   empresa: string
   /** Solo cuando ocupacion === 'Empleado'. */
-  mesesContinuidad: number
+  mesesContinuidad: number | null
   aniosCamara: number | null
-  ingresosMensuales: number
+  ingresosMensuales: number | null
   /** Fondo de pensiones / fuerza / institución según ocupación. */
   entidadPagadora: string
 }
@@ -65,7 +64,7 @@ interface CrearSolicitudProps {
   idSolicitud?: string
 }
 
-const lineasCredito = ['Motocicleta']
+const lineasCredito = ['Inversiones Pacífico', 'Credicontado']
 
 const destinosCredito = [
   'El sueño de tener motocicleta',
@@ -110,41 +109,27 @@ function normalizarOcupacion(
 
 const PLAZO_FIJO_MESES = 24
 
-// Precarga de demostración: activa en dev y en builds con VITE_DEMO=true;
-// en el build de producción los campos económicos arrancan vacíos.
-const valoresIniciales: DatosSolicitud = MODO_DEMO
-  ? {
-      lineaCredito: 'Motocicleta',
-      destinoCredito: 'El sueño de tener motocicleta',
-      plazoMeses: PLAZO_FIJO_MESES,
-      ocupacion: 'Empleado',
-      tipoContrato: 'Indefinido',
-      subtipoIndependiente: '',
-      empresa: 'Inversiones Pacífico',
-      mesesContinuidad: 24,
-      aniosCamara: null,
-      ingresosMensuales: 4_500_000,
-      entidadPagadora: '',
-    }
-  : {
-      lineaCredito: 'Motocicleta',
-      destinoCredito: 'El sueño de tener motocicleta',
-      plazoMeses: PLAZO_FIJO_MESES,
-      ocupacion: '',
-      tipoContrato: '',
-      subtipoIndependiente: '',
-      empresa: '',
-      mesesContinuidad: 0,
-      aniosCamara: null,
-      ingresosMensuales: 0,
-      entidadPagadora: '',
-    }
+// Todo arranca vacío: el asesor despliega cada menú y elige; los
+// placeholders de los inputs guían el formato esperado.
+const valoresIniciales: DatosSolicitud = {
+  lineaCredito: '',
+  destinoCredito: '',
+  plazoMeses: PLAZO_FIJO_MESES,
+  ocupacion: '',
+  tipoContrato: '',
+  subtipoIndependiente: '',
+  empresa: '',
+  mesesContinuidad: null,
+  aniosCamara: null,
+  ingresosMensuales: null,
+  entidadPagadora: '',
+}
 
 const EMPLEADOR_LABELS: Record<string, { label: string; placeholder: string }> =
   {
     Empleado: {
       label: 'Empresa / Empleador',
-      placeholder: 'Ej. Inversiones Pacífico',
+      placeholder: 'Ej. Comercializadora ABC S.A.S.',
     },
     Independiente: {
       label: 'Nombre del negocio o actividad',
@@ -218,7 +203,7 @@ function CrearSolicitud({
   const capacidad = useMemo(
     () =>
       calcularCupoSugerido(
-        datos.ingresosMensuales,
+        datos.ingresosMensuales ?? 0,
         datos.plazoMeses || PLAZO_FIJO_MESES,
       ),
     [datos.ingresosMensuales, datos.plazoMeses],
@@ -393,17 +378,32 @@ function CrearSolicitud({
               <div className="solicitud__input-wrap">
                 <select
                   id="sol-linea"
+                  className={
+                    datos.lineaCredito === 'Credicontado' ? 'has-logo' : ''
+                  }
                   value={datos.lineaCredito}
                   aria-invalid={mostrarError('lineaCredito')}
                   onChange={(e) => actualizar('lineaCredito', e.target.value)}
                   onBlur={() => marcarTocado('lineaCredito')}
                 >
+                  <option value="" disabled>
+                    Selecciona la línea…
+                  </option>
                   {lineasCredito.map((opcion) => (
                     <option key={opcion} value={opcion}>
                       {opcion}
                     </option>
                   ))}
                 </select>
+                {/* El texto del select se oculta y el logo lo cubre. */}
+                {datos.lineaCredito === 'Credicontado' && (
+                  <img
+                    src="/brand/credicontado.png"
+                    alt=""
+                    aria-hidden="true"
+                    className="solicitud__linea-logo"
+                  />
+                )}
                 <span className="solicitud__select-arrow" aria-hidden="true">
                   ▾
                 </span>
@@ -434,6 +434,9 @@ function CrearSolicitud({
                   onChange={(e) => actualizar('destinoCredito', e.target.value)}
                   onBlur={() => marcarTocado('destinoCredito')}
                 >
+                  <option value="" disabled>
+                    Selecciona el destino…
+                  </option>
                   {destinosCredito.map((opcion) => (
                     <option key={opcion} value={opcion}>
                       {opcion}
@@ -496,7 +499,7 @@ function CrearSolicitud({
                       tipoContrato:
                         ocupacion === 'Empleado' ? prev.tipoContrato : '',
                       mesesContinuidad:
-                        ocupacion === 'Empleado' ? prev.mesesContinuidad : 0,
+                        ocupacion === 'Empleado' ? prev.mesesContinuidad : null,
                       subtipoIndependiente:
                         ocupacion === 'Independiente'
                           ? prev.subtipoIndependiente
@@ -647,7 +650,9 @@ function CrearSolicitud({
                     }
                     value={datos.empresa}
                     aria-invalid={mostrarError('empresa')}
-                    onChange={(e) => actualizar('empresa', e.target.value)}
+                    onChange={(e) =>
+                      actualizar('empresa', e.target.value.toUpperCase())
+                    }
                     onBlur={() => marcarTocado('empresa')}
                   />
                   {mostrarError('empresa') && (
@@ -675,9 +680,10 @@ function CrearSolicitud({
                   formatoMiles
                   minimo={0}
                   maximo={600}
+                  placeholder="Ej. 18"
                   value={datos.mesesContinuidad}
                   aria-invalid={mostrarError('mesesContinuidad')}
-                  onValor={(n) => actualizar('mesesContinuidad', n ?? 0)}
+                  onValor={(n) => actualizar('mesesContinuidad', n)}
                   onBlur={() => marcarTocado('mesesContinuidad')}
                 />
                 {mostrarError('mesesContinuidad') && (
@@ -788,9 +794,10 @@ function CrearSolicitud({
                   formatoMiles
                   minimo={0}
                   maximo={500_000_000}
+                  placeholder="Ej. 2.500.000"
                   value={datos.ingresosMensuales}
                   aria-invalid={mostrarError('ingresosMensuales')}
-                  onValor={(n) => actualizar('ingresosMensuales', n ?? 0)}
+                  onValor={(n) => actualizar('ingresosMensuales', n)}
                   onBlur={() => marcarTocado('ingresosMensuales')}
                 />
                 <span className="solicitud__suffix" aria-hidden="true">

@@ -10,6 +10,7 @@ import {
   restablecerClave,
 } from '../features/auth/api/autenticacionApi'
 import VitrinaAcceso from '../features/auth/ui/VitrinaAcceso'
+import { ALIADO, MARCA, tituloPagina } from '../shared/lib/marca'
 import './IniciarSesion.css'
 
 export default function RestablecerClave() {
@@ -23,7 +24,7 @@ export default function RestablecerClave() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    document.title = 'Nueva contraseña | Inversiones Pacífico'
+    document.title = tituloPagina('Nueva contraseña')
   }, [])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -53,11 +54,14 @@ export default function RestablecerClave() {
       <main className="access-card">
         <div className="access-mobile-brand">
           <img
-            src="/brand/pacifico-blancos.png"
-            alt="Inversiones Pacífico"
-            width="580"
-            height="274"
+            src={MARCA.logoClaro}
+            alt={MARCA.razonSocial}
+            width="900"
+            height="129"
           />
+          <p className="access-mobile-aliado">
+            Consulta de crédito con el respaldo de {ALIADO.nombre}
+          </p>
         </div>
 
         <VitrinaAcceso />

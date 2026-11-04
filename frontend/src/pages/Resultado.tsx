@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
+import ConfettiCelebracion from '../shared/ui/ConfettiCelebracion'
 import Skeleton from '../shared/ui/Skeleton'
 import {
   ApiError,
@@ -192,7 +193,10 @@ export default function Resultado() {
       />
       <div className="p-6 overflow-auto">
         <div className="max-w-3xl mx-auto space-y-6">
-          <Tarjeta className={`${tono.fondo} ${tono.borde} text-center py-10`}>
+          <Tarjeta
+            className={`${tono.fondo} ${tono.borde} text-center py-10 relative overflow-hidden`}
+          >
+            {visual === 'APROBADO' && <ConfettiCelebracion />}
             <div
               className={`mx-auto h-16 w-16 rounded-full grid place-items-center ${tono.icono}`}
             >

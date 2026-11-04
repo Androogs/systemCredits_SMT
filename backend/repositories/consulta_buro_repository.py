@@ -49,7 +49,7 @@ class ConsultaBuroRepository:
         fila = ConsultaBuro(
             tipo_id=tipo_id,
             numero_id=numero_id,
-            id_solicitud=str(id_solicitud) if id_solicitud else None,
+            id_solicitud=UUID(str(id_solicitud)) if id_solicitud else None,
             origen=origen,
             hdc_json=hdc.model_dump_json(),
             valor_ingreso_json=valor_ingreso.model_dump_json() if valor_ingreso else None,

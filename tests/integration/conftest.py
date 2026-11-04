@@ -149,7 +149,7 @@ _HASHES_USUARIOS = {
 def _id_usuario(rol: str) -> str:
     import uuid as _uuid
 
-    return _uuid.uuid5(_uuid.NAMESPACE_DNS, f"{rol}@pacifico.co").hex
+    return _uuid.uuid5(_uuid.NAMESPACE_DNS, f"{rol}@sumoto.com.co").hex
 
 
 def _sembrar_identidad() -> None:
@@ -190,7 +190,7 @@ def _sembrar_identidad() -> None:
                 ),
                 {
                     "u": _id_usuario(rol),
-                    "c": f"{rol}@pacifico.co",
+                    "c": f"{rol}@sumoto.com.co",
                     "h": _HASHES_USUARIOS[rol],
                     "n": f"{rol.capitalize()} Prueba",
                 },
@@ -208,7 +208,7 @@ def _sembrar_identidad() -> None:
             text(
                 "INSERT OR IGNORE INTO usuario (id_usuario, correo, "
                 "hash_contrasena, estado, nombre_completo) VALUES "
-                "(:u, 'asesor_sinsede@pacifico.co', :h, 'activo', "
+                "(:u, 'asesor_sinsede@sumoto.com.co', :h, 'activo', "
                 "'Asesor Sin Sede')"
             ),
             {"u": _id_usuario("asesor_sinsede"), "h": _HASHES_USUARIOS["asesor"]},
@@ -273,7 +273,7 @@ def _token_rol(rol: str, correo: str | None = None) -> str:
 
     return JwtService(get_settings()).emitir(
         id_usuario=_uuid.uuid5(
-            _uuid.NAMESPACE_DNS, correo or f"{rol}@pacifico.co"
+            _uuid.NAMESPACE_DNS, correo or f"{rol}@sumoto.com.co"
         ),
         nombre=f"{rol.capitalize()} Prueba",
         roles=[rol],

@@ -19,24 +19,6 @@
   animation: rc-veredicto-entrar 0.45s ease-out both;
 }
 
-.resultado-credito__confetti {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.resultado-credito__confetti i {
-  position: absolute;
-  top: -1.5rem;
-  left: var(--x);
-  width: var(--s);
-  height: calc(var(--s) * 1.6);
-  border-radius: var(--r);
-  background: var(--c);
-  animation: rc-confetti-caer var(--d) cubic-bezier(0.3, 0.45, 0.6, 1) var(--dl)
-    both;
-}
-
 .resultado-credito__veredicto-icono {
   position: relative;
   display: grid;
@@ -194,35 +176,16 @@
   }
 }
 
-@keyframes rc-confetti-caer {
-  0% {
-    opacity: 0;
-    transform: translate3d(0, -10%, 0) rotate(0deg);
-  }
-  12% {
-    opacity: 1;
-  }
-  85% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translate3d(var(--dx, 0), 30rem, 0) rotate(620deg);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .resultado-credito__veredicto,
   .resultado-credito__veredicto-icono,
   .resultado-credito__veredicto-eyebrow,
   .resultado-credito__veredicto-titulo,
   .resultado-credito__veredicto-cupo,
-  .resultado-credito__veredicto-radicado,
-  .resultado-credito__confetti i {
+  .resultado-credito__veredicto-radicado {
     animation: none;
   }
 
-  .resultado-credito__confetti,
   .resultado-credito__veredicto--aprobado
     .resultado-credito__veredicto-icono::after {
     display: none;
@@ -269,40 +232,6 @@
 
 .resultado-credito__vehiculo h2 {
   color: var(--slate-soft);
-}
-
-.resultado-credito__valores {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.7rem;
-  margin: 0;
-}
-
-.resultado-credito__valores > div {
-  display: grid;
-  align-content: center;
-  gap: 0.4rem;
-  min-width: 0;
-  min-height: 4.2rem;
-  padding: 0.7rem 0.8rem;
-  border: 1px solid var(--border-soft);
-  border-radius: 0.5rem;
-  background: var(--white);
-}
-
-.resultado-credito__valores dt {
-  color: var(--slate-soft);
-  font-size: 0.66rem;
-  font-weight: 600;
-}
-
-.resultado-credito__valores dd {
-  margin: 0;
-  color: var(--ink);
-  font-size: 0.84rem;
-  font-weight: 700;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
 }
 
 .resultado-credito__seleccion {
@@ -430,24 +359,28 @@
   font-weight: 600;
 }
 
-.resultado-credito__condiciones strong {
-  color: var(--slate);
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
+.resultado-credito__vehiculo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
 }
 
-.resultado-credito__condiciones p {
-  margin: 0.35rem 0 0;
-  color: var(--slate-soft);
-  font-size: 0.67rem;
-  line-height: 1.5;
-}
-
-.resultado-credito__vehiculo > h2 {
+.resultado-credito__vehiculo-head > h2 {
   color: var(--slate-soft);
   font-size: 0.7rem;
   text-transform: uppercase;
+}
+
+.resultado-credito__vehiculo-chips {
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  background: var(--surface-tint-deep);
+  color: var(--brand-ink);
+  font-size: 0.66rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .resultado-credito__vehiculo-hero {
@@ -458,17 +391,6 @@
   border: 1px solid var(--border-soft);
   border-radius: 0.6rem;
   background: var(--surface-neutral);
-}
-
-.resultado-credito__vehiculo-icono {
-  display: grid;
-  flex-shrink: 0;
-  width: 2.9rem;
-  height: 2.9rem;
-  place-items: center;
-  border-radius: 0.7rem;
-  background: var(--brand);
-  color: var(--white);
 }
 
 .resultado-credito__vehiculo-hero strong {
@@ -550,12 +472,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.resultado-credito__vehiculo-nota {
-  color: var(--slate-soft);
-  font-size: 0.6rem;
-  font-weight: 400;
-}
-
 /* Desglose del saldo a financiar. */
 .resultado-credito__vehiculo-datos {
   display: grid;
@@ -598,34 +514,6 @@
 }
 
 .resultado-credito__vehiculo-saldo dd {
-  color: var(--brand-ink);
-}
-
-/* Totales del crédito: intereses, seguros y total a pagar. */
-.resultado-credito__vehiculo-totales {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.5rem;
-  margin: 0;
-  padding-top: 0.7rem;
-  border-top: 1px solid var(--border-soft);
-}
-
-.resultado-credito__vehiculo-totales dt {
-  color: var(--slate-soft);
-  font-size: 0.58rem;
-  font-weight: 600;
-}
-
-.resultado-credito__vehiculo-totales dd {
-  margin: 0;
-  color: var(--ink);
-  font-size: 0.72rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.resultado-credito__vehiculo-totales > div:last-child dd {
   color: var(--brand-ink);
 }
 
@@ -745,11 +633,13 @@
    ocultarse del todo — queda el chip mínimo para reabrirlo. */
 
 .resultado-credito__resumen {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.7rem;
   width: 100%;
   padding: 0.75rem 1rem;
+  overflow: hidden;
   border: 1px solid var(--success-border);
   border-radius: 0.75rem;
   background: var(--success-bg);
@@ -988,4 +878,18 @@
   padding: 1rem;
   font-size: 0.85rem;
   color: var(--texto-secundario, var(--slate-soft));
+}
+
+.resultado-credito__oferta-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+/* Logo de la línea elegida (Credicontado) junto al título de la oferta. */
+.resultado-credito__linea-logo {
+  display: block;
+  height: 1.6rem;
+  width: auto;
 }

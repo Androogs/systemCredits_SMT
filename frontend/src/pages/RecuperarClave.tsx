@@ -10,6 +10,7 @@ import {
   solicitarRecuperacion,
 } from '../features/auth/api/autenticacionApi'
 import VitrinaAcceso from '../features/auth/ui/VitrinaAcceso'
+import { ALIADO, MARCA, tituloPagina } from '../shared/lib/marca'
 import './IniciarSesion.css'
 
 export default function RecuperarClave() {
@@ -19,7 +20,7 @@ export default function RecuperarClave() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    document.title = 'Recuperar contraseña | Inversiones Pacífico'
+    document.title = tituloPagina('Recuperar contraseña')
   }, [])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -46,11 +47,14 @@ export default function RecuperarClave() {
       <main className="access-card">
         <div className="access-mobile-brand">
           <img
-            src="/brand/pacifico-blancos.png"
-            alt="Inversiones Pacífico"
-            width="580"
-            height="274"
+            src={MARCA.logoClaro}
+            alt={MARCA.razonSocial}
+            width="900"
+            height="129"
           />
+          <p className="access-mobile-aliado">
+            Consulta de crédito con el respaldo de {ALIADO.nombre}
+          </p>
         </div>
 
         <VitrinaAcceso />
@@ -108,7 +112,7 @@ export default function RecuperarClave() {
                         setEmail(event.target.value)
                         setError('')
                       }}
-                      placeholder="nombre@empresa.com"
+                      placeholder="nombre@sumoto.com.co"
                       autoComplete="username"
                       maxLength={254}
                       required

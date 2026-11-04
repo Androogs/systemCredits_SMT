@@ -1,0 +1,95 @@
+/* Selector de marca con submenú desplegable (Auteco → distribuidas).
+   Reemplaza al <select> nativo, que no admite submenús. */
+
+.selector-marca {
+  position: relative;
+}
+
+.selector-marca__boton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.selector-marca__boton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.selector-marca__vacio {
+  color: var(--slate-faint);
+}
+
+.selector-marca__chevron--arriba {
+  transform: rotate(180deg);
+}
+
+.selector-marca__flecha--arriba {
+  transform: rotate(180deg);
+}
+
+.selector-marca__menu,
+.selector-marca__submenu {
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  background: var(--white);
+  box-shadow: 0 10px 24px rgb(var(--shadow-ink-rgb) / 14%);
+}
+
+.selector-marca__menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  right: 0;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.selector-marca__ancla {
+  position: relative;
+}
+
+/* El submenú cae debajo del ítem padre, indentado: un despliegue
+   lateral queda recortado por el overflow del menú. */
+.selector-marca__submenu {
+  margin: 0.1rem 0 0.25rem 0.7rem;
+  border-left: 2px solid var(--border-tint);
+  border-radius: 0 0.5rem 0.5rem 0;
+  box-shadow: none;
+}
+
+.selector-marca__opcion {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.selector-marca__opcion:hover,
+.selector-marca__opcion:focus-visible {
+  background: var(--surface-tint);
+  outline: none;
+}
+
+.selector-marca__opcion--activa {
+  color: var(--brand-ink);
+  font-weight: 700;
+  background: var(--surface-tint-deep);
+}

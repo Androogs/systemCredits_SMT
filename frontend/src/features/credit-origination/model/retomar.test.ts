@@ -75,32 +75,32 @@ const CEDULA_COMPLETA = [
 ]
 
 describe('pasoParaRetomar', () => {
-  it('sin consentimiento Habeas aterriza en la autorización (paso 2)', () => {
+  it('sin consentimiento Habeas aterriza en la autorización (paso 1)', () => {
     expect(
       pasoParaRetomar(detalle({ consentimientos: [] }), CEDULA_COMPLETA),
-    ).toBe(2)
+    ).toBe(1)
     expect(
       pasoParaRetomar(detalle({ consentimientos: undefined }), CEDULA_COMPLETA),
-    ).toBe(2)
+    ).toBe(1)
   })
 
-  it('consentimiento sin canal de contacto vuelve al paso 2 (el OTP lo necesita)', () => {
+  it('consentimiento sin canal de contacto vuelve al paso 1 (el OTP lo necesita)', () => {
     const sinContacto = detalle()
     sinContacto.contacto_vivienda = {
       estrato: null,
       personas_a_cargo: null,
       tipo_vivienda: null,
     }
-    expect(pasoParaRetomar(sinContacto, CEDULA_COMPLETA)).toBe(2)
+    expect(pasoParaRetomar(sinContacto, CEDULA_COMPLETA)).toBe(1)
   })
 
-  it('autorización lista pero sin evidencias de cédula aterriza en captura (paso 3)', () => {
-    expect(pasoParaRetomar(detalle(), [])).toBe(3)
-    expect(pasoParaRetomar(detalle(), [evidencia('cedula_frontal')])).toBe(3)
+  it('autorización lista pero sin evidencias de cédula aterriza en captura (paso 2)', () => {
+    expect(pasoParaRetomar(detalle(), [])).toBe(2)
+    expect(pasoParaRetomar(detalle(), [evidencia('cedula_frontal')])).toBe(2)
   })
 
   it('los documentos de legalización no cuentan como evidencia de cédula', () => {
-    expect(pasoParaRetomar(detalle(), [evidencia('doc_pagare')])).toBe(3)
+    expect(pasoParaRetomar(detalle(), [evidencia('doc_pagare')])).toBe(2)
   })
 
   it('evidencia lista pero sin perfil económico aterriza en Crear solicitud (paso 4)', () => {

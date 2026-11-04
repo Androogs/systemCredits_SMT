@@ -22,7 +22,7 @@ describe('API de autenticación', () => {
       access_token: 'jwt.de.prueba',
       token_type: 'bearer',
       usuario: {
-        correo: 'admin@pacifico.co',
+        correo: 'admin@sumoto.com.co',
         nombre: 'Administrador',
         rol: 'admin',
         roles: ['admin'],
@@ -33,13 +33,13 @@ describe('API de autenticación', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(
-      iniciarSesion('admin@pacifico.co', 'demo1234'),
+      iniciarSesion('admin@sumoto.com.co', 'demo1234'),
     ).resolves.toEqual(respuesta)
     expect(fetchMock).toHaveBeenCalledWith(`${API}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        correo: 'admin@pacifico.co',
+        correo: 'admin@sumoto.com.co',
         contrasena: 'demo1234',
       }),
     })

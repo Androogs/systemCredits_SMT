@@ -7,6 +7,7 @@ import type { DatosSolicitud } from '../ui/CrearSolicitud'
 import type {
   CrearSolicitudPayload,
   EvaluarSolicitudPayload,
+  RechazoPoliticasPayload,
 } from '../api/originacionApi'
 import {
   calcularCupoSugerido,
@@ -102,6 +103,45 @@ export function normalizarFecha(valor: string): string {
   return texto
 }
 
+/** Cliente de la radicación (sin ocupación, que es del perfil económico). */
+function clienteDesdeIdentidad(
+  identidad: IdentidadSolicitante,
+): RechazoPoliticasPayload['cliente'] {
+  return {
+    tipo_documento: tipoDocumentoApi(identidad.tipoDocumento),
+    num_cedula: identidad.numeroDocumento,
+    nombre_completo:
+      `${identidad.nombres} ${identidad.apellidos}`.trim() || 'Sin nombre',
+    primer_apellido: primerApellido(identidad.apellidos),
+    fecha_nacimiento: identidad.fechaNacimiento,
+    nacionalidad: identidad.nacionalidad || 'Colombia',
+    fecha_expedicion: identidad.fechaExpedicion
+      ? normalizarFecha(identidad.fechaExpedicion)
+      : null,
+    ciudad_expedicion: identidad.ciudadExpedicion || null,
+    ciudad_nacimiento: identidad.lugarNacimiento || null,
+  }
+}
+
+/** Radicación ya rechazada por multas declaradas en el paso 3 (R22). */
+export function construirRechazoPoliticasPayload(
+  identidad: IdentidadSolicitante,
+  sesionCaptura?: string,
+  idAsesor?: number,
+): RechazoPoliticasPayload {
+  return {
+    cliente: clienteDesdeIdentidad(identidad),
+    contacto_vivienda: {
+      telefono: identidad.telefono || null,
+      correo: identidad.correo || null,
+    },
+    ...(identidad.autorizoHabeas ? { consentimiento: { aceptado: true } } : {}),
+    ...(sesionCaptura ? { sesion_captura: sesionCaptura } : {}),
+    ...(idAsesor ? { id_asesor: idAsesor } : {}),
+    causal: 'R22',
+  }
+}
+
 export function construirCrearSolicitudPayload(
   identidad: IdentidadSolicitante,
   solicitud: DatosSolicitud,
@@ -113,25 +153,12 @@ export function construirCrearSolicitudPayload(
     solicitud.tipoContrato,
   )
   return {
-    cliente: {
-      tipo_documento: tipoDocumentoApi(identidad.tipoDocumento),
-      num_cedula: identidad.numeroDocumento,
-      nombre_completo:
-        `${identidad.nombres} ${identidad.apellidos}`.trim() || 'Sin nombre',
-      primer_apellido: primerApellido(identidad.apellidos),
-      fecha_nacimiento: identidad.fechaNacimiento,
-      ocupacion,
-      nacionalidad: identidad.nacionalidad || 'Colombia',
-      fecha_expedicion: identidad.fechaExpedicion
-        ? normalizarFecha(identidad.fechaExpedicion)
-        : null,
-      ciudad_expedicion: identidad.ciudadExpedicion || null,
-      ciudad_nacimiento: identidad.lugarNacimiento || null,
-    },
+    cliente: { ...clienteDesdeIdentidad(identidad), ocupacion },
     datos_laborales: {
       tipo_contrato: tipoContrato,
       meses_continuidad: solicitud.mesesContinuidad ?? null,
-      ingreso_mensual: solicitud.ingresosMensuales,
+      // La validación del formulario exige ingresos antes de radicar.
+      ingreso_mensual: solicitud.ingresosMensuales ?? 0,
       otros_ingresos: 0,
       anios_camara_comercio: solicitud.aniosCamara ?? null,
       // Empleador (empleado/independiente) o entidad pagadora
@@ -169,7 +196,7 @@ export function construirEvaluacionPayload(
   tasa: number = TASA_MENSUAL_REFERENCIA,
 ): EvaluarSolicitudPayload {
   const { monto } = calcularCupoSugerido(
-    solicitud.ingresosMensuales,
+    solicitud.ingresosMensuales ?? 0,
     solicitud.plazoMeses || 36,
   )
   return {

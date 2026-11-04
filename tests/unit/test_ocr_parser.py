@@ -17,6 +17,7 @@ from backend.services.ocr_parser import (
     CARA_REVERSO,
     TIPO_AMARILLA,
     TIPO_BLANCA,
+    TIPO_PPT,
     Valor,
     Votacion,
     buscar_fecha,
@@ -25,6 +26,7 @@ from backend.services.ocr_parser import (
     parsear_mrz,
     parsear_texto,
 )
+from backend.services.ocr_parser import _digito_control
 from backend.services.ocr_service import (
     CampoOCR,
     LecturaCara,
@@ -58,6 +60,63 @@ cunapana  —  ww    REPUBLICA DE COLOMBIA
 MRZ_L1 = "ICCOL012345678498765<<<<<<<<<<"
 MRZ_L2 = "9503157F3503155COL1234567890<2"
 MRZ_L3 = "PEREZ<GOMEZ<<ANA<MARIA<<<<<<<<"
+
+# --- PPT (Permiso por Protección Temporal, Migración Colombia) ---------------
+#
+# Anverso: rótulo pequeño DEBAJO del valor, fechas numéricas dd-mm-aaaa.
+PPT_ANVERSO = """\
+REPUBLICA DE COLOMBIA                 MIGRACION
+PERMISO POR PROTECCION TEMPORAL
+No. 7654321
+BRAVO ARDILES
+Apellidos
+JAVIER JOSE
+Nombres
+VEN                    M
+Nacionalidad           Sexo
+88012345
+Documento
+21-03-1983
+Fecha de nacimiento
+07-02-2022  BOGOTA D.C.
+Fecha y lugar de expedición
+30-05-2031
+Fecha de vencimiento"""
+
+# La letra menuda de los rótulos no siempre se lee: aquí las fechas no llevan
+# rótulo de expedición ni de vencimiento y se deducen por posición/valor.
+PPT_ANVERSO_SIN_ROTULOS = """\
+REPUBLICA DE COLOMBIA                 MIGRACION
+PERMISO POR PROTECCION TEMPORAL
+No. 7654321
+BRAVO ARDILES
+Apellidos
+JAVIER JOSE
+Nombres
+VEN                    M
+Nacionalidad           Sexo
+88012345
+Documento
+21-03-1983
+07-02-2022  BOGOTA D.C.
+30-05-2031
+Válido hasta"""
+
+
+def _mrz_ppt() -> list[str]:
+    """MRZ TD1 ficticio del PPT: código IP, emisor COL, nacionalidad VEN."""
+    doc = "7654321<<"  # serial del permiso, pos 5-13 de la línea 1
+    linea1 = ("IPCOL" + doc + str(_digito_control(doc))).ljust(30, "<")
+    nac, exp, opcional = "830321", "310530", "E0706400<<<"  # 11 chars pos 18-28
+    linea2 = (
+        nac + str(_digito_control(nac)) + "M"
+        + exp + str(_digito_control(exp))
+        + "VEN" + opcional
+    )
+    compuesto = _digito_control(
+        linea1[5:30] + linea2[0:7] + linea2[8:15] + linea2[18:29]
+    )
+    return [linea1, linea2 + str(compuesto), "BRAVO<ARDILES<<JAVIER<JOSE<<<<"]
 
 # --- Cédula amarilla: rótulo DEBAJO del valor -------------------------------
 
@@ -97,6 +156,8 @@ P-0100100-00123456-M-0080123456-20200101 00123456A 1 8500000000"""
         ("\n".join([MRZ_L1, MRZ_L2, MRZ_L3]), (TIPO_BLANCA, CARA_REVERSO)),
         (AMARILLA_ANVERSO, (TIPO_AMARILLA, CARA_FRONTAL)),
         (AMARILLA_REVERSO, (TIPO_AMARILLA, CARA_REVERSO)),
+        (PPT_ANVERSO, (TIPO_PPT, CARA_FRONTAL)),
+        ("\n".join(_mrz_ppt()), (TIPO_PPT, CARA_REVERSO)),
     ],
 )
 def test_clasifica_tipo_y_cara_por_contenido(texto, esperado):
@@ -173,6 +234,61 @@ def test_mrz_con_digito_erroneo_no_valida():
 
 def test_sin_mrz_devuelve_vacio():
     assert parsear_mrz("REPUBLICA DE COLOMBIA\nSIN CODIGO") == {}
+
+
+# --------------------------------------------------------------------------
+# PPT (Permiso por Protección Temporal)
+# --------------------------------------------------------------------------
+
+
+def test_ppt_anverso_extrae_todos_los_campos():
+    r = parsear_texto(PPT_ANVERSO)
+    assert (r.tipo, r.cara) == (TIPO_PPT, CARA_FRONTAL)
+    campos = {k: v.valor for k, v in r.campos.items()}
+    assert campos == {
+        "numero_documento": "88012345",  # documento del titular, no el serial "No."
+        "apellidos": "BRAVO ARDILES",
+        "nombres": "JAVIER JOSE",
+        "sexo": "M",
+        "fecha_nacimiento": "1983-03-21",
+        "fecha_expedicion": "2022-02-07",
+        "ciudad_expedicion": "BOGOTA D.C",
+        "fecha_expiracion": "2031-05-30",
+    }
+
+
+def test_ppt_anverso_deduce_fechas_sin_rotulos():
+    """Sin rótulos legibles las fechas se deducen: nacimiento (la más vieja),
+    expedición (la otra pasada, con ciudad en la línea) y vencimiento (futura)."""
+    r = parsear_texto(PPT_ANVERSO_SIN_ROTULOS)
+    assert (r.tipo, r.cara) == (TIPO_PPT, CARA_FRONTAL)
+    campos = {k: v.valor for k, v in r.campos.items()}
+    assert campos["numero_documento"] == "88012345"
+    assert campos["fecha_nacimiento"] == "1983-03-21"
+    assert campos["fecha_expedicion"] == "2022-02-07"
+    assert campos["ciudad_expedicion"] == "BOGOTA D.C"
+    assert campos["fecha_expiracion"] == "2031-05-30"
+
+
+def test_ppt_mrz_nacionalidad_ven_y_control_valido():
+    mrz = parsear_mrz(_mrz_ppt())
+    assert mrz["nacionalidad"] == "VEN"
+    assert mrz["apellidos"] == "BRAVO ARDILES"
+    assert mrz["nombres"] == "JAVIER JOSE"
+    assert mrz["fecha_nacimiento"] == "1983-03-21"
+    assert mrz["fecha_expiracion"] == "2031-05-30"
+    assert mrz["sexo"] == "M"
+    assert mrz["control_nacimiento"] and mrz["control_compuesto"]
+    # El dato opcional del PPT no es un NUIP: el número sale del anverso.
+    assert "numero_documento" not in mrz
+
+
+def test_ppt_reverso_parsea_por_mrz():
+    r = parsear_texto("\n".join(_mrz_ppt()))
+    assert (r.tipo, r.cara) == (TIPO_PPT, CARA_REVERSO)
+    assert r.mrz_valido is True
+    assert r.campos["nombres"].valor == "JAVIER JOSE"
+    assert r.campos["fecha_nacimiento"].valor == "1983-03-21"
 
 
 # --------------------------------------------------------------------------
@@ -273,6 +389,14 @@ REVERSO_BLANCA = _lectura(
     sexo=("F", 95, "mrz"),
     fecha_expiracion=("2035-03-15", 99, "mrz"),
 )
+REVERSO_PPT = _lectura(
+    TIPO_PPT, CARA_REVERSO,
+    nombres=("JAVIER JOSE", 92, "mrz"),
+    apellidos=("BRAVO ARDILES", 92, "mrz"),
+    fecha_nacimiento=("1983-03-21", 99, "mrz"),
+    sexo=("M", 95, "mrz"),
+    fecha_expiracion=("2031-05-30", 99, "mrz"),
+)
 
 
 @pytest.mark.parametrize("orden", [("f", "r"), ("r", "f")])
@@ -316,6 +440,27 @@ def test_fusion_advierte_cedula_vencida():
     reverso = _lectura(TIPO_BLANCA, CARA_REVERSO, fecha_expiracion=(vencida, 99, "mrz"))
     r = fusionar_lecturas({"cedula_reverso": reverso})
     assert any("vencida" in a for a in r.advertencias)
+
+
+def test_fusion_ppt_rechaza_documento_y_no_reporta_lugar():
+    anverso = _lectura(
+        TIPO_PPT, CARA_FRONTAL,
+        numero_documento=("88012345", 90, "anverso"),
+        nombres=("JAVIER JOSE", 92, "anverso"),
+        apellidos=("BRAVO ARDILES", 92, "anverso"),
+        fecha_nacimiento=("1983-03-21", 90, "anverso"),
+        sexo=("M", 95, "anverso"),
+        fecha_expedicion=("2022-02-07", 90, "anverso"),
+        ciudad_expedicion=("BOGOTA D.C", 90, "anverso"),
+        fecha_expiracion=("2031-05-30", 90, "anverso"),
+    )
+    r = fusionar_lecturas({"cedula_frontal": anverso, "cedula_reverso": REVERSO_PPT})
+    assert r.tipo_cedula == TIPO_PPT
+    # El PPT no reporta lugar de nacimiento.
+    assert r.lugar_nacimiento.valor == "NO REPORTA"
+    # No es un documento válido: solo se aceptan ciudadanos colombianos.
+    assert any("colombianos" in a for a in r.advertencias)
+    assert r.to_dict()["coincide"] is False
 
 
 def test_fusion_observa_cara_cambiada_e_ilegible():

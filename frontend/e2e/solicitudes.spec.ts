@@ -15,9 +15,9 @@ let usuarioSesion: unknown
 test.beforeAll(async () => {
   const api = await request.newContext({ baseURL: API })
 
-  // Sesión real: el seed crea admin@pacifico.co (ve todo el panel).
+  // Sesión real: el seed crea admin@sumoto.com.co (ve todo el panel).
   const login = await api.post('/api/auth/login', {
-    data: { correo: 'admin@pacifico.co', contrasena: 'Admin123!' },
+    data: { correo: 'admin@sumoto.com.co', contrasena: 'Admin123!' },
   })
   expect(login.status(), await login.text()).toBe(200)
   const sesion = await login.json()
@@ -141,7 +141,7 @@ test('el asesor ve acciones rápidas y su tabla completa, sin filtros de admin',
 }) => {
   const api = await request.newContext({ baseURL: API })
   const login = await api.post('/api/auth/login', {
-    data: { correo: 'asesor@pacifico.co', contrasena: 'Asesor123!' },
+    data: { correo: 'asesor@sumoto.com.co', contrasena: 'Asesor123!' },
   })
   expect(login.status(), await login.text()).toBe(200)
   const sesion = await login.json()

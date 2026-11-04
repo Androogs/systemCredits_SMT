@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     version: str = "1.0.0"
 
     # --- API / frontend ---
-    app_title: str = "Creditos API - Inversiones Pacifico"
+    app_title: str = "Creditos API - SUMOTO (financiera aliada: Inversiones Pacifico)"
     app_version: str = "1.0.0"
     cors_origins: str = "http://localhost:5173"
     api_host: str = "0.0.0.0"

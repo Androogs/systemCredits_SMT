@@ -5,20 +5,25 @@ import Tarjeta from '../shared/ui/Tarjeta'
 import Sparkline from '../shared/ui/Sparkline'
 import Skeleton from '../shared/ui/Skeleton'
 import { currency, number } from '../shared/lib/formatters'
-import { useCuentaAscendente } from '../shared/lib/useCuentaAscendente'
-import { useRol } from '../shared/lib/sesion'
+
+import { useRol, useUsuario } from '../shared/lib/sesion'
 import {
   estadoParaVista,
+  ESTADOS_POSITIVOS_VISTA,
   numero,
   OCUPACION_LABELS,
+  PERFIL_INGRESO_LABELS,
+  TIPO_CONTRATO_LABELS,
   useSolicitudes,
 } from '../entities/credit/model/solicitudesPanel'
+import { SEDES_POR_MARCA } from '../features/credit-origination/model/concesionarios'
 import type {
   FiltrosSolicitudes,
   SolicitudResumenApi,
 } from '../features/credit-origination/api/originacionApi'
 import TablaSolicitudesPanel from '../widgets/dashboard/TablaSolicitudesPanel'
 import BarraFiltrosDimensionales, {
+  coincideMarcaSede,
   type DimensionesPanel,
 } from '../widgets/dashboard/BarraFiltrosDimensionales'
 import AccionesRapidas from '../widgets/dashboard/AccionesRapidas'
@@ -34,10 +39,24 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { FiltroPanel } from '../widgets/dashboard/GraficasResumen'
-import EmbudoOriginacion from '../widgets/dashboard/EmbudoOriginacion'
+import EmbudoOriginacion, {
+  PanelCausalesRechazo,
+  PanelTopAsesores,
+} from '../widgets/dashboard/EmbudoOriginacion'
+import {
+  PanelPerfilCliente,
+  PanelRanking,
+} from '../widgets/dashboard/PanelesResumen'
 
-const GraficasResumen = lazy(
-  () => import('../widgets/dashboard/GraficasResumen'),
+const DonaEstados = lazy(() =>
+  import('../widgets/dashboard/GraficasResumen').then((m) => ({
+    default: m.DonaEstados,
+  })),
+)
+const TendenciaSeisMeses = lazy(() =>
+  import('../widgets/dashboard/GraficasResumen').then((m) => ({
+    default: m.TendenciaSeisMeses,
+  })),
 )
 
 const STATUS_COLORS = {
@@ -47,6 +66,69 @@ const STATUS_COLORS = {
 }
 
 const REFRESCO_MS = 30_000
+
+const MARCAS_CATALOGO = Object.keys(SEDES_POR_MARCA)
+
+const SIN_MARCA = 'Sin marca asignada'
+
+/** Marca del concesionario que radicó: los nombres vienen como
+    "<Marca> <Sede>". Solo cuentan las 7 marcas del catálogo; sin sede o
+    con una sede fuera del catálogo se agrupa como "sin marca". */
+function marcaDe(nombre: string | null | undefined): string {
+  if (!nombre) return SIN_MARCA
+  return MARCAS_CATALOGO.find((m) => coincideMarcaSede(nombre, m)) ?? SIN_MARCA
+}
+
+type Rango = [label: string, test: (v: number) => boolean]
+
+// Rangos de la distribución monetaria y de plazo del resumen.
+const RANGOS_MONTO: Rango[] = [
+  ['< $5 M', (v) => v < 5e6],
+  ['$5–10 M', (v) => v >= 5e6 && v < 10e6],
+  ['$10–15 M', (v) => v >= 10e6 && v < 15e6],
+  ['$15–20 M', (v) => v >= 15e6 && v < 20e6],
+  ['≥ $20 M', (v) => v >= 20e6],
+]
+const RANGOS_PLAZO: Rango[] = [
+  ['< 12', (v) => v < 12],
+  ['12–24', (v) => v >= 12 && v < 24],
+  ['24–36', (v) => v >= 24 && v < 36],
+  ['36–48', (v) => v >= 36 && v < 48],
+  ['≥ 48', (v) => v >= 48],
+]
+const RANGOS_CUOTA: Rango[] = [
+  ['< $250 mil', (v) => v < 250e3],
+  ['$250–500 mil', (v) => v >= 250e3 && v < 500e3],
+  ['$500–750 mil', (v) => v >= 500e3 && v < 750e3],
+  ['$750 mil–$1 M', (v) => v >= 750e3 && v < 1e6],
+  ['≥ $1 M', (v) => v >= 1e6],
+]
+const RANGOS_CONTINUIDAD: Rango[] = [
+  ['0', (v) => v === 0],
+  ['1–5', (v) => v >= 1 && v <= 5],
+  ['6–11', (v) => v >= 6 && v <= 11],
+  ['≥ 12', (v) => v >= 12],
+]
+
+/** Reparte valores numéricos en los rangos dados, conservando el orden
+    del catálogo; `sinDato` agrega un último segmento para los nulos.
+    Los rangos vacíos se omiten (la lista queda solo con producción). */
+function distribuir(
+  valores: (number | null | undefined)[],
+  rangos: Rango[],
+  sinDato: string | null = null,
+): { label: string; valor: number }[] {
+  const conteo = new Map<string, number>(rangos.map(([l]) => [l, 0]))
+  if (sinDato) conteo.set(sinDato, 0)
+  for (const v of valores) {
+    const label =
+      v == null ? sinDato : (rangos.find(([, t]) => t(v))?.[0] ?? null)
+    if (label) conteo.set(label, (conteo.get(label) ?? 0) + 1)
+  }
+  return [...conteo.entries()]
+    .map(([label, valor]) => ({ label, valor }))
+    .filter((i) => i.valor > 0)
+}
 
 /** Saludo según la hora local (estilo portal del asesor). */
 function saludoDelDia(): string {
@@ -59,7 +141,12 @@ function saludoDelDia(): string {
 /** `mes` acota todo el panel (KPIs, gráficas, embudo y tabla);
     `estado`, `ocupacion` y `etapa` filtran la tabla y atenúan lo demás. */
 function coincideFiltro(s: SolicitudResumenApi, filtro: FiltroPanel): boolean {
-  if (filtro.campo === 'estado') return estadoParaVista(s) === filtro.valor
+  // "Aprobadas" del KPI cubre todo el pipeline positivo (en proceso,
+  // aprobada, facturada, desembolsada), no solo el hito visual APROBADO.
+  if (filtro.campo === 'estado')
+    return filtro.valor === 'APROBADO'
+      ? ESTADOS_POSITIVOS_VISTA.has(estadoParaVista(s))
+      : estadoParaVista(s) === filtro.valor
   if (filtro.campo === 'ocupacion') return s.ocupacion === filtro.valor
   if (filtro.campo === 'etapa') {
     if (filtro.valor === 'evaluadas') return s.decision != null
@@ -85,6 +172,8 @@ const FILTRO_POR_ETAPA: Record<string, FiltroPanel | null> = {
 
 export default function Resumen() {
   const rol = useRol()
+  const usuario = useUsuario()
+  const primerNombre = usuario?.nombre.trim().split(/\s+/)[0]
   const vistaBinaria = rol !== 'admin'
   // Filtros dimensionales (concesionario/asesor): viajan al servidor y
   // recalculan KPIs, gráficas, embudo y tabla a la vez. Los tiene el
@@ -99,13 +188,25 @@ export default function Resumen() {
     ? { limite: 200, ...dimensiones }
     : { limite: 200, orden: 'prioridad' }
   const {
-    datos: solicitudes,
+    datos: solicitudesTodas,
     cargando,
     error,
     recargar,
     actualizadoEn,
     sincronizando,
   } = useSolicitudes(filtrosLista, { refetchIntervalMs: REFRESCO_MS })
+  // La marca/sede del panel es catálogo local: se filtra en cliente
+  // sobre el nombre del concesionario (marca sin sede acumula todas
+  // las sedes de esa marca en KPIs, gráficas y tabla).
+  const solicitudes = dimensiones.marca
+    ? solicitudesTodas.filter((s) =>
+        coincideMarcaSede(
+          s.nombre_concesionario,
+          dimensiones.marca,
+          dimensiones.sede,
+        ),
+      )
+    : solicitudesTodas
   const [filtro, setFiltro] = useState<FiltroPanel | null>(null)
   const alternarFiltro = (f: FiltroPanel) =>
     setFiltro((actual) =>
@@ -142,14 +243,16 @@ export default function Resumen() {
       : solicitudes
 
   const total = base.length
-  const approved = base.filter((s) => estadoParaVista(s) === 'APROBADO').length
+  const approved = base.filter((s) =>
+    ESTADOS_POSITIVOS_VISTA.has(estadoParaVista(s)),
+  ).length
   const rejected = base.filter((s) => estadoParaVista(s) === 'RECHAZADO').length
   const pendientes = base.filter(
     (s) => estadoParaVista(s) === 'PENDIENTE',
   ).length
 
   const cupos = base
-    .filter((s) => estadoParaVista(s) === 'APROBADO')
+    .filter((s) => ESTADOS_POSITIVOS_VISTA.has(estadoParaVista(s)))
     .map((s) => numero(s.evaluacion?.cupo_sugerido))
     .filter((n): n is number => n != null)
   const capacidades = base
@@ -230,7 +333,7 @@ export default function Resumen() {
     }
     acc.total += 1
     const ev = estadoParaVista(s)
-    if (ev === 'APROBADO') acc.aprobadas += 1
+    if (ESTADOS_POSITIVOS_VISTA.has(ev)) acc.aprobadas += 1
     else if (ev === 'PENDIENTE') acc.pendientes += 1
     porMes.set(k, acc)
   }
@@ -278,7 +381,8 @@ export default function Resumen() {
       })
       acum.solicitudes.push(delDia.length)
       acum.aprobadas.push(
-        delDia.filter((s) => estadoParaVista(s) === 'APROBADO').length,
+        delDia.filter((s) => ESTADOS_POSITIVOS_VISTA.has(estadoParaVista(s)))
+          .length,
       )
       acum.pendientes.push(
         delDia.filter((s) => estadoParaVista(s) === 'PENDIENTE').length,
@@ -290,8 +394,8 @@ export default function Resumen() {
   const porOcupacion = Object.entries(OCUPACION_LABELS)
     .map(([tipo, label]) => {
       const grupo = base.filter((s) => s.ocupacion === tipo)
-      const aprobadas = grupo.filter(
-        (s) => estadoParaVista(s) === 'APROBADO',
+      const aprobadas = grupo.filter((s) =>
+        ESTADOS_POSITIVOS_VISTA.has(estadoParaVista(s)),
       ).length
       const rechazadas = grupo.filter(
         (s) => estadoParaVista(s) === 'RECHAZADO',
@@ -308,18 +412,25 @@ export default function Resumen() {
     .filter((g) => g.total > 0)
 
   // Listas rankeadas tipo "Sources/Pages" del patrón de referencia:
-  // distribución por plazo pedido y por perfil de score (este último
-  // solo para administrador — los scores no se exponen al asesor).
-  const porPlazo = Object.entries(
-    base.reduce<Record<string, number>>((acc, s) => {
-      const p = s.plazo_deseado_meses
-      const clave = p == null ? 'Sin plazo' : `${p} meses`
-      acc[clave] = (acc[clave] ?? 0) + 1
-      return acc
-    }, {}),
-  )
-    .map(([label, valor]) => ({ label, valor }))
-    .sort((a, b) => b.valor - a.valor || a.label.localeCompare(b.label))
+  // marca del concesionario, perfiles del motor (score e ingreso,
+  // solo administrador), tipo de contrato, continuidad laboral y los
+  // rangos monetarios (monto, plazo deseado y cuota total pactada).
+  // Las 7 marcas siempre aparecen (con 0 si no tienen solicitudes),
+  // ordenadas por volumen; lo que no es de ninguna marca va al final.
+  const conteoMarca = base.reduce<Record<string, number>>((acc, s) => {
+    const marca = marcaDe(s.nombre_concesionario)
+    acc[marca] = (acc[marca] ?? 0) + 1
+    return acc
+  }, {})
+  const porMarca = [
+    ...MARCAS_CATALOGO.map((label) => ({
+      label,
+      valor: conteoMarca[label] ?? 0,
+    })).sort((a, b) => b.valor - a.valor || a.label.localeCompare(b.label)),
+    ...(conteoMarca[SIN_MARCA]
+      ? [{ label: SIN_MARCA, valor: conteoMarca[SIN_MARCA] }]
+      : []),
+  ]
 
   const porScore = Object.entries(
     base.reduce<Record<string, number>>((acc, s) => {
@@ -335,15 +446,62 @@ export default function Resumen() {
     }))
     .sort((a, b) => a.label.localeCompare(b.label))
 
-  const porDestino = Object.entries(
-    base.reduce<Record<string, number>>((acc, s) => {
-      const d = s.destino_credito?.trim() || 'Sin destino'
-      acc[d] = (acc[d] ?? 0) + 1
-      return acc
-    }, {}),
+  const conteoIngreso = base.reduce<Record<string, number>>((acc, s) => {
+    const p = s.evaluacion?.perfil_ingreso
+    if (p) acc[p] = (acc[p] ?? 0) + 1
+    return acc
+  }, {})
+  const porIngreso = Object.keys(PERFIL_INGRESO_LABELS)
+    .concat(
+      Object.keys(conteoIngreso).filter((k) => !(k in PERFIL_INGRESO_LABELS)),
+    )
+    .map((k) => ({
+      label: PERFIL_INGRESO_LABELS[k] ?? k,
+      valor: conteoIngreso[k] ?? 0,
+    }))
+    .filter((i) => i.valor > 0)
+
+  const conteoContrato = base.reduce<Record<string, number>>((acc, s) => {
+    const k = s.tipo_contrato || 'sin_dato'
+    acc[k] = (acc[k] ?? 0) + 1
+    return acc
+  }, {})
+  const porTipoContrato = Object.keys(TIPO_CONTRATO_LABELS)
+    .concat('sin_dato')
+    .map((k) => ({
+      label: k === 'sin_dato' ? 'Sin dato' : (TIPO_CONTRATO_LABELS[k] ?? k),
+      valor: conteoContrato[k] ?? 0,
+    }))
+    .filter((i) => i.valor > 0)
+
+  const porContinuidad = distribuir(
+    base.map((s) => s.meses_continuidad ?? null),
+    RANGOS_CONTINUIDAD,
+    'Sin dato',
   )
-    .map(([label, valor]) => ({ label, valor }))
-    .sort((a, b) => b.valor - a.valor)
+
+  // Rangos monetarios: promedio sobre las solicitudes que tienen el
+  // dato (cupo aprobado / oferta elegida); el share usa ese subtotal.
+  // El monto usa solo aprobadas, igual que "Monto aprobado" de la banda.
+  const montos = cupos
+  const cuotas = base
+    .map((s) => numero(s.cuota_total))
+    .filter((n): n is number => n != null)
+  const plazos = base
+    .map((s) => s.plazo_deseado_meses)
+    .filter((n): n is number => n != null)
+  const promedio = (vs: number[]) =>
+    vs.length ? vs.reduce((a, b) => a + b, 0) / vs.length : null
+  const promMonto = promedio(montos)
+  const promCuota = promedio(cuotas)
+  const promPlazo = promedio(plazos)
+  const porMonto = distribuir(montos, RANGOS_MONTO)
+  const porCuota = distribuir(cuotas, RANGOS_CUOTA)
+  const porPlazoRangos = distribuir(
+    base.map((s) => s.plazo_deseado_meses ?? null),
+    RANGOS_PLAZO,
+    'Sin plazo',
+  )
 
   const hoy = new Date()
   const radicadasHoy = base.filter((s) => {
@@ -356,9 +514,6 @@ export default function Resumen() {
   }).length
   const ticketPromedio = cupos.length ? sumaCupos / cupos.length : 0
 
-  // Animación 0 → valor real en KPIs y centro de la dona
-  const totalAnimado = useCuentaAscendente(total)
-
   const solicitudesFiltradas =
     filtro == null
       ? solicitudes
@@ -367,7 +522,7 @@ export default function Resumen() {
   return (
     <>
       <Encabezado
-        title={saludoDelDia()}
+        title={`${saludoDelDia()}${primerNombre ? `, ${primerNombre}` : ''}`}
         subtitle={
           vistaBinaria
             ? 'Prioridades comerciales y solicitudes asignadas'
@@ -449,149 +604,59 @@ export default function Resumen() {
              tabla completa con pendientes primero. La analítica de
              gestión (dona, tendencia, ocupación, rankings) queda para
              el administrador. */
-          <EmbudoOriginacion
-            vistaBinaria={rol === 'asesor'}
-            rango={rangoEmbudo}
-            concesionarioId={dimensiones.id_concesionario}
-            asesorId={dimensiones.id_asesor}
-            filtro={filtro}
-            onFiltrar={filtrarPorEtapa}
-          />
+          <>
+            <EmbudoOriginacion
+              vistaBinaria={rol === 'asesor'}
+              rango={rangoEmbudo}
+              concesionarioId={dimensiones.id_concesionario}
+              asesorId={dimensiones.id_asesor}
+              filtro={filtro}
+              onFiltrar={filtrarPorEtapa}
+            />
+            {/* El aliado liquida comisiones por radicador y el
+              concesionario sigue a sus asesores: conservan el ranking. */}
+            {rol !== 'asesor' && (
+              <PanelTopAsesores
+                rango={rangoEmbudo}
+                concesionarioId={dimensiones.id_concesionario}
+                asesorId={dimensiones.id_asesor}
+              />
+            )}
+          </>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <>
+            {/* Tendencia de radicadas: ancho completo sobre la retícula. */}
             <Suspense
               fallback={
-                <>
-                  {[1, 2].map((i) => (
-                    <Tarjeta key={i}>
-                      <Skeleton className="h-56 w-full rounded-xl" />
-                    </Tarjeta>
-                  ))}
-                  <Tarjeta className="lg:col-span-2">
-                    <Skeleton className="h-64 w-full rounded-xl" />
-                  </Tarjeta>
-                </>
+                <Tarjeta>
+                  <Skeleton className="h-64 w-full rounded-xl" />
+                </Tarjeta>
               }
             >
-              <GraficasResumen
+              <TendenciaSeisMeses
                 cargando={cargando}
-                byStatus={byStatus}
                 monthBuckets={monthBuckets}
-                totalAnimado={totalAnimado}
                 filtro={filtro}
                 alternarFiltro={alternarFiltro}
               />
             </Suspense>
 
-            <Tarjeta>
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-                <h3 className="font-semibold text-slate-900">
-                  Aprobación por ocupación
-                </h3>
-                <div className="flex gap-3 text-xs text-slate-600">
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                    Aprobadas
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-                    Rechazadas
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-slate-300" />
-                    Otras
-                  </span>
-                </div>
-              </div>
-              <div
-                className="space-y-3"
-                aria-busy={cargando}
-                role="img"
-                aria-label={`Aprobación por ocupación: ${porOcupacion.map((g) => `${g.label}: ${g.aprobadas} aprobadas de ${g.total}`).join(', ')}`}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Suspense
+                fallback={
+                  <Tarjeta>
+                    <Skeleton className="h-56 w-full rounded-xl" />
+                  </Tarjeta>
+                }
               >
-                {cargando ? (
-                  <div className="space-y-3" aria-hidden="true">
-                    {[100, 85, 70].map((w) => (
-                      <div
-                        key={w}
-                        className="h-9 animate-pulse rounded-lg bg-slate-200"
-                        style={{ width: `${w}%` }}
-                      />
-                    ))}
-                  </div>
-                ) : porOcupacion.length === 0 ? (
-                  <p className="py-10 text-center text-sm text-slate-500">
-                    Aún no hay solicitudes registradas.
-                  </p>
-                ) : (
-                  porOcupacion.map((g) => {
-                    const tasa = Math.round((g.aprobadas / g.total) * 100)
-                    const activo =
-                      filtro?.campo === 'ocupacion' && filtro.valor === g.tipo
-                    return (
-                      <button
-                        key={g.tipo}
-                        type="button"
-                        onClick={() =>
-                          alternarFiltro({
-                            campo: 'ocupacion',
-                            valor: g.tipo,
-                            etiqueta: g.label,
-                          })
-                        }
-                        aria-pressed={activo}
-                        className={`relative flex w-full items-center gap-x-3 rounded-lg px-3 pb-3 pt-2 text-sm transition hover:bg-slate-50 ${
-                          activo
-                            ? 'bg-brand-500/[.07] ring-1 ring-inset ring-brand-500/25'
-                            : ''
-                        } ${
-                          filtro?.campo === 'ocupacion' && !activo
-                            ? 'opacity-40'
-                            : ''
-                        }`}
-                      >
-                        <span className="min-w-0 flex-1 truncate text-left text-slate-700">
-                          {g.label}
-                        </span>
-                        <span className="hidden shrink-0 text-xs text-slate-400 tabular-nums sm:inline">
-                          {g.aprobadas} apr · {g.rechazadas} rec
-                        </span>
-                        <span className="w-20 shrink-0 text-right tabular-nums">
-                          <span className="font-semibold text-slate-900">
-                            {g.total}
-                          </span>
-                          <span className="text-xs text-slate-500">
-                            {' '}
-                            · {tasa}%
-                          </span>
-                        </span>
-                        {/* Composición como track delgado al borde inferior:
-                          aprobadas / rechazadas / otras en su proporción. */}
-                        <span
-                          aria-hidden="true"
-                          className="absolute inset-x-3 bottom-1 flex h-[3px] overflow-hidden rounded-full bg-slate-100"
-                        >
-                          <span
-                            className="bg-emerald-500"
-                            style={{
-                              width: `${(g.aprobadas / g.total) * 100}%`,
-                            }}
-                          />
-                          <span
-                            className="bg-red-400"
-                            style={{
-                              width: `${(g.rechazadas / g.total) * 100}%`,
-                            }}
-                          />
-                        </span>
-                      </button>
-                    )
-                  })
-                )}
-              </div>
-            </Tarjeta>
-
-            <div className="lg:col-span-2">
+                <DonaEstados
+                  cargando={cargando}
+                  byStatus={byStatus}
+                  total={total}
+                  filtro={filtro}
+                  alternarFiltro={alternarFiltro}
+                />
+              </Suspense>
               <EmbudoOriginacion
                 vistaBinaria={vistaBinaria}
                 rango={rangoEmbudo}
@@ -602,24 +667,43 @@ export default function Resumen() {
               />
             </div>
 
-            <PanelRanking
-              titulo="Plazo preferido"
-              cargando={cargando}
-              items={porPlazo}
-              total={total}
-              vacio="Aún no hay solicitudes registradas."
-            />
-            {/* El score es dato de administrador; el asesor ve el destino
-              del crédito, igual de útil para operación en vitrina. */}
-            {vistaBinaria ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <PanelRanking
-                titulo="Destino del crédito"
+                titulo="Distribución por marca"
                 cargando={cargando}
-                items={porDestino}
+                items={total > 0 ? porMarca : []}
+                limite={porMarca.length}
                 total={total}
                 vacio="Aún no hay solicitudes registradas."
               />
-            ) : (
+              <PanelTopAsesores
+                rango={rangoEmbudo}
+                concesionarioId={dimensiones.id_concesionario}
+                asesorId={dimensiones.id_asesor}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <PanelPerfilCliente
+                grupos={porOcupacion}
+                total={total}
+                cargando={cargando}
+                filtro={filtro}
+                alternarFiltro={alternarFiltro}
+              />
+              <PanelRanking
+                titulo="Tipo de contrato"
+                cargando={cargando}
+                items={porTipoContrato}
+                total={total}
+                vacio="Aún no hay solicitudes registradas."
+              />
+            </div>
+
+            {/* El score es dato de administrador; junto al perfil de
+              ingreso y la continuidad laboral completa el retrato del
+              cliente que evalúa el motor. */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <PanelRanking
                 titulo="Perfil de score"
                 cargando={cargando}
@@ -627,8 +711,76 @@ export default function Resumen() {
                 total={porScore.reduce((a, i) => a + i.valor, 0)}
                 vacio="Aún no hay evaluaciones registradas."
               />
-            )}
-          </div>
+              <PanelRanking
+                titulo="Perfil de ingreso"
+                cargando={cargando}
+                items={porIngreso}
+                total={porIngreso.reduce((a, i) => a + i.valor, 0)}
+                vacio="Aún no hay evaluaciones registradas."
+              />
+              <PanelRanking
+                titulo="Continuidad laboral (meses)"
+                cargando={cargando}
+                items={porContinuidad}
+                total={total}
+                vacio="Aún no hay solicitudes registradas."
+              />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <PanelRanking
+                titulo="Monto aprobado"
+                resumen={
+                  <ResumenPromedio
+                    etiqueta="Promedio"
+                    valor={
+                      promMonto != null ? currency(Math.round(promMonto)) : '—'
+                    }
+                  />
+                }
+                cargando={cargando}
+                items={porMonto}
+                total={montos.length}
+                vacio="Aún no hay cupos evaluados."
+              />
+              <PanelRanking
+                titulo="Plazo deseado (meses)"
+                resumen={
+                  <ResumenPromedio
+                    etiqueta="Promedio"
+                    valor={
+                      promPlazo != null ? `${Math.round(promPlazo)} meses` : '—'
+                    }
+                  />
+                }
+                cargando={cargando}
+                items={porPlazoRangos}
+                total={total}
+                vacio="Aún no hay solicitudes registradas."
+              />
+              <PanelRanking
+                titulo="Cuota total mensual"
+                resumen={
+                  <ResumenPromedio
+                    etiqueta="Promedio"
+                    valor={
+                      promCuota != null ? currency(Math.round(promCuota)) : '—'
+                    }
+                  />
+                }
+                cargando={cargando}
+                items={porCuota}
+                total={cuotas.length}
+                vacio="Aún no hay cuotas pactadas."
+              />
+            </div>
+
+            <PanelCausalesRechazo
+              rango={rangoEmbudo}
+              concesionarioId={dimensiones.id_concesionario}
+              asesorId={dimensiones.id_asesor}
+            />
+          </>
         )}
 
         <TablaSolicitudesPanel
@@ -771,7 +923,6 @@ function BandaKpis({
     delta: number | null
     serie: number[]
     icono: LucideIcon
-    chip: string
     activo: boolean
   }[] = [
     {
@@ -782,7 +933,6 @@ function BandaKpis({
       serie: series.solicitudes,
       delta: deltas.solicitudes ?? null,
       icono: FileText,
-      chip: 'bg-brand-50 text-brand-600 ring-brand-500/20',
       activo: filtro == null,
     },
     {
@@ -797,7 +947,6 @@ function BandaKpis({
       delta: deltas.aprobadas ?? null,
       serie: series.aprobadas,
       icono: CircleCheck,
-      chip: 'bg-emerald-50 text-emerald-600 ring-emerald-500/20',
       activo: filtro?.campo === 'estado' && filtro.valor === 'APROBADO',
     },
     {
@@ -812,7 +961,6 @@ function BandaKpis({
       delta: deltas.pendientes ?? null,
       serie: series.pendientes,
       icono: Clock3,
-      chip: 'bg-amber-50 text-amber-600 ring-amber-500/20',
       activo: filtro?.campo === 'estado' && filtro.valor === 'PENDIENTE',
     },
   ]
@@ -849,7 +997,7 @@ function BandaKpis({
                     {c.label}
                   </span>
                   <span
-                    className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg ring-1 ${c.chip}`}
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-600 ring-1 ring-brand-500/20"
                     aria-hidden="true"
                   >
                     <Icono size={14} />
@@ -873,7 +1021,7 @@ function BandaKpis({
                 ) : (
                   <Sparkline
                     serie={c.serie}
-                    color={c.activo ? '#099dd7' : '#94a3b8'}
+                    color={c.activo ? '#0052a1' : '#94a3b8'}
                     className="mt-2 block h-7 w-full"
                   />
                 )}
@@ -946,73 +1094,19 @@ function BandaKpis({
   )
 }
 
-/** Panel de lista rankeada (patrón "Sources/Pages" de la referencia):
-    etiqueta + valor + share a la derecha y una pista delgada de 3px
-    en el borde inferior de cada fila — magnitud sin bloques de color. */
-function PanelRanking({
-  titulo,
-  items,
-  total,
-  cargando,
-  vacio,
+/** Dato de contexto bajo el título de un panel de rangos (el promedio
+    del monto, plazo o cuota sobre las solicitudes que lo tienen). */
+function ResumenPromedio({
+  etiqueta,
+  valor,
 }: {
-  titulo: string
-  items: { label: string; valor: number }[]
-  total: number
-  cargando: boolean
-  vacio: string
+  etiqueta: string
+  valor: string
 }) {
-  const max = Math.max(1, ...items.map((i) => i.valor))
   return (
-    <Tarjeta>
-      <h3 className="font-semibold text-slate-900 mb-1">{titulo}</h3>
-      <div
-        role="img"
-        aria-label={`${titulo}: ${items.map((i) => `${i.label}: ${i.valor}`).join(', ')}`}
-      >
-        {cargando ? (
-          <div className="space-y-3 pt-2" aria-hidden="true">
-            {[100, 85, 70].map((w) => (
-              <div
-                key={w}
-                className="h-8 animate-pulse rounded-lg bg-slate-200"
-                style={{ width: `${w}%` }}
-              />
-            ))}
-          </div>
-        ) : items.length === 0 ? (
-          <p className="py-10 text-center text-sm text-slate-500">{vacio}</p>
-        ) : (
-          items.slice(0, 7).map((i) => {
-            const pct = total ? Math.round((i.valor / total) * 100) : 0
-            return (
-              <div
-                key={i.label}
-                className="relative flex items-baseline gap-x-3 px-3 pb-3 pt-2 text-sm"
-              >
-                <span className="min-w-0 flex-1 truncate text-slate-700">
-                  {i.label}
-                </span>
-                <span className="tabular-nums font-semibold text-slate-900">
-                  {number(i.valor)}
-                </span>
-                <span className="tabular-nums w-9 text-right text-xs text-slate-400">
-                  {pct}%
-                </span>
-                <span
-                  className="absolute inset-x-3 bottom-0 h-[3px] overflow-hidden rounded-full bg-slate-100"
-                  aria-hidden="true"
-                >
-                  <span
-                    className="block h-full rounded-full bg-brand-500"
-                    style={{ width: `${(i.valor / max) * 100}%` }}
-                  />
-                </span>
-              </div>
-            )
-          })
-        )}
-      </div>
-    </Tarjeta>
+    <span className="text-xs text-slate-500">
+      {etiqueta}{' '}
+      <strong className="font-semibold text-slate-800">{valor}</strong>
+    </span>
   )
 }

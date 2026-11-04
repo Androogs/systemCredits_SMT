@@ -76,6 +76,13 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+
+  /* El spinner de evaluación es feedback funcional (señal de que el
+     proceso sigue vivo), no decoración: gira incluso con reduce. */
+  .evaluacion-resultado__spinner {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 
 /* El foco al h1 de cada ruta es programático (anuncio para lectores de

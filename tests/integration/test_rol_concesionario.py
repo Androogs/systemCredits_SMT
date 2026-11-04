@@ -36,7 +36,7 @@ def _id_asesor_de_otra_sede() -> int:
             text(
                 "INSERT OR IGNORE INTO usuario (id_usuario, correo, "
                 "hash_contrasena, estado, nombre_completo) VALUES "
-                "(:u, 'asesor_ajeno@pacifico.co', :h, 'activo', "
+                "(:u, 'asesor_ajeno@sumoto.com.co', :h, 'activo', "
                 "'Asesor Ajeno')"
             ),
             {
@@ -237,11 +237,11 @@ def test_concesionario_lista_solo_asesores_de_su_sede(client_concesionario):
     _id_asesor_de_otra_sede()
     usuarios = client_concesionario.get("/api/usuarios").json()
     correos = {u["correo"] for u in usuarios}
-    assert "asesor@pacifico.co" in correos
+    assert "asesor@sumoto.com.co" in correos
     # Ni el asesor de otra sede, ni el admin, ni el aliado.
-    assert "asesor_ajeno@pacifico.co" not in correos
-    assert "admin@pacifico.co" not in correos
-    assert "aliado@pacifico.co" not in correos
+    assert "asesor_ajeno@sumoto.com.co" not in correos
+    assert "admin@sumoto.com.co" not in correos
+    assert "aliado@sumoto.com.co" not in correos
 
 
 def test_opciones_usuarios_acotadas(client_concesionario):
@@ -258,7 +258,7 @@ def test_concesionario_crea_asesor_de_su_sede(client_concesionario):
         "/api/usuarios",
         json={
             "nombre": "Asesor Nuevo Sede",
-            "correo": "asesor.nuevo@pacifico.co",
+            "correo": "asesor.nuevo@sumoto.com.co",
             "contrasena": "Temporal123!",
             "roles": ["asesor"],
             # El backend fuerza la sede de la sesión — aunque pidiera
@@ -284,7 +284,7 @@ def test_concesionario_no_puede_crear_otros_roles(client_concesionario):
             "/api/usuarios",
             json={
                 "nombre": "Intruso",
-                "correo": "intruso@pacifico.co",
+                "correo": "intruso@sumoto.com.co",
                 "contrasena": "Temporal123!",
                 "roles": roles,
             },
@@ -355,7 +355,7 @@ def test_admin_crea_usuario_concesionario_con_sede(client):
         "/api/usuarios",
         json={
             "nombre": "Admin Sede Dos",
-            "correo": "admin.sede@pacifico.co",
+            "correo": "admin.sede@sumoto.com.co",
             "contrasena": "Temporal123!",
             "roles": ["concesionario"],
             "id_concesionario": sede,

@@ -51,7 +51,8 @@ def crear_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_title,
         description=(
-            "Plataforma de originación de crédito Inversiones Pacífico. "
+            "Plataforma de consulta de crédito SUMOTO S.A. con la financiera "
+            "aliada Inversiones Pacífico. "
             "Integra el motor de decisión Prefiltro_Cliente (BRD + PPT v4) "
             "con integración DataCrédito Experian."
         ),

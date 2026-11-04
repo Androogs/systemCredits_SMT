@@ -30,27 +30,29 @@ logger = logging.getLogger(__name__)
 
 PLANTILLAS = {
     "otp": (
-        "Código de verificación - Inversiones Pacífico",
+        "Código de verificación - SUMOTO",
         "Tu código de verificación es {codigo}. Vence en {minutos} minutos. "
         "Si no solicitaste este código, ignora este mensaje.",
     ),
     "resultado_aprobado": (
-        "Tu crédito fue aprobado - Inversiones Pacífico",
+        "Tu crédito fue aprobado - SUMOTO",
         "{nombre}, tu solicitud {numero} fue aprobada con un cupo de ${monto}. "
-        "Tu asesor te contactará para continuar con la formalización.",
+        "Nuestra financiera aliada Inversiones Pacífico aprobó tu crédito; "
+        "tu asesor SUMOTO te contactará para continuar con la formalización.",
     ),
     "resultado_rechazado": (
-        "Resultado de tu solicitud - Inversiones Pacífico",
-        "{nombre}, tu solicitud {numero} no fue aprobada en esta oportunidad. "
-        "Puedes acercarte al concesionario para revisar alternativas.",
+        "Resultado de tu solicitud - SUMOTO",
+        "{nombre}, tu solicitud {numero} no fue aprobada en esta oportunidad "
+        "por nuestra financiera aliada Inversiones Pacífico. "
+        "Puedes acercarte a tu punto SUMOTO para revisar alternativas.",
     ),
     "oferta": (
-        "Oferta de crédito confirmada - Inversiones Pacífico",
+        "Oferta de crédito confirmada - SUMOTO",
         "{nombre}, confirmamos la oferta de tu solicitud {numero}: "
         "${monto} a {plazo} meses, cuota aproximada de ${cuota}.",
     ),
     "desembolso": (
-        "Desembolso realizado - Inversiones Pacífico",
+        "Desembolso realizado - SUMOTO",
         "{nombre}, el desembolso de tu crédito {numero} fue registrado. "
         "La entrega del vehículo se coordina en el concesionario.",
     ),
@@ -58,18 +60,19 @@ PLANTILLAS = {
     # plataforma, no al cliente — `notificar` la usa con `destino` y sin
     # solicitud asociada.
     "recuperacion_clave": (
-        "Restablece tu contraseña - Inversiones Pacífico",
+        "Restablece tu contraseña - SUMOTO",
         "{nombre}, recibimos una solicitud para restablecer tu "
         "contraseña. Ingresa a {enlace} para definir una nueva. "
         "El enlace vence en {minutos} minutos y solo se puede usar una "
         "vez. Si no fuiste tú, ignora este correo.",
     ),
     "legalizacion": (
-        "Documentos de tu crédito - Inversiones Pacífico",
+        "Documentos de tu crédito - SUMOTO",
         "{nombre}, tu crédito {numero} quedó firmado. Adjuntamos el "
         "paquete de documentos legales (autorización de centrales, carta "
         "de aprobación, pagaré, carta de instrucciones, prenda, "
-        "declaración de asegurabilidad y compromiso de pago).",
+        "declaración de asegurabilidad y compromiso de pago), emitidos por "
+        "nuestra financiera aliada Inversiones Pacífico.",
     ),
 }
 

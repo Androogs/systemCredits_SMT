@@ -73,7 +73,7 @@ interface CapturaCedulaProps {
   onBack?: () => void
   /** Si es true, no renderiza header ni seguimiento (para usar dentro de otro paso). */
   compacto?: boolean
-  /** Datos del paso 1 contra los que el OCR compara la cédula. */
+  /** Datos ya conocidos (al retomar) contra los que el OCR compara la cédula. */
   datosEsperados?: DatosEsperadosOCR
 }
 
@@ -163,12 +163,20 @@ function CapturaCedula({
         }
       : null
 
+  // Autoavance: el backend marca la sesión 'completada' cuando llegan las
+  // tres evidencias; apenas se reconocen se pasa al paso siguiente.
+  useEffect(() => {
+    if (!resultado) return
+    const avance = window.setTimeout(() => onContinue?.(resultado), 1200)
+    return () => window.clearTimeout(avance)
+  }, [resultado, onContinue])
+
   return (
     <div className="captura">
       {!compacto && (
         <header className="captura__header">
           <div className="captura__header-copy">
-            <p className="captura__eyebrow">Originación Individual · Paso 3</p>
+            <p className="captura__eyebrow">Originación Individual · Paso 2</p>
             <h1>Captura del Documento de Identidad</h1>
             <p className="captura__subtitle">
               Cédula y video de prueba de vida
@@ -198,7 +206,7 @@ function CapturaCedula({
         </header>
       )}
 
-      {!compacto && <SeguimientoOriginacion pasoActual={3} />}
+      {!compacto && <SeguimientoOriginacion pasoActual={2} />}
 
       <div
         className={`captura__form${compacto ? ' captura__form--compacto' : ''}`}
@@ -451,8 +459,8 @@ function CapturaCedula({
                 <span className="captura__dot" aria-hidden="true" />
                 {completada &&
                   (compacto
-                    ? 'Puedes continuar a la revisión de datos.'
-                    : 'Puedes continuar al procesamiento OCR.')}
+                    ? 'Avanzando a la revisión de datos…'
+                    : 'Avanzando al procesamiento OCR…')}
                 {expirada && 'Enlace expirado — genera uno nuevo.'}
               </p>
             )}

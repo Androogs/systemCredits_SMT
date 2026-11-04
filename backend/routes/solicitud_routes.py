@@ -21,6 +21,7 @@ from backend.models.solicitud_models import (
     GenerarOtpResponse,
     MetricasEmbudoResponse,
     OfertaResponse,
+    RechazoPoliticasRequest,
     RegistrarDesembolsoRequest,
     SeleccionarOfertaRequest,
     SolicitudDetalleResponse,
@@ -218,6 +219,27 @@ def crear(
     db: Session = Depends(get_db),
 ) -> CrearSolicitudResponse:
     return SolicitudService(db).crear(
+        payload,
+        ip=request.client.host if request.client else None,
+        usuario=usuario,
+    )
+
+
+@router.post(
+    "/rechazo-politicas",
+    response_model=CrearSolicitudResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def rechazo_politicas(
+    payload: RechazoPoliticasRequest,
+    request: Request,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
+    db: Session = Depends(get_db),
+) -> CrearSolicitudResponse:
+    """El asesor confirmó en originación una política clave incumplida
+    (multas en SIMIT): se radica la solicitud ya rechazada (R22) con los
+    datos recopilados, sin perfil económico ni consulta al buró."""
+    return SolicitudService(db).rechazar_por_politicas(
         payload,
         ip=request.client.host if request.client else None,
         usuario=usuario,

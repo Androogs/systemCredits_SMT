@@ -22,6 +22,16 @@ Diseños soportados
   control: es la fuente más fiable de número, nombres, nacimiento, sexo y
   expiración.
 
+**PPT — Permiso por Protección Temporal (Migración Colombia)**
+
+- Anverso: rótulo pequeño DEBAJO del valor; fechas numéricas ``dd-mm-aaaa``.
+  El ``No.`` es el serial del permiso; el documento del titular va rotulado
+  ``Documento``. No trae lugar de nacimiento (el OCR reporta ``NO REPORTA``).
+- Reverso: MRZ TD1 igual al de la cédula pero con código ``IP`` y
+  nacionalidad extranjera (``VEN``): no es documento válido para originar
+  crédito — la empresa solo acepta ciudadanos colombianos — pero el OCR lo
+  lee para mostrar al asesor por qué se rechaza.
+
 Tesseract confunde letras y dígitos, pega palabras y lee mal los rótulos
 (``Apalidos``, ``Fethade nacimiento``): los rótulos se reconocen por
 similitud difusa y los valores por posición relativa al rótulo.
@@ -41,6 +51,7 @@ from difflib import SequenceMatcher
 
 TIPO_BLANCA = "blanca"
 TIPO_AMARILLA = "amarilla"
+TIPO_PPT = "ppt"
 CARA_FRONTAL = "frontal"
 CARA_REVERSO = "reverso"
 
@@ -71,6 +82,16 @@ CAMPOS_POR_CARA: dict[tuple[str, str], tuple[str, ...]] = {
     (TIPO_AMARILLA, CARA_REVERSO): (
         "fecha_nacimiento", "lugar_nacimiento", "fecha_expedicion",
         "ciudad_expedicion", "sexo",
+    ),
+    # PPT (Migración Colombia): el anverso trae todo salvo lugar de nacimiento
+    # (que el documento no reporta); el reverso es un MRZ TD1 con nacionalidad
+    # distinta de COL (p. ej. VEN).
+    (TIPO_PPT, CARA_FRONTAL): (
+        "numero_documento", "nombres", "apellidos", "fecha_nacimiento", "sexo",
+        "fecha_expedicion", "ciudad_expedicion", "fecha_expiracion",
+    ),
+    (TIPO_PPT, CARA_REVERSO): (
+        "nombres", "apellidos", "fecha_nacimiento", "sexo", "fecha_expiracion",
     ),
 }
 
@@ -184,6 +205,8 @@ _VOCABULARIO = (
     "PERSONAL", "NUIP", "NUMERO", "APELLIDOS", "NOMBRES", "NACIONALIDAD",
     "NACIONAL", "ESTATURA", "SEXO", "FECHA", "NACIMIENTO", "LUGAR",
     "EXPEDICION", "EXPIRACION", "FIRMA", "INDICE", "DERECHO", "REGISTRADOR",
+    "PERMISO", "PROTECCION", "TEMPORAL", "MIGRACION", "VENCIMIENTO",
+    "DOCUMENTO",
 )
 # Palabras de rótulo que nunca son parte de un valor.
 _RUIDO = set(_VOCABULARIO) | {
@@ -248,15 +271,18 @@ def _rotulos_de_linea(linea: Linea, indice: int) -> list[Rotulo]:
         "NUMERO": "NUMERO",
         "SEXO": "SEXO",
         "ESTATURA": "ESTATURA",
+        "DOCUMENTO": "DOCUMENTO",
     }
     for clave_vocab, clave in simples.items():
         if clave_vocab in planas:
             s = span(clave_vocab)
             if s:
                 rotulos.append(Rotulo(clave, indice, s[0], s[1], s[2]))
-    if "EXPIRACION" in planas:
-        s = span("FECHA", "EXPIRACION")
-        rotulos.append(Rotulo("EXPIRACION", indice, s[0], s[1], span("EXPIRACION")[2]))
+    # El PPT rotula la vigencia como "Fecha de vencimiento".
+    if "EXPIRACION" in planas or "VENCIMIENTO" in planas:
+        s = span("FECHA", "EXPIRACION", "VENCIMIENTO")
+        if s:
+            rotulos.append(Rotulo("EXPIRACION", indice, s[0], s[1], s[2]))
     if "EXPEDICION" in planas:
         s = span("FECHA", "LUGAR", "EXPEDICION")
         if s:
@@ -329,17 +355,22 @@ def _iso_yymmdd(texto: str, nacimiento: bool) -> str | None:
         return None
 
 
+# Nacionalidades de los documentos soportados: COL (cédula) y VEN (PPT).
+_RE_NACIONALIDAD = re.compile(r"C[O0Q1I][O0Q1I|]?L|V[E3][MN]")
+
+
 def _es_linea2(s: str) -> str | None:
     """Corrige la línea 2 por posición; None si no tiene forma de línea 2.
 
-    La nacionalidad (COL) va en las posiciones 15-17: se usa para alinear la
-    línea cuando el OCR pega basura del borde al inicio (``1`` + ``0204244M…``).
+    La nacionalidad (COL/VEN) va en las posiciones 15-17: se usa para alinear
+    la línea cuando el OCR pega basura del borde al inicio (``1`` + ``0204244M…``).
     """
     if len(s) < 18:
         return None
-    m = re.search(r"C[O0Q1I][O0Q1I|]?L", s[10:26])
+    m = _RE_NACIONALIDAD.search(s[10:26])
     if not m:
         return None
+    nacionalidad = {"C": "COL", "V": "VEN"}[m.group()[0]]
     desfase = 10 + m.start() - 15
     if desfase < 0:
         return None
@@ -347,18 +378,18 @@ def _es_linea2(s: str) -> str | None:
     # Fin de la nacionalidad ya realineada: el OCR puede leer COL con un
     # carácter de más (``C01L``), así que el resto arranca donde termina el
     # match, no en una posición fija.
-    fin_col = 10 + m.end() - desfase
+    fin_nac = 10 + m.end() - desfase
     nacimiento = s[0:7].translate(_A_DIGITO)
     # Sexo MRZ (1 char): M/F/T y X (ICAO "no especificado" → no binario).
     sexo = s[7] if s[7] in "MFTX<" else {"H": "M", "N": "M", "P": "F", "E": "F"}.get(s[7], "<")
     expira = s[8:15].translate(_A_DIGITO)
-    resto = s[fin_col:]
+    resto = s[fin_nac:]
     opcional = re.match(r"[^<]*", resto).group().translate(_A_DIGITO)
     resto = opcional + resto[len(opcional) :]
-    corregida = (nacimiento + sexo + expira + "COL" + resto)[:30]
+    corregida = (nacimiento + sexo + expira + nacionalidad + resto)[:30]
     if len(corregida) == 29:
         return None if not corregida.endswith("<") else corregida + "<"
-    if not re.fullmatch(r"\d{7}[MFTX<]\d{7}COL.*", corregida):
+    if not re.fullmatch(r"\d{7}[MFTX<]\d{7}(?:COL|VEN).*", corregida):
         return None
     if len(corregida) == 30 and not corregida[29].isdigit():
         corregida = corregida[:29] + corregida[29].translate(_A_DIGITO)
@@ -387,9 +418,9 @@ def _limpiar_nombre_mrz(parte: str) -> str:
 def parsear_mrz(texto_o_lineas: str | list[str]) -> dict:
     """Extrae los campos del MRZ TD1. Devuelve {} si no hay MRZ legible.
 
-    Claves: numero_documento, apellidos, nombres, fecha_nacimiento, sexo,
-    fecha_expiracion, y los booleanos ``control_nacimiento``,
-    ``control_expiracion`` y ``control_compuesto``.
+    Claves: nacionalidad, numero_documento, apellidos, nombres,
+    fecha_nacimiento, sexo, fecha_expiracion, y los booleanos
+    ``control_nacimiento``, ``control_expiracion`` y ``control_compuesto``.
     """
     crudas = (
         texto_o_lineas.splitlines() if isinstance(texto_o_lineas, str) else texto_o_lineas
@@ -406,7 +437,7 @@ def parsear_mrz(texto_o_lineas: str | list[str]) -> dict:
     if idx2 is None:
         return {}
 
-    salida: dict = {}
+    salida: dict = {"nacionalidad": linea2[15:18]}
     nac = _iso_yymmdd(linea2[0:6], nacimiento=True)
     ctrl_nac = _digito_control(linea2[0:6]) == int(linea2[6])
     if nac:
@@ -494,6 +525,34 @@ def buscar_fecha(texto: str, tipo: str) -> tuple[str, int, int] | None:
             continue
         try:
             dia = int(m.group(1).replace("O", "0"))
+            anio = int(m.group(3).replace("O", "0"))
+            valor = date(anio, mes, dia)
+        except ValueError:
+            continue
+        if tipo == "nacimiento" and not (1900 <= anio and valor <= hoy):
+            continue
+        if tipo == "expedicion" and not (1950 <= anio and valor <= hoy):
+            continue
+        if tipo == "expiracion" and not (2000 <= anio <= 2100):
+            continue
+        return valor.isoformat(), m.start(), m.end()
+    return None
+
+
+# El PPT imprime las fechas en formato numérico dd-mm-aaaa (07-02-2022).
+_RE_FECHA_NUM = re.compile(
+    r"(?<!\d)([0-9O]{1,2})\s*[-/.]\s*([0-9O]{1,2})\s*[-/.]\s*([0-9O]{4})(?!\d)"
+)
+
+
+def buscar_fecha_num(texto: str, tipo: str) -> tuple[str, int, int] | None:
+    """Primera fecha válida ``dd-mm-aaaa`` del texto (formato del PPT)."""
+    normal = plano_ascii(texto)
+    hoy = date.today()
+    for m in _RE_FECHA_NUM.finditer(normal):
+        try:
+            dia = int(m.group(1).replace("O", "0"))
+            mes = int(m.group(2).replace("O", "0"))
             anio = int(m.group(3).replace("O", "0"))
             valor = date(anio, mes, dia)
         except ValueError:
@@ -617,11 +676,14 @@ def _lineas_vecinas(lineas: list[Linea], i: int, direccion: int, maximo: int = 2
         pasos += 1
 
 
-def _fecha_y_ciudad(palabras: list[Palabra], tipo: str) -> tuple[Valor | None, Valor | None]:
+def _fecha_y_ciudad(
+    palabras: list[Palabra], tipo: str, numerica: bool = False
+) -> tuple[Valor | None, Valor | None]:
     if not palabras:
         return None, None
     texto = " ".join(p.texto for p in palabras)
-    encontrada = buscar_fecha(texto, tipo)
+    encontrada = buscar_fecha_num(texto, tipo) if numerica else None
+    encontrada = encontrada or buscar_fecha(texto, tipo)
     if not encontrada:
         return None, None
     iso, _, fin = encontrada
@@ -668,8 +730,16 @@ def _linea_codigo(lineas: list[Linea]) -> tuple[str, str, float] | None:
     return None
 
 
+def _mrz_ppt(lineas: list[Linea]) -> bool:
+    """La línea 1 del MRZ del PPT arranca con ``IPCOL`` (la cédula usa ``ICCOL``)."""
+    for ln in lineas:
+        if re.search(r"I[P1]C[O0Q]L", _normalizar_mrz(ln.texto)[:10]):
+            return True
+    return False
+
+
 def clasificar(lineas: list[Linea]) -> tuple[str | None, str | None, dict[str, int]]:
-    """Detecta tipo (blanca/amarilla) y cara (frontal/reverso) por contenido."""
+    """Detecta tipo (blanca/amarilla/ppt) y cara (frontal/reverso) por contenido."""
     claves: set[str] = set()
     for ln in lineas:
         for p in ln.palabras:
@@ -679,6 +749,8 @@ def clasificar(lineas: list[Linea]) -> tuple[str | None, str | None, dict[str, i
         (TIPO_BLANCA, CARA_REVERSO): 0,
         (TIPO_AMARILLA, CARA_FRONTAL): 0,
         (TIPO_AMARILLA, CARA_REVERSO): 0,
+        (TIPO_PPT, CARA_FRONTAL): 0,
+        (TIPO_PPT, CARA_REVERSO): 0,
     }
     if "NUIP" in claves:
         puntos[(TIPO_BLANCA, CARA_FRONTAL)] += 3
@@ -686,15 +758,24 @@ def clasificar(lineas: list[Linea]) -> tuple[str | None, str | None, dict[str, i
         puntos[(TIPO_BLANCA, CARA_FRONTAL)] += 2
     if "EXPIRACION" in claves:
         puntos[(TIPO_BLANCA, CARA_FRONTAL)] += 2
-    if parsear_mrz(_lineas_mrz(lineas)):
+    mrz = parsear_mrz(_lineas_mrz(lineas))
+    if mrz and mrz.get("nacionalidad") == "VEN" or not mrz and _mrz_ppt(lineas):
+        puntos[(TIPO_PPT, CARA_REVERSO)] += 6
+    elif mrz:
         puntos[(TIPO_BLANCA, CARA_REVERSO)] += 6
+    if "PERMISO" in claves and {"PROTECCION", "TEMPORAL"} & claves:
+        puntos[(TIPO_PPT, CARA_FRONTAL)] += 5
+    if "MIGRACION" in claves:  # el logo aparece en ambas caras del PPT
+        puntos[(TIPO_PPT, CARA_FRONTAL)] += 3
+        puntos[(TIPO_PPT, CARA_REVERSO)] += 3
     if "IDENTIFICACION" in claves or "PERSONAL" in claves:
         puntos[(TIPO_AMARILLA, CARA_FRONTAL)] += 3
-    if "NUMERO" in claves:
+    if "NUMERO" in claves or "DOCUMENTO" in claves:
         puntos[(TIPO_AMARILLA, CARA_FRONTAL)] += 2
     if {"APELLIDOS", "NOMBRES"} & claves:
         puntos[(TIPO_AMARILLA, CARA_FRONTAL)] += 1
         puntos[(TIPO_BLANCA, CARA_FRONTAL)] += 1
+        puntos[(TIPO_PPT, CARA_FRONTAL)] += 1
     if "INDICE" in claves or "DERECHO" in claves:
         puntos[(TIPO_AMARILLA, CARA_REVERSO)] += 3
     if _linea_codigo(lineas):
@@ -876,6 +957,171 @@ def _parsear_amarilla_reverso(lineas: list[Linea]) -> dict[str, Valor]:
     return campos
 
 
+def _numero_ppt(lineas: list[Linea], rotulos: list[Rotulo]) -> Valor | None:
+    """Documento del titular del PPT (``16653346``), no el serial ``No.`` del permiso."""
+    lineas_rotulo = {r.linea for r in rotulos}
+    for clave in ("DOCUMENTO", "NUMERO"):
+        r = _primero(rotulos, clave)
+        if not r:
+            continue
+        palabras = _palabras_en_rango(lineas[r.linea], r.x1, desde=r.fin + 1, hueco_max=0.12)
+        encontrado = _numero_en_palabras(palabras)
+        if encontrado:
+            return Valor(encontrado[0], _conf(encontrado[1]))
+        for direccion in (-1, +1):
+            for j, ln in _lineas_vecinas(lineas, r.linea, direccion):
+                if j in lineas_rotulo:
+                    break
+                encontrado = _numero_en_palabras(_palabras_en_rango(ln, r.x0))
+                if encontrado:
+                    return Valor(encontrado[0], _conf(encontrado[1]))
+    # Respaldo: número aislado en una línea que no sea la del serial ``No.``
+    # ni una fecha (``07.02.2022`` sumaría 8 dígitos).
+    for ln in lineas:
+        if re.search(r"(?<![A-Z])N[O0º]\.?\b", plano_ascii(ln.texto)):
+            continue
+        if _RE_FECHA_NUM.search(ln.texto):
+            continue
+        encontrado = _numero_en_palabras(ln.palabras)
+        if encontrado and len(encontrado[0]) >= 8:
+            return Valor(encontrado[0], _conf(encontrado[1]) * 0.9)
+    return None
+
+
+def _parsear_ppt_frontal(lineas: list[Linea]) -> dict[str, Valor]:
+    """Anverso del PPT: valores en mayúscula con el rótulo pequeño DEBAJO.
+
+    El documento no trae lugar de nacimiento; la fusión lo marca ``NO REPORTA``.
+    """
+    rotulos = detectar_rotulos(lineas)
+    lineas_rotulo = {r.linea for r in rotulos}
+    campos: dict[str, Valor] = {}
+    numero = _numero_ppt(lineas, rotulos)
+    if numero:
+        campos["numero_documento"] = numero
+
+    def junto_a(clave: str, extractor) -> Valor | None:
+        r = _primero(rotulos, clave)
+        if not r:
+            return None
+        for direccion in (-1, +1):  # el valor va encima; se prueba abajo por si acaso
+            for j, ln in _lineas_vecinas(lineas, r.linea, direccion):
+                if j in lineas_rotulo:
+                    break
+                palabras = _palabras_en_rango(ln, r.x0)
+                v = extractor(palabras, r) if palabras else None
+                if v:
+                    return v
+        return None
+
+    nombre = lambda pal, r: _valor_nombre(pal)  # noqa: E731
+    v = junto_a("APELLIDOS", nombre)
+    if v:
+        campos["apellidos"] = v
+    v = junto_a("NOMBRES", nombre)
+    if v:
+        campos["nombres"] = v
+    v = junto_a("FECHA_NAC", lambda pal, r: _fecha_y_ciudad(pal, "nacimiento", numerica=True)[0])
+    if v:
+        campos["fecha_nacimiento"] = v
+    v = junto_a("EXPIRACION", lambda pal, r: _fecha_y_ciudad(pal, "expiracion", numerica=True)[0])
+    if v:
+        campos["fecha_expiracion"] = v
+    r = _primero(rotulos, "EXPEDICION")
+    if r:
+        nac = campos.get("fecha_nacimiento")
+        # ``07-02-2022 BOGOTA D.C.``: fecha y ciudad en la misma línea; primero
+        # a la derecha del rótulo, luego en las líneas vecinas.
+        fecha, ciudad = _fecha_y_ciudad(
+            lineas[r.linea].palabras[r.fin + 1 :], "expedicion", numerica=True
+        )
+        if fecha and (not nac or fecha.valor != nac.valor):
+            campos["fecha_expedicion"] = fecha
+            if ciudad:
+                campos["ciudad_expedicion"] = ciudad
+        else:
+            for direccion in (-1, +1):
+                for j, ln in _lineas_vecinas(lineas, r.linea, direccion):
+                    if j in lineas_rotulo:
+                        break
+                    fecha, ciudad = _fecha_y_ciudad(
+                        _palabras_en_rango(ln, r.x0), "expedicion", numerica=True
+                    )
+                    if fecha and (not nac or fecha.valor != nac.valor):
+                        campos["fecha_expedicion"] = fecha
+                        if ciudad:
+                            campos["ciudad_expedicion"] = ciudad
+                        break
+                if "fecha_expedicion" in campos:
+                    break
+    r = _primero(rotulos, "SEXO")
+    if r:
+        v = _sexo_cerca(Linea(lineas[r.linea].palabras[r.fin + 1 :]), (r.x0 + r.x1) / 2)
+        if not v:
+            v = junto_a("SEXO", lambda pal, rr: _sexo_cerca(Linea(pal), (rr.x0 + rr.x1) / 2))
+        if v:
+            campos["sexo"] = v
+    _fechas_ppt(lineas, lineas_rotulo, campos)
+    return campos
+
+
+def _fechas_ppt(
+    lineas: list[Linea], lineas_rotulo: set[int], campos: dict[str, Valor]
+) -> None:
+    """Respaldo sin rótulos: las fechas del PPT se deducen por su valor.
+
+    La letra menuda de los rótulos no siempre se lee; el anverso trae
+    nacimiento (la fecha más vieja), expedición (la otra fecha pasada, con la
+    ciudad a su derecha en la misma línea) y vencimiento (la fecha futura).
+    """
+    hoy = date.today()
+    fechas: list[tuple[date, int, int, float]] = []  # (valor, línea, fin, conf)
+    for i, ln in enumerate(lineas):
+        if i in lineas_rotulo:
+            continue
+        m = _RE_FECHA_NUM.search(plano_ascii(ln.texto))
+        if not m:
+            continue
+        try:
+            valor = date(
+                int(m.group(3).replace("O", "0")),
+                int(m.group(2).replace("O", "0")),
+                int(m.group(1).replace("O", "0")),
+            )
+        except ValueError:
+            continue
+        fechas.append((valor, i, m.end(), _conf(ln.palabras)))
+    if not fechas:
+        return
+    conf = lambda f: round(f[3] * 0.8, 1)  # noqa: E731
+    futura = min((f for f in fechas if f[0] > hoy), key=lambda f: f[0], default=None)
+    if "fecha_expiracion" not in campos and futura:
+        campos["fecha_expiracion"] = Valor(futura[0].isoformat(), conf(futura))
+    pasadas = sorted(f for f in fechas if f[0] <= hoy)
+    nac = campos.get("fecha_nacimiento")
+    if not nac and pasadas:
+        nac = Valor(pasadas[0][0].isoformat(), conf(pasadas[0]))
+        campos["fecha_nacimiento"] = nac
+    exp = next(
+        (f for f in reversed(pasadas) if not nac or f[0].isoformat() != nac.valor),
+        None,
+    )
+    if not exp:
+        return
+    if "fecha_expedicion" not in campos:
+        campos["fecha_expedicion"] = Valor(exp[0].isoformat(), conf(exp))
+    if "ciudad_expedicion" not in campos:
+        acumulado = 0
+        tras: list[Palabra] = []
+        for p in lineas[exp[1]].palabras:
+            if acumulado >= exp[2]:
+                tras.append(p)
+            acumulado += len(p.texto) + 1
+        ciudad = _valor_lugar(tras)
+        if ciudad:
+            campos["ciudad_expedicion"] = Valor(ciudad.valor, round(ciudad.conf * 0.8, 1))
+
+
 def _campos_mrz(mrz: dict) -> dict[str, Valor]:
     campos: dict[str, Valor] = {}
     if not mrz:
@@ -903,6 +1149,7 @@ _PARSERS = {
     (TIPO_BLANCA, CARA_FRONTAL): _parsear_blanca_frontal,
     (TIPO_AMARILLA, CARA_FRONTAL): _parsear_amarilla_frontal,
     (TIPO_AMARILLA, CARA_REVERSO): _parsear_amarilla_reverso,
+    (TIPO_PPT, CARA_FRONTAL): _parsear_ppt_frontal,
 }
 
 
@@ -912,7 +1159,7 @@ def parsear_lineas(
     """Parsea una pasada de OCR. Si no se indica tipo/cara, se detectan."""
     if tipo is None or cara is None:
         tipo, cara, _ = clasificar(lineas)
-    if tipo == TIPO_BLANCA and cara == CARA_REVERSO:
+    if cara == CARA_REVERSO and tipo in (TIPO_BLANCA, TIPO_PPT):
         mrz = parsear_mrz(_lineas_mrz(lineas))
         return LecturaParseada(
             tipo, cara, _campos_mrz(mrz),

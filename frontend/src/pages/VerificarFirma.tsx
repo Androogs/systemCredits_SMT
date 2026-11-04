@@ -8,6 +8,8 @@ import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { BadgeCheck, FileSignature, ShieldX } from 'lucide-react'
 import { verificarFirma } from '../features/credit-origination/api/originacionApi'
+import SelloAliado from '../shared/ui/SelloAliado'
+import { MARCA } from '../shared/lib/marca'
 
 export default function VerificarFirma() {
   const { uuid = '' } = useParams()
@@ -22,10 +24,17 @@ export default function VerificarFirma() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
-        <div className="mb-6 flex items-center gap-2 text-[#005787]">
-          <FileSignature size={22} />
-          <span className="text-sm font-semibold tracking-wide">
-            INVERSIONES PACIFICO S.A.
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <img
+            src={MARCA.logoClaro}
+            alt={MARCA.razonSocial}
+            width="900"
+            height="129"
+            className="h-6 w-auto object-contain"
+          />
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-brand-500">
+            <FileSignature size={16} aria-hidden="true" />
+            Firma electrónica
           </span>
         </div>
 
@@ -101,6 +110,10 @@ export default function VerificarFirma() {
             </p>
           </div>
         )}
+
+        <div className="mt-8 flex justify-center border-t border-slate-100 pt-5">
+          <SelloAliado leyenda="Los documentos del crédito son emitidos por nuestra financiera aliada." />
+        </div>
       </div>
     </div>
   )

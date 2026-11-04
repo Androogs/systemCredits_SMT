@@ -10,6 +10,10 @@ ambas caras se FUSIONA, sin importar el orden en que lleguen:
 - **Cédula amarilla**: el anverso trae número, apellidos y nombres; el reverso
   trae nacimiento, lugar, sexo y expedición, y una línea al pie con sexo y
   número que sirve para cruzar con el anverso.
+- **PPT** (Permiso por Protección Temporal de Migración Colombia): se lee
+  como la blanca — MRZ TD1 en el reverso (nacionalidad extranjera, p. ej.
+  VEN) y valores sobre el rótulo en el anverso — pero no es un documento
+  válido: la fusión lo marca como rechazado (solo se aceptan colombianos).
 
 El tipo de cédula y la cara se detectan por el CONTENIDO de la foto, no por el
 botón que usó el cliente: si sube el reverso como anverso, igual se lee bien
@@ -37,6 +41,7 @@ from backend.services.ocr_parser import (
     CARA_FRONTAL,
     CARA_REVERSO,
     TIPO_BLANCA,
+    TIPO_PPT,
     LecturaParseada,
     Votacion,
     clasificar,
@@ -106,7 +111,7 @@ class LecturaCara:
     """Lo que se leyó de UNA foto (anverso o reverso)."""
 
     disponible: bool = False
-    tipo_cedula: str | None = None  # blanca | amarilla
+    tipo_cedula: str | None = None  # blanca | amarilla | ppt
     cara: str | None = None  # frontal | reverso
     campos: dict[str, CampoOCR] = field(default_factory=dict)
     mrz_valido: bool = False
@@ -276,7 +281,7 @@ def analizar_cara(ruta: Path, lado_declarado: str | None = None) -> LecturaCara:
                 if lectura_mrz.mrz_valido:
                     mejor_mrz = lectura_mrz
 
-        if tipo == TIPO_BLANCA and cara == CARA_REVERSO:
+        if cara == CARA_REVERSO and tipo in (TIPO_BLANCA, TIPO_PPT):
             # MRZ: lista blanca de caracteres; se para cuando validan los dígitos de control.
             intentos = (
                 (img.variante(base, "gris"), 6),
@@ -352,6 +357,8 @@ def _rango(campo: str, c: CampoOCR) -> float:
         return 2.0
     if c.fuente == "codigo_reverso":
         return 1.0
+    if c.fuente == "documento":
+        return 3.0  # valor que impone el tipo de documento (NO REPORTA del PPT)
     return 2.0
 
 
@@ -433,6 +440,17 @@ def fusionar_lecturas(lecturas: dict[str, dict]) -> ResultadoOCR:
     expira = resultado.fecha_expiracion.valor
     if expira and expira < date.today().isoformat():
         resultado.advertencias.append(f"La cédula está vencida (fecha de expiración {expira}).")
+
+    if resultado.tipo_cedula == TIPO_PPT:
+        # El PPT se lee pero no es un documento válido para originar: la
+        # empresa solo acepta ciudadanos colombianos (política R21).
+        resultado.advertencias.append(
+            "Documento rechazado: es un Permiso por Protección Temporal (PPT). "
+            "En este momento solo se aceptan ciudadanos colombianos con cédula "
+            "de ciudadanía."
+        )
+        # El PPT no reporta lugar de nacimiento.
+        resultado.lugar_nacimiento = CampoOCR("NO REPORTA", 100.0, "documento")
 
     if frontal or len(validas) > 1:
         tipo = resultado.tipo_cedula

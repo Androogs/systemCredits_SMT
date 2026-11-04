@@ -13,7 +13,6 @@ import {
   AlertTriangle,
   Camera,
   CheckCircle2,
-  Lock,
   RotateCcw,
   Send,
   ShieldCheck,
@@ -27,6 +26,7 @@ import {
   type EstadoCapturaApi,
   type TipoEvidencia,
 } from '../features/credit-origination/api/originacionApi'
+import { MARCA } from '../shared/lib/marca'
 import './CapturaMovil.css'
 
 const DURACION_VIDEO_MAX_SEG = 10
@@ -112,11 +112,12 @@ export default function CapturaMovil() {
       <main className="captura-movil captura-movil--aviso">
         <img
           className="captura-movil__logo"
-          src="/brand/pacifico-azules.png"
-          alt="Inversiones Pacífico"
-          width="897"
-          height="431"
+          src={MARCA.logoClaro}
+          alt={MARCA.razonSocial}
+          width="900"
+          height="129"
         />
+
         <div className="captura-movil__aviso" role="status">
           <span className="captura-movil__spinner" aria-hidden="true" />
           <p>Verificando enlace de captura…</p>
@@ -137,11 +138,12 @@ export default function CapturaMovil() {
       <main className="captura-movil captura-movil--aviso">
         <img
           className="captura-movil__logo"
-          src="/brand/pacifico-azules.png"
-          alt="Inversiones Pacífico"
-          width="897"
-          height="431"
+          src={MARCA.logoClaro}
+          alt={MARCA.razonSocial}
+          width="900"
+          height="129"
         />
+
         <div
           className="captura-movil__aviso captura-movil__aviso--error"
           role="alert"
@@ -168,11 +170,12 @@ export default function CapturaMovil() {
       <header className="captura-movil__header">
         <img
           className="captura-movil__logo"
-          src="/brand/pacifico-azules.png"
-          alt="Inversiones Pacífico"
-          width="897"
-          height="431"
+          src={MARCA.logoClaro}
+          alt={MARCA.razonSocial}
+          width="900"
+          height="129"
         />
+
         <h1>Verificación de identidad</h1>
         <p className="captura-movil__lede">
           Toma las fotos de tu cédula y graba un video corto sosteniéndola junto
@@ -228,7 +231,6 @@ export default function CapturaMovil() {
         </div>
       ) : (
         <p className="captura-movil__nota">
-          <Lock size={13} aria-hidden="true" />
           El enlace es personal y caduca en pocos minutos. No lo compartas.
         </p>
       )}

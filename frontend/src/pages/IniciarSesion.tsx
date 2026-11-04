@@ -13,12 +13,13 @@ import {
   iniciarSesion,
 } from '../features/auth/api/autenticacionApi'
 import VitrinaAcceso from '../features/auth/ui/VitrinaAcceso'
+import { MARCA, tituloPagina } from '../shared/lib/marca'
 import { guardarSesion } from '../shared/lib/sesion'
 import './IniciarSesion.css'
 
 export default function IniciarSesion() {
   const navigate = useNavigate()
-  const [email, setEmail] = useState(MODO_DEMO ? 'admin@pacifico.co' : '')
+  const [email, setEmail] = useState(MODO_DEMO ? 'admin@sumoto.com.co' : '')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -26,7 +27,7 @@ export default function IniciarSesion() {
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    document.title = 'Iniciar sesión | Inversiones Pacífico'
+    document.title = tituloPagina('Iniciar sesión')
   }, [])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -59,10 +60,10 @@ export default function IniciarSesion() {
       <main className="access-card">
         <div className="access-mobile-brand">
           <img
-            src="/brand/pacifico-blancos.png"
-            alt="Inversiones Pacífico"
-            width="580"
-            height="274"
+            src={MARCA.logoClaro}
+            alt={MARCA.razonSocial}
+            width="900"
+            height="129"
           />
         </div>
 
@@ -94,7 +95,7 @@ export default function IniciarSesion() {
                       setError('')
                       setMessage('')
                     }}
-                    placeholder="nombre@empresa.com"
+                    placeholder="nombre@sumoto.com.co"
                     autoComplete="username"
                     maxLength={254}
                     required

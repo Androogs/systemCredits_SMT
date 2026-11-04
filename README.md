@@ -271,9 +271,9 @@ las claves son de desarrollo, cámbialas antes de exponer el ambiente:
 
 | Correo | Clave | Rol y alcance |
 |---|---|---|
-| `admin@pacifico.co` | `Admin123!` | Admin: todo, con score y causales del motor |
-| `asesor@pacifico.co` | `Asesor123!` | Asesor: opera sobre `SUMOTO SA PALMIRA`, solo ve lo radicado por su cédula, vista binaria |
-| `aliado@pacifico.co` | `Aliado123!` | Aliado: solo lectura, solicitudes de su aliado |
+| `admin@sumoto.com.co` | `Admin123!` | Admin: todo, con score y causales del motor |
+| `asesor@sumoto.com.co` | `Asesor123!` | Asesor: opera sobre `SUMOTO SA PALMIRA`, solo ve lo radicado por su cédula, vista binaria |
+| `aliado@sumoto.com.co` | `Aliado123!` | Aliado: solo lectura, solicitudes de su aliado |
 
 Otros roles creados desde Ajustes → Usuarios:
 

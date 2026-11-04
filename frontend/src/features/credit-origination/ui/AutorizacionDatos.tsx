@@ -93,7 +93,7 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
       <header className="autorizacion__header">
         <div className="autorizacion__header-copy">
           <p className="autorizacion__eyebrow">
-            Originación Individual · Paso 2
+            Originación Individual · Paso 1
           </p>
           <h1>Autorización Informada Habeas Data</h1>
           <p className="autorizacion__subtitle">
@@ -118,12 +118,12 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
         </aside>
       </header>
 
-      <SeguimientoOriginacion pasoActual={2} />
+      <SeguimientoOriginacion pasoActual={1} />
 
       <form className="autorizacion__form" onSubmit={handleSubmit} noValidate>
         <div className="autorizacion__form-head">
           <div>
-            <h2>Resumen de Finalidad y Consentimiento Legal</h2>
+            <h2>Aprobación y Consentimiento Legal</h2>
             <p>
               El cliente debe leer y aceptar estas finalidades antes de
               continuar.

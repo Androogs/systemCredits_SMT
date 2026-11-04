@@ -1,15 +1,23 @@
 /* Tokens de diseño — fuente única.
    Los literales hex viven SOLO aquí; el resto del CSS consume var(--*). */
 :root {
-  /* --- Marca: Inversiones Pacífico --- */
-  --brand: #099dd7;
-  --brand-light: #1cb6ea;
-  --brand-deep: #087ead;
-  --brand-press: #065f83;
-  --brand-ink: #11648a;
-  --navy: #000033;
-  --navy-panel: #001c48;
-  --navy-soft: #1d3557;
+  /* --- Marca principal: SUMOTO S.A. (Manual de marca) ---
+     Azul Pantone P 104-8 C = #0052a1 · Azul marino Pantone P 103-16 C = #19255b */
+  --brand: #0052a1;
+  --brand-light: #2f74c0;
+  --brand-deep: #00468a;
+  --brand-press: #003a73;
+  --brand-ink: #0b3d78;
+  --navy: #19255b;
+  --navy-panel: #162152;
+  --navy-soft: #2b3a78;
+
+  /* --- Financiera aliada: Inversiones Pacífico ---
+     Solo para su sello de respaldo (SelloAliado). No usar en la UI general. */
+  --aliado: #099dd7;
+  --aliado-navy: #000033;
+  --aliado-rgb: 9 157 215;
+  --aliado-navy-rgb: 0 0 51;
 
   /* --- Neutros pizarra --- */
   --ink: #1d2939;
@@ -23,11 +31,11 @@
   --white: #ffffff;
 
   /* --- Superficies tintadas azul-claro --- */
-  --surface-tint: #f3fbff;
-  --surface-tint-light: #f7fdff;
-  --surface-tint-deep: #eef8fe;
-  --border-tint: #b8ddeb;
-  --border-tint-soft: #d8eaf4;
+  --surface-tint: #f3f6fc;
+  --surface-tint-light: #f8fafd;
+  --surface-tint-deep: #eaf0fa;
+  --border-tint: #bccde8;
+  --border-tint-soft: #dbe4f3;
 
   /* --- Éxito --- */
   --success: #0f7a4d;
@@ -52,16 +60,16 @@
 
   /* --- Canales RGB para transparencias ---
      Cada canal replica el literal de arriba (mismo tono, otra sintaxis). */
-  --brand-rgb: 9 157 215;
-  --brand-light-rgb: 28 182 234;
-  --brand-deep-rgb: 8 126 173;
-  --brand-press-rgb: 6 95 131;
-  --brand-ink-rgb: 17 100 138;
-  --brand-50-rgb: 237 250 255;
-  --brand-100-rgb: 213 243 255;
-  --navy-rgb: 0 0 51;
-  --navy-panel-rgb: 0 28 72;
-  --navy-soft-rgb: 29 53 87;
+  --brand-rgb: 0 82 161;
+  --brand-light-rgb: 47 116 192;
+  --brand-deep-rgb: 0 70 138;
+  --brand-press-rgb: 0 58 115;
+  --brand-ink-rgb: 11 61 120;
+  --brand-50-rgb: 238 244 251;
+  --brand-100-rgb: 214 228 246;
+  --navy-rgb: 25 37 91;
+  --navy-panel-rgb: 22 33 82;
+  --navy-soft-rgb: 43 58 120;
   --ink-rgb: 29 41 57;
   --slate-strong-rgb: 52 64 84;
   --slate-rgb: 71 84 103;
@@ -71,7 +79,7 @@
   --border-soft-rgb: 238 241 246;
   --surface-neutral-rgb: 245 247 249;
   --white-rgb: 255 255 255;
-  --surface-tint-rgb: 243 251 255;
+  --surface-tint-rgb: 243 246 252;
   --success-rgb: 15 122 77;
   --success-ink-rgb: 23 107 70;
   --success-bright-rgb: 92 224 153;
@@ -86,6 +94,6 @@
   --error-strong-rgb: 180 35 24;
   --error-border-rgb: 232 180 176;
   --error-bg-rgb: 255 245 244;
-  --shadow-rgb: 25 46 76;
+  --shadow-rgb: 25 37 91;
   --shadow-ink-rgb: 15 23 42;
 }

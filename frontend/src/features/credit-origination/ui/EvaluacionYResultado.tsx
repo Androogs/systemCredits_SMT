@@ -231,7 +231,8 @@ export default function EvaluacionYResultado({
           </p>
           <h1>Resultado y oferta</h1>
           <p className="evaluacion-resultado__subtitle">
-            Consulta a centrales y evaluación de la solicitud
+            SUMOTO radica la solicitud y la evalúa consultando centrales de
+            riesgo con DataCrédito Experian
           </p>
         </div>
       </header>
@@ -346,7 +347,7 @@ export default function EvaluacionYResultado({
               iconoFin={<ArrowRight size={15} aria-hidden="true" />}
               onClick={ejecutar}
             >
-              Consultar centrales y evaluar
+              Consultar centrales de riesgo
             </Boton>
           </div>
         </section>
@@ -361,8 +362,9 @@ export default function EvaluacionYResultado({
           />
           <h2>Consultando centrales de riesgo</h2>
           <p>
-            Estamos aplicando las políticas de riesgo. Esto puede tomar unos
-            segundos.
+            SUMOTO está consultando DataCrédito Experian con sus propias
+            credenciales y aplicando las políticas de crédito. Esto puede tomar
+            unos segundos.
           </p>
         </section>
       )}

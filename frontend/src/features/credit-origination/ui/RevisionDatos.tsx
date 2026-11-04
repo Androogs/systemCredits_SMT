@@ -6,6 +6,14 @@ import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginac
 import { contextoRadicacion } from '../../../shared/lib/sesion'
 import { datosPersonalesSchema } from '../schemas/persona'
 import type { CampoOCRApi, ResultadoOCRApi } from '../api/originacionApi'
+import {
+  DOCUMENTOS_POR_NACIONALIDAD,
+  NACIONALIDAD_API,
+  NACIONALIDADES,
+  nacionalidadDesdeApi,
+  type DatosValidacion,
+  type Nacionalidad,
+} from '../model/politicas-clave'
 import './RevisionDatos.css'
 
 export interface DatosRevisados {
@@ -20,10 +28,15 @@ export interface DatosRevisados {
 }
 
 interface RevisionDatosProps {
-  onContinue?: (datos: DatosRevisados) => void
+  /** Entrega los datos de la cédula y la verificación de políticas clave. */
+  onContinue?: (datos: DatosRevisados, validacion: DatosValidacion) => void
   onBack?: () => void
-  /** Valores extraídos por el OCR / digitados en el paso 1. */
+  /** Valores previos (retomar o volver desde el paso siguiente). */
   inicial?: Partial<DatosRevisados>
+  /** Políticas ya capturadas; `nacionalidad` en su forma canónica (API). */
+  inicialPoliticas?: Partial<
+    Pick<DatosValidacion, 'nacionalidad' | 'tipoDocumento' | 'multasPendientes'>
+  >
   /** Si es true, no renderiza header ni seguimiento (para usar dentro de otro paso). */
   compacto?: boolean
   /** Resultado del OCR de la cédula; si trae advertencias, se muestran aquí. */
@@ -33,6 +46,8 @@ interface RevisionDatosProps {
 const CONFIANZA_MAXIMA = 100
 /** Por debajo de esta confianza del OCR, el campo pide confirmación manual. */
 const CONFIANZA_DUDOSA = 75
+
+type CampoPolitica = 'nacionalidad' | 'tipoDocumento' | 'multas' | 'simit'
 
 type CampoId =
   | 'nombres'
@@ -69,13 +84,23 @@ const CAMPO_OCR: Record<CampoId, keyof ResultadoOCRApi> = {
 }
 
 const camposBase: DefinicionCampo[] = [
-  { id: 'nombres', label: 'Nombres', tipo: 'text' },
-  { id: 'apellidos', label: 'Apellidos', tipo: 'text' },
+  {
+    id: 'nombres',
+    label: 'Nombres',
+    tipo: 'text',
+    placeholder: 'Ej: Ana María',
+  },
+  {
+    id: 'apellidos',
+    label: 'Apellidos',
+    tipo: 'text',
+    placeholder: 'Ej: Pérez Gómez',
+  },
   {
     id: 'numeroIdentificacion',
     label: 'N° de Identificación',
     tipo: 'text',
-    soloLectura: true,
+    placeholder: 'Ej: 1023456789',
   },
   {
     id: 'sexo',
@@ -89,7 +114,12 @@ const camposBase: DefinicionCampo[] = [
     ],
   },
   { id: 'fechaNacimiento', label: 'Fecha de Nacimiento', tipo: 'date' },
-  { id: 'lugarNacimiento', label: 'Lugar de Nacimiento', tipo: 'text' },
+  {
+    id: 'lugarNacimiento',
+    label: 'Lugar de Nacimiento',
+    tipo: 'text',
+    placeholder: 'Ej: Cali, Valle del Cauca',
+  },
   {
     id: 'fechaExpedicion',
     label: 'Fecha de Expedición',
@@ -163,7 +193,7 @@ function construirCampos(
   })
 }
 
-// Precarga vacía: los valores llegan por `inicial` (paso 1) y por `ocr`
+// Precarga vacía: los valores llegan por `inicial` (ya confirmados) y por `ocr`
 // (cédula escaneada). Nada de datos quemados: enmascaraban fallos del OCR.
 const valoresIniciales: DatosRevisados = {
   nombres: '',
@@ -174,6 +204,20 @@ const valoresIniciales: DatosRevisados = {
   lugarNacimiento: '',
   fechaExpedicion: '',
   ciudadExpedicion: '',
+}
+
+// Texto libre siempre en mayúsculas: lo digitado y lo precargado por OCR.
+const CAMPOS_MAYUSCULAS: CampoId[] = [
+  'nombres',
+  'apellidos',
+  'lugarNacimiento',
+  'ciudadExpedicion',
+]
+
+function enMayusculas(datos: DatosRevisados): DatosRevisados {
+  const salida = { ...datos }
+  for (const id of CAMPOS_MAYUSCULAS) salida[id] = salida[id].toUpperCase()
+  return salida
 }
 
 /** Normaliza el sexo del OCR al vocabulario del select. */
@@ -211,34 +255,126 @@ function mapearOCR(
   return salida
 }
 
+/**
+ * Nacionalidad y tipo de documento deducidos del diseño de cédula leído:
+ * blanca/amarilla son la CC colombiana; el PPT es de venezolanos, pero no
+ * es un documento aceptado, así que el tipo queda para el asesor.
+ */
+function politicasDesdeOCR(ocr: ResultadoOCRApi | null | undefined): {
+  nacionalidad: Nacionalidad | ''
+  tipoDocumento: string
+} {
+  switch (ocr?.tipo_cedula) {
+    case 'blanca':
+    case 'amarilla':
+      return { nacionalidad: 'Colombiano(a)', tipoDocumento: 'CC' }
+    case 'ppt':
+      return { nacionalidad: 'Venezolano(a)', tipoDocumento: '' }
+    default:
+      return { nacionalidad: '', tipoDocumento: '' }
+  }
+}
+
+// SIMIT no permite mostrarse embebido (X-Frame-Options: SAMEORIGIN): se
+// abre en una ventana emergente centrada sobre la app.
+const URL_SIMIT = 'https://www.fcm.org.co/simit/#/home-public'
+
+function abrirSimit() {
+  const ancho = Math.min(1100, window.screen.availWidth - 80)
+  const alto = Math.min(800, window.screen.availHeight - 80)
+  const izquierda = Math.round(window.screenX + (window.outerWidth - ancho) / 2)
+  const arriba = Math.round(window.screenY + (window.outerHeight - alto) / 2)
+  const ventana = window.open(
+    URL_SIMIT,
+    'consulta-simit',
+    `popup,width=${ancho},height=${alto},left=${izquierda},top=${arriba}`,
+  )
+  if (ventana) {
+    ventana.focus()
+  } else {
+    emitirToast({
+      tipo: 'error',
+      titulo: 'No se pudo abrir el SIMIT',
+      mensaje:
+        'El navegador bloqueó la ventana emergente. Permite ventanas emergentes para este sitio.',
+    })
+  }
+}
+
 const ETIQUETA_TIPO: Record<string, string> = {
   blanca: 'Cédula digital (blanca)',
   amarilla: 'Cédula amarilla con hologramas',
+  ppt: 'Permiso por Protección Temporal (documento no aceptado)',
 }
 
 function RevisionDatos({
   onContinue,
   onBack,
   inicial,
+  inicialPoliticas,
   compacto = false,
   ocr = null,
 }: RevisionDatosProps) {
   const { asesor, sede } = contextoRadicacion()
-  const [datos, setDatos] = useState<DatosRevisados>(() => ({
-    ...valoresIniciales,
-    ...mapearOCR(ocr),
-    ...Object.fromEntries(
-      Object.entries(inicial ?? {}).filter(
-        ([, v]) => v !== undefined && v !== '',
+  const [datos, setDatos] = useState<DatosRevisados>(() =>
+    enMayusculas({
+      ...valoresIniciales,
+      ...mapearOCR(ocr),
+      ...Object.fromEntries(
+        Object.entries(inicial ?? {}).filter(
+          ([, v]) => v !== undefined && v !== '',
+        ),
       ),
-    ),
-  }))
+    }),
+  )
   const [dudososConfirmados, setDudososConfirmados] = useState<
     Record<string, boolean>
   >({})
   const [tocados, setTocados] = useState<Partial<Record<CampoId, boolean>>>({})
   const [intentado, setIntentado] = useState(false)
   const [registrado, setRegistrado] = useState(false)
+
+  // Verificación de políticas clave: lo ya capturado (retomar o volver
+  // desde el paso 4) prima; si no, se deduce del tipo de cédula del OCR.
+  const politicasOCR = politicasDesdeOCR(ocr)
+  const [nacionalidad, setNacionalidad] = useState<Nacionalidad | ''>(
+    () =>
+      nacionalidadDesdeApi(inicialPoliticas?.nacionalidad) ||
+      politicasOCR.nacionalidad,
+  )
+  const documentos = nacionalidad
+    ? DOCUMENTOS_POR_NACIONALIDAD[nacionalidad]
+    : []
+  const [tipoDocumento, setTipoDocumento] = useState(() => {
+    const previo = inicialPoliticas?.tipoDocumento || politicasOCR.tipoDocumento
+    return documentos.some((d) => d.codigo === previo) ? previo! : ''
+  })
+  const [simitConsultado, setSimitConsultado] = useState(false)
+  const [multas, setMultas] = useState<'si' | 'no' | ''>(() =>
+    inicialPoliticas?.multasPendientes === undefined
+      ? ''
+      : inicialPoliticas.multasPendientes
+        ? 'si'
+        : 'no',
+  )
+  const [politicasTocadas, setPoliticasTocadas] = useState<
+    Partial<Record<CampoPolitica, boolean>>
+  >({})
+  const erroresPoliticas: Partial<Record<CampoPolitica, string>> = {
+    ...(!nacionalidad && { nacionalidad: 'Selecciona la nacionalidad.' }),
+    ...(!tipoDocumento && {
+      tipoDocumento: 'Selecciona el tipo de documento.',
+    }),
+    ...(!multas && { multas: 'Selecciona una opción para continuar.' }),
+    // La respuesta Sí/No debe salir de la consulta real en SIMIT.
+    ...(!simitConsultado && {
+      simit: 'Marca "Consultar" y revisa el SIMIT antes de continuar.',
+    }),
+  }
+  const mostrarErrorPolitica = (campo: CampoPolitica) =>
+    Boolean(erroresPoliticas[campo]) && (intentado || politicasTocadas[campo])
+  const tocarPolitica = (campo: CampoPolitica) =>
+    setPoliticasTocadas((prev) => ({ ...prev, [campo]: true }))
 
   const campos = useMemo(() => construirCampos(ocr), [ocr])
 
@@ -327,13 +463,26 @@ function RevisionDatos({
     event.preventDefault()
     setIntentado(true)
 
-    if (Object.keys(errores).length > 0 || dudososPendientes.length > 0) {
+    if (
+      Object.keys(errores).length > 0 ||
+      dudososPendientes.length > 0 ||
+      Object.keys(erroresPoliticas).length > 0 ||
+      !nacionalidad
+    ) {
       setRegistrado(false)
       return
     }
 
     setRegistrado(true)
-    onContinue?.(datos)
+    onContinue?.(datos, {
+      tipoDocumento,
+      // La cédula y la fecha confirmadas aquí son la fuente de verdad.
+      numeroDocumento: datos.numeroIdentificacion.replace(/\D/g, ''),
+      fechaNacimiento: datos.fechaNacimiento,
+      nacionalidad: NACIONALIDAD_API[nacionalidad],
+      // Con multas el flujo radica la solicitud rechazada (R22) y termina.
+      multasPendientes: multas === 'si',
+    })
   }
 
   return (
@@ -378,7 +527,7 @@ function RevisionDatos({
       >
         <div className="revision__form-head">
           <div>
-            <h2>Datos extraídos de la cédula</h2>
+            <h2>Datos extraídos</h2>
             <p>
               {tipoCedula && (
                 <>
@@ -394,7 +543,7 @@ function RevisionDatos({
         <div className="revision__confianza" role="note">
           <div className="revision__confianza-copy">
             <span className="revision__confianza-label">
-              Nivel de Confianza Global del Procesamiento
+              Nivel de Confianza del Procesamiento
             </span>
             {camposDudosos.length > 0 && (
               <small>
@@ -527,6 +676,99 @@ function RevisionDatos({
         )}
 
         <div className="revision__grid">
+          <div
+            className={`revision__field${mostrarErrorPolitica('nacionalidad') ? ' has-error' : ''}`}
+          >
+            <label htmlFor="rev-nacionalidad">
+              Nacionalidad{' '}
+              <span className="revision__required" aria-hidden="true">
+                *
+              </span>
+            </label>
+            <div className="revision__input-wrap">
+              <select
+                id="rev-nacionalidad"
+                required
+                value={nacionalidad}
+                aria-invalid={mostrarErrorPolitica('nacionalidad')}
+                onChange={(event) => {
+                  setNacionalidad(event.target.value as Nacionalidad)
+                  setTipoDocumento('')
+                  tocarPolitica('nacionalidad')
+                  setRegistrado(false)
+                }}
+                onBlur={() => tocarPolitica('nacionalidad')}
+              >
+                <option value="" disabled>
+                  Selecciona la nacionalidad
+                </option>
+                {NACIONALIDADES.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              <span className="revision__select-arrow" aria-hidden="true">
+                ▾
+              </span>
+            </div>
+            {mostrarErrorPolitica('nacionalidad') && (
+              <p className="revision__error" role="alert">
+                {erroresPoliticas.nacionalidad}
+              </p>
+            )}
+          </div>
+
+          <div
+            className={`revision__field${mostrarErrorPolitica('tipoDocumento') ? ' has-error' : ''}`}
+          >
+            <label htmlFor="rev-tipo-documento">
+              Tipo de Documento{' '}
+              <span className="revision__required" aria-hidden="true">
+                *
+              </span>
+            </label>
+            <div className="revision__input-wrap">
+              <select
+                id="rev-tipo-documento"
+                required
+                value={tipoDocumento}
+                aria-invalid={mostrarErrorPolitica('tipoDocumento')}
+                onChange={(event) => {
+                  setTipoDocumento(event.target.value)
+                  tocarPolitica('tipoDocumento')
+                  setRegistrado(false)
+                }}
+                onBlur={() => tocarPolitica('tipoDocumento')}
+              >
+                <option value="" disabled>
+                  {nacionalidad
+                    ? 'Selecciona el tipo de documento'
+                    : 'Primero elige la nacionalidad'}
+                </option>
+                {documentos.map((doc) => (
+                  <option key={doc.codigo} value={doc.codigo}>
+                    {doc.nombre}
+                  </option>
+                ))}
+              </select>
+              <span className="revision__select-arrow" aria-hidden="true">
+                ▾
+              </span>
+            </div>
+            {mostrarErrorPolitica('tipoDocumento') ? (
+              <p className="revision__error" role="alert">
+                {erroresPoliticas.tipoDocumento}
+              </p>
+            ) : (
+              documentos.length === 1 && (
+                <p className="revision__hint">
+                  Único documento aceptado para esta nacionalidad.
+                </p>
+              )
+            )}
+          </div>
+
           {campos.map((campo) => {
             const error = mostrarError(campo.id)
             const dudosoPendiente =
@@ -587,7 +829,7 @@ function RevisionDatos({
                     aria-invalid={error}
                     placeholder={campo.placeholder}
                     onChange={(event) =>
-                      actualizar(campo.id, event.target.value)
+                      actualizar(campo.id, event.target.value.toUpperCase())
                     }
                     onBlur={() => marcarTocado(campo.id)}
                   />
@@ -635,6 +877,68 @@ function RevisionDatos({
               </div>
             )
           })}
+
+          <div
+            className={`revision__field revision__field--full${
+              mostrarErrorPolitica('multas') ? ' has-error' : ''
+            }`}
+          >
+            <span className="revision__label" id="rev-multas-label">
+              ¿Tiene multas pendientes de pago?{' '}
+              <span className="revision__required" aria-hidden="true">
+                *
+              </span>
+            </span>
+            <div className="revision__multas-controles">
+              <label className="revision__consultar">
+                <input
+                  type="checkbox"
+                  checked={simitConsultado}
+                  onChange={(event) => {
+                    setSimitConsultado(event.target.checked)
+                    if (event.target.checked) abrirSimit()
+                  }}
+                />
+                Consultar
+              </label>
+              <div
+                className="revision__toggle"
+                role="radiogroup"
+                aria-labelledby="rev-multas-label"
+              >
+                {(['si', 'no'] as const).map((opcion) => (
+                  <button
+                    key={opcion}
+                    type="button"
+                    role="radio"
+                    aria-checked={multas === opcion}
+                    className={`revision__toggle-option${multas === opcion ? ' is-active' : ''}`}
+                    onClick={() => {
+                      setMultas(opcion)
+                      tocarPolitica('multas')
+                      setRegistrado(false)
+                    }}
+                  >
+                    {opcion === 'si' ? 'Sí' : 'No'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {mostrarErrorPolitica('simit') ? (
+              <p className="revision__error" role="alert">
+                {erroresPoliticas.simit}
+              </p>
+            ) : mostrarErrorPolitica('multas') ? (
+              <p className="revision__error" role="alert">
+                {erroresPoliticas.multas}
+              </p>
+            ) : multas === 'si' ? (
+              <p className="revision__warning" role="status">
+                La solicitud puede ser Rechazada: el cliente presenta multas
+                pendientes.
+              </p>
+            ) : null}
+          </div>
         </div>
 
         <div className="revision__actions">

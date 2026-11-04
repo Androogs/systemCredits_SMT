@@ -24,7 +24,7 @@ def test_solo_admin_lista_usuarios(client, client_asesor, client_sin_auth):
     filas = client.get("/api/usuarios").json()
     assert isinstance(filas, list) and len(filas) >= 3
     correos = {f["correo"] for f in filas}
-    assert "admin@pacifico.co" in correos
+    assert "admin@sumoto.com.co" in correos
 
 
 def test_opciones_devuelven_catalogos(client):
@@ -45,7 +45,7 @@ def test_crear_asesor_con_sede_y_login(client):
     respuesta = client.post(
         "/api/usuarios",
         json={
-            "correo": "nuevo.asesor@pacifico.co",
+            "correo": "nuevo.asesor@sumoto.com.co",
             "nombre": "Asesor Nuevo",
             "contrasena": "ClaveSegura9!",
             "roles": ["asesor"],
@@ -63,7 +63,7 @@ def test_crear_asesor_con_sede_y_login(client):
     assert creado["cedula"] == "80000222"
     assert creado["telefono"] == "3009998877"
 
-    login = _login(client, "nuevo.asesor@pacifico.co", "ClaveSegura9!")
+    login = _login(client, "nuevo.asesor@sumoto.com.co", "ClaveSegura9!")
     assert login.status_code == 200
     assert login.json()["usuario"]["concesionario"]["id_concesionario"] == (
         sede["id_concesionario"]
@@ -74,7 +74,7 @@ def test_crear_correo_duplicado_responde_conflicto(client):
     respuesta = client.post(
         "/api/usuarios",
         json={
-            "correo": "admin@pacifico.co",
+            "correo": "admin@sumoto.com.co",
             "nombre": "Otro Admin",
             "contrasena": "ClaveSegura9!",
             "roles": ["admin"],
@@ -87,7 +87,7 @@ def test_crear_rol_inexistente_responde_422(client):
     respuesta = client.post(
         "/api/usuarios",
         json={
-            "correo": "rol.malo@pacifico.co",
+            "correo": "rol.malo@sumoto.com.co",
             "nombre": "Rol Malo",
             "contrasena": "ClaveSegura9!",
             "roles": ["superpoder"],
@@ -101,7 +101,7 @@ def test_actualizar_roles_y_estado(client):
     creado = client.post(
         "/api/usuarios",
         json={
-            "correo": "cambia@pacifico.co",
+            "correo": "cambia@sumoto.com.co",
             "nombre": "Cambia Rol",
             "contrasena": "ClaveSegura9!",
             "roles": ["asesor"],
@@ -119,11 +119,11 @@ def test_actualizar_roles_y_estado(client):
     r = client.put(f"/api/usuarios/{id_usuario}", json={"estado": "bloqueado"})
     assert r.status_code == 200
     # Bloqueado no entra aunque la clave sea correcta.
-    assert _login(client, "cambia@pacifico.co", "ClaveSegura9!").status_code == 403
+    assert _login(client, "cambia@sumoto.com.co", "ClaveSegura9!").status_code == 403
 
     r = client.put(f"/api/usuarios/{id_usuario}", json={"estado": "activo"})
     assert r.status_code == 200
-    assert _login(client, "cambia@pacifico.co", "ClaveSegura9!").status_code == 200
+    assert _login(client, "cambia@sumoto.com.co", "ClaveSegura9!").status_code == 200
 
 
 def test_restablecer_clave_permite_nuevo_ingreso(client):
@@ -131,7 +131,7 @@ def test_restablecer_clave_permite_nuevo_ingreso(client):
     creado = client.post(
         "/api/usuarios",
         json={
-            "correo": "resetea@pacifico.co",
+            "correo": "resetea@sumoto.com.co",
             "nombre": "Resetea Clave",
             "contrasena": "ClaveVieja1!",
             "roles": ["asesor"],
@@ -145,14 +145,14 @@ def test_restablecer_clave_permite_nuevo_ingreso(client):
         json={"contrasena": "ClaveNueva7!"},
     )
     assert r.status_code == 204
-    assert _login(client, "resetea@pacifico.co", "ClaveVieja1!").status_code == 401
-    assert _login(client, "resetea@pacifico.co", "ClaveNueva7!").status_code == 200
+    assert _login(client, "resetea@sumoto.com.co", "ClaveVieja1!").status_code == 401
+    assert _login(client, "resetea@sumoto.com.co", "ClaveNueva7!").status_code == 200
 
 
 def test_admin_no_puede_desactivarse(client):
     with SessionLocal() as db:
         admin_id = db.execute(
-            text("SELECT id_usuario FROM usuario WHERE correo='admin@pacifico.co'")
+            text("SELECT id_usuario FROM usuario WHERE correo='admin@sumoto.com.co'")
         ).scalar_one()
     r = client.put(f"/api/usuarios/{admin_id}", json={"estado": "inactivo"})
     assert r.status_code == 422
@@ -180,7 +180,7 @@ def test_cambiar_clave_self_service(client):
     client.post(
         "/api/usuarios",
         json={
-            "correo": "cambia@pacifico.co",
+            "correo": "cambia@sumoto.com.co",
             "nombre": "Cambia Clave",
             "contrasena": "Temporal1!",
             "roles": ["asesor"],
@@ -189,7 +189,7 @@ def test_cambiar_clave_self_service(client):
             "telefono": "3009998844",
         },
     )
-    login = _login(client, "cambia@pacifico.co", "Temporal1!")
+    login = _login(client, "cambia@sumoto.com.co", "Temporal1!")
     assert login.json()["usuario"]["requiere_cambio_password"] is True
     cab = {"Authorization": f"Bearer {login.json()['access_token']}"}
 
@@ -220,8 +220,8 @@ def test_cambiar_clave_self_service(client):
     )
     assert r.status_code == 200, r.text
     assert r.json()["requiere_cambio_password"] is False
-    assert _login(client, "cambia@pacifico.co", "Temporal1!").status_code == 401
-    nuevo = _login(client, "cambia@pacifico.co", "NuevaSegura2!")
+    assert _login(client, "cambia@sumoto.com.co", "Temporal1!").status_code == 401
+    nuevo = _login(client, "cambia@sumoto.com.co", "NuevaSegura2!")
     assert nuevo.json()["usuario"]["requiere_cambio_password"] is False
 
 

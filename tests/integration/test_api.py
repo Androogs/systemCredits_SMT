@@ -512,6 +512,47 @@ def test_crear_solicitud_actualiza_ocupacion_cliente_existente(client):
         db.close()
 
 
+def test_rechazo_politicas_radica_rechazada_sin_perfil_economico(client):
+    """Multas declaradas en originación: la solicitud queda radicada y
+    rechazada (R22) sin ocupación, perfil económico ni evaluación."""
+    payload = {
+        "cliente": {k: v for k, v in SOLICITUD["cliente"].items() if k != "ocupacion"},
+        "contacto_vivienda": {"telefono": "3001234567"},
+        "consentimiento": {"aceptado": True},
+    }
+    r = client.post("/api/solicitudes/rechazo-politicas", json=payload)
+    assert r.status_code == 201, r.text
+    assert r.json()["estado"] == "rechazada"
+    id_solicitud = r.json()["id_solicitud"]
+
+    [s] = client.get("/api/solicitudes").json()
+    assert s["id_solicitud"] == id_solicitud
+    assert s["decision"] == "rechazado" and s["estado"] == "rechazada"
+    assert s["evaluacion"] is None
+
+    db = db_session.SessionLocal()
+    try:
+        [causal] = db.query(SolicitudCausal).filter_by(activa=True).all()
+        assert causal.codigo == "R22"
+    finally:
+        db.close()
+
+
+def test_rechazo_politicas_no_borra_ocupacion_de_cliente_existente(client):
+    _crear_solicitud(client)  # Empleado
+    payload = {
+        "cliente": {k: v for k, v in SOLICITUD["cliente"].items() if k != "ocupacion"},
+    }
+    assert client.post("/api/solicitudes/rechazo-politicas", json=payload).status_code == 201
+    db = db_session.SessionLocal()
+    try:
+        from backend.db_models.models import Cliente
+
+        assert db.query(Cliente).one().ocupacion == "empleado"
+    finally:
+        db.close()
+
+
 def test_metricas_embudo(client):
     """D181: el embudo cuenta radicadas → evaluadas → aprobadas →
     formalizadas → desembolsadas, con desglose por aliado."""

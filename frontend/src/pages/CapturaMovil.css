@@ -371,8 +371,3 @@
   font-size: 12px;
   text-align: center;
 }
-
-.captura-movil__nota svg {
-  flex-shrink: 0;
-  color: var(--slate-faint);
-}

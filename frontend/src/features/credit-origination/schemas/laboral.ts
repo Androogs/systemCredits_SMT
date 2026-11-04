@@ -49,7 +49,10 @@ export const laboralSchemaBase = z.object({
   subtipoIndependiente: z.string(),
   empresa: z.string().trim(),
   /** Solo para Empleado. En Pensionado / Fuerzas / Independiente no aplica. */
-  mesesContinuidad: z.number().min(0, 'La continuidad no puede ser negativa.'),
+  mesesContinuidad: z
+    .number()
+    .min(0, 'La continuidad no puede ser negativa.')
+    .nullable(),
   aniosCamara: z
     .number({ invalid_type_error: 'Ingresa un número válido.' })
     .nullable(),
@@ -68,7 +71,7 @@ export const refinarLaboral = (
     ocupacion: string
     tipoContrato: string
     subtipoIndependiente: string
-    mesesContinuidad: number
+    mesesContinuidad: number | null
     aniosCamara: number | null
     entidadPagadora: string
     empresa: string

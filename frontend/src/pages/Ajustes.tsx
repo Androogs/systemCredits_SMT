@@ -12,6 +12,32 @@ import type {
   ValorParametro,
 } from '../features/settings/api/parametrosApi'
 import { EditorParametros } from '../features/settings/ui/EditorParametros'
+import { SEDES_POR_MARCA } from '../features/credit-origination/model/concesionarios'
+
+// Logos de marca para las tarjetas de concesionarios (public/brand).
+const LOGOS_MARCA: Record<string, string> = {
+  AKT: '/brand/akt.jpg',
+  Auteco: '/brand/auteco.png',
+  Bajaj: '/brand/bajaj.png',
+  Fratelli: '/brand/fratelli.jpg',
+  Hero: '/brand/hero.png',
+  Honda: '/brand/honda.png',
+  Suzuki: '/brand/suzuki.png',
+}
+
+// Datos comerciales de la tarjeta: deterministas por marca para que
+// no cambien entre renders (hash simple del nombre).
+const statsMarca = (marca: string) => {
+  const h = [...marca].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 997, 7)
+  const cupo = 90 + (h % 18) * 10 // $90M–$260M
+  const usadoPct = 25 + (h % 55) // 25%–80% del cupo
+  return {
+    cupo,
+    usado: Math.round((cupo * usadoPct) / 100),
+    usadoPct,
+    asesores: 2 + (h % 8),
+  }
+}
 import GestionUsuarios from '../features/settings/ui/GestionUsuarios'
 import FormularioCambioClave from '../features/auth/ui/FormularioCambioClave'
 import {
@@ -24,6 +50,7 @@ import {
   KeyRound,
   HardDrive,
   X,
+  MapPin,
   Trash2,
   LogOut,
   Monitor,
@@ -199,11 +226,8 @@ export default function Ajustes() {
   const [hasChanges, setHasChanges] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [avatar, setAvatar] = useState<string | null>(null)
-  const [concesionarios, setConcesionarios] = useState<string[]>([
-    'Sumoto Palmira',
-    'Tulua Motos',
-    'Pijaos Motos',
-  ])
+  const [concesionarios, setConcesionarios] =
+    useState<Record<string, string[]>>(SEDES_POR_MARCA)
   const [nuevoConcesionario, setNuevoConcesionario] = useState('')
   const [parametros, setParametros] = useState<ParametrosMotor | null>(null)
   const [parametrosGuardados, setParametrosGuardados] =
@@ -568,13 +592,17 @@ export default function Ajustes() {
   }
   const addConcesionario = () => {
     const v = nuevoConcesionario.trim()
-    if (!v || concesionarios.includes(v)) return
-    setConcesionarios((p) => [...p, v])
+    if (!v || v in concesionarios) return
+    setConcesionarios((p) => ({ ...p, [v]: [] }))
     setNuevoConcesionario('')
     setHasChanges(true)
   }
-  const removeConcesionario = (name: string) => {
-    setConcesionarios((p) => p.filter((c) => c !== name))
+  const removeConcesionario = (marca: string) => {
+    setConcesionarios((p) => {
+      const copia = { ...p }
+      delete copia[marca]
+      return copia
+    })
     setHasChanges(true)
   }
   return (
@@ -597,7 +625,7 @@ export default function Ajustes() {
                 guardandoParametros || (!hasChanges && !parametrosModificados)
               }
               aria-label="Guardar cambios"
-              className="h-10 shrink-0 rounded-lg bg-[#000033] px-3 text-xs font-medium text-white shadow-sm transition hover:bg-[#000033] disabled:opacity-40 sm:px-4"
+              className="h-10 shrink-0 rounded-lg bg-[#19255b] px-3 text-xs font-medium text-white shadow-sm transition hover:bg-[#19255b] disabled:opacity-40 sm:px-4"
             >
               {guardandoParametros ? (
                 'Guardando…'
@@ -628,7 +656,7 @@ export default function Ajustes() {
                 aria-pressed={active}
                 className={`flex min-h-11 shrink-0 snap-start items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors lg:mb-1 lg:w-full lg:justify-start lg:gap-3 lg:rounded-md lg:px-3 lg:py-2.5 lg:text-left lg:text-sm ${
                   active
-                    ? 'border-[#000033] bg-[#000033] text-white shadow-sm'
+                    ? 'border-[#19255b] bg-[#19255b] text-white shadow-sm'
                     : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 lg:border-transparent lg:bg-transparent lg:shadow-none'
                 }`}
               >
@@ -923,36 +951,92 @@ export default function Ajustes() {
                 <button
                   type="button"
                   onClick={addConcesionario}
-                  className="h-11 w-full rounded-lg bg-[#000033] px-4 text-sm font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
+                  className="h-11 w-full rounded-lg bg-[#19255b] px-4 text-sm font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
                 >
                   Agregar
                 </button>
               </div>
               <div className="grid md:grid-cols-2 gap-3">
-                {concesionarios.map((c) => (
-                  <div
-                    key={c}
-                    className="flex items-center justify-between p-4 rounded-lg border bg-white hover:border-slate-300 transition-colors"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">{c}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Cupo: $120M • Usado: $45M • Asesores: 3
-                      </p>
-                      <div className="mt-2 h-1.5 w-32 bg-slate-100 rounded-full overflow-hidden">
-                        <div className="h-full w-[37%] bg-[#000033]" />
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeConcesionario(c)}
-                      aria-label={`Quitar concesionario ${c}`}
-                      className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border text-slate-500 hover:bg-red-50 hover:text-red-600 sm:h-9 sm:w-9 sm:rounded-md"
+                {Object.entries(concesionarios).map(([marca, sedes]) => {
+                  const stats = statsMarca(marca)
+                  return (
+                    <div
+                      key={marca}
+                      className="flex items-start justify-between p-4 rounded-lg border bg-white hover:border-slate-300 transition-colors"
                     >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2.5">
+                          {LOGOS_MARCA[marca] ? (
+                            <img
+                              src={LOGOS_MARCA[marca]}
+                              alt={`Logo ${marca}`}
+                              className="h-9 w-9 shrink-0 rounded-md object-contain"
+                            />
+                          ) : (
+                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-slate-100 text-xs font-bold text-slate-500">
+                              {marca.slice(0, 2)}
+                            </span>
+                          )}
+                          <div>
+                            <p className="text-sm font-medium">{marca}</p>
+                            <p className="text-xs text-slate-500">
+                              {sedes.length}{' '}
+                              {sedes.length === 1 ? 'sede' : 'sedes'} ·{' '}
+                              {stats.asesores} asesores
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <div className="flex items-baseline justify-between text-xs">
+                            <span className="text-slate-500">
+                              Cupo{' '}
+                              <strong className="font-semibold text-slate-700">
+                                ${stats.cupo}M
+                              </strong>{' '}
+                              · Usado{' '}
+                              <strong className="font-semibold text-slate-700">
+                                ${stats.usado}M
+                              </strong>
+                            </span>
+                            <span className="font-semibold text-slate-600">
+                              {stats.usadoPct}%
+                            </span>
+                          </div>
+                          <div className="mt-1 h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-[#19255b]"
+                              style={{ width: `${stats.usadoPct}%` }}
+                            />
+                          </div>
+                        </div>
+                        {sedes.length > 0 && (
+                          <div className="mt-2.5 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                            {sedes.map((sede) => (
+                              <span
+                                key={sede}
+                                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50/70 px-2 py-1 text-[11px] font-medium text-slate-600"
+                              >
+                                <MapPin
+                                  className="h-3 w-3 shrink-0 text-[#19255b]/60"
+                                  aria-hidden="true"
+                                />
+                                {sede}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeConcesionario(marca)}
+                        aria-label={`Quitar marca ${marca}`}
+                        className="ml-3 grid h-11 w-11 shrink-0 place-items-center rounded-lg border text-slate-500 hover:bg-red-50 hover:text-red-600 sm:h-9 sm:w-9 sm:rounded-md"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             </Card>
           )}
@@ -1042,7 +1126,7 @@ export default function Ajustes() {
                 action={
                   <button
                     type="button"
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#000033] px-3 text-xs font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#19255b] px-3 text-xs font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
                   >
                     <Upload className="h-4 w-4 sm:h-3 sm:w-3" /> Subir plantilla
                   </button>
@@ -1113,7 +1197,7 @@ export default function Ajustes() {
                               <button
                                 type="button"
                                 aria-label={`Reemplazar ${d.nombre}`}
-                                className="h-7 w-7 grid place-items-center rounded border bg-[#000033] text-white"
+                                className="h-7 w-7 grid place-items-center rounded border bg-[#19255b] text-white"
                               >
                                 <RefreshCw className="h-3.5 w-3.5" />
                               </button>
@@ -1165,7 +1249,7 @@ export default function Ajustes() {
                           <button
                             type="button"
                             aria-label={`Reemplazar ${d.nombre}`}
-                            className="flex h-11 items-center justify-center gap-2 rounded-lg border bg-[#000033] text-white text-xs font-medium"
+                            className="flex h-11 items-center justify-center gap-2 rounded-lg border bg-[#19255b] text-white text-xs font-medium"
                           >
                             <RefreshCw className="h-3.5 w-3.5" /> Reemplazar
                           </button>
@@ -1335,7 +1419,7 @@ export default function Ajustes() {
                         },
                       ])
                     }
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#000033] px-3 text-xs font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#19255b] px-3 text-xs font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
                   >
                     <Key className="h-4 w-4 sm:h-3 sm:w-3" /> Nueva Key
                   </button>
@@ -1507,7 +1591,7 @@ export default function Ajustes() {
                     <p className="text-xs text-slate-500 mt-1">
                       Incluye parametros.json, usuarios y plantillas
                     </p>
-                    <button className="mt-4 w-full h-9 rounded-md bg-[#000033] text-white text-sm flex items-center justify-center gap-1.5">
+                    <button className="mt-4 w-full h-9 rounded-md bg-[#19255b] text-white text-sm flex items-center justify-center gap-1.5">
                       <RefreshCw className="h-4 w-4" /> Crear backup ahora
                     </button>
                     <p className="text-[11px] text-slate-500 mt-2">
@@ -1533,7 +1617,7 @@ export default function Ajustes() {
                       onClick={() => onChange('backupAuto', !form.backupAuto)}
                       aria-label="Respaldo automático"
                       aria-pressed={form.backupAuto}
-                      className={`h-6 w-11 rounded-full flex items-center ${form.backupAuto ? 'bg-[#000033] justify-end' : 'bg-slate-200 justify-start'}`}
+                      className={`h-6 w-11 rounded-full flex items-center ${form.backupAuto ? 'bg-[#19255b] justify-end' : 'bg-slate-200 justify-start'}`}
                     >
                       <span className="h-4 w-4 rounded-full bg-white shadow mx-1" />
                     </button>

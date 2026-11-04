@@ -30,7 +30,7 @@ def test_tablas_identidad_existen_y_aceptan_registros(client):
             ),
             {
                 "u": str(id_usuario),
-                "c": "asesor.modelos@pacifico.co",
+                "c": "asesor.modelos@sumoto.com.co",
                 "h": "hash",
                 "n": "Asesor Uno",
             },
@@ -54,7 +54,7 @@ def test_tablas_identidad_existen_y_aceptan_registros(client):
             text(
                 "SELECT a.nombre, a.id_concesionario FROM asesor a "
                 "JOIN usuario u ON u.id_usuario = a.id_usuario "
-                "WHERE u.correo = 'asesor.modelos@pacifico.co'"
+                "WHERE u.correo = 'asesor.modelos@sumoto.com.co'"
             )
         ).one()
     assert asesor[0] == "Asesor Uno"

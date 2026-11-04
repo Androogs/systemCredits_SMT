@@ -44,7 +44,7 @@ def _crear_colega_misma_sede() -> int:
             text(
                 "INSERT OR IGNORE INTO usuario (id_usuario, correo, "
                 "hash_contrasena, estado, nombre_completo) VALUES "
-                "(:u, 'asesor2@pacifico.co', :h, 'activo', "
+                "(:u, 'asesor2@sumoto.com.co', :h, 'activo', "
                 "'Asesor Colega')"
             ),
             {
@@ -245,7 +245,7 @@ def test_asesor_sin_sede_no_puede_radicar(tmp_path, monkeypatch):
     with app_client as c:
         _sembrar_identidad()
         c.headers["Authorization"] = (
-            f"Bearer {_token_rol('asesor', 'asesor_sinsede@pacifico.co')}"
+            f"Bearer {_token_rol('asesor', 'asesor_sinsede@sumoto.com.co')}"
         )
         respuesta = c.post("/api/solicitudes", json=SOLICITUD)
     _cerrar_app(app_client.app)

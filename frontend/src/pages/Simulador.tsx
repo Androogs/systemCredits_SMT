@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import Encabezado from '../widgets/app-shell/Encabezado'
@@ -11,18 +11,23 @@ import {
   tablaAmortizacion,
   tasaProductoMv,
 } from '../shared/lib/finanzas'
+import {
+  CREDICONTADO_PLAZO_MAX,
+  CREDICONTADO_PLAZO_MIN,
+  CREDICONTADO_PLAZOS_TABLA,
+  CREDICONTADO_TASA_MV,
+  plazoCredicontado,
+  tramoCredicontado,
+} from '../shared/lib/credicontado'
 import { useCuentaAscendente } from '../shared/lib/useCuentaAscendente'
 import {
   listarProductos,
   tasaMercado,
   type ProductoApi,
 } from '../features/credit-origination/api/originacionApi'
-import {
-  PRIMA_SEGURO_VIDA_PCT,
-  TASA_MENSUAL_REFERENCIA,
-} from '../features/credit-origination/model/resultado-evaluacion'
+import { PRIMA_SEGURO_VIDA_PCT } from '../features/credit-origination/model/resultado-evaluacion'
 import type { SimulacionPrevia } from '../features/credit-origination/model/borrador'
-import { Calculator, ArrowRight, AlertTriangle, Landmark } from 'lucide-react'
+import { Calculator, ArrowRight, AlertTriangle, RotateCcw } from 'lucide-react'
 
 // Rangos de referencia si el catálogo no está disponible (coinciden
 // con el producto propio sembrado en la BD).
@@ -41,19 +46,26 @@ function plazosDel(min: number, max: number): number[] {
   return lista
 }
 
-// Tasa comercial del producto: la usura de consumo y ordinario vigente
-// (28,59% EA → (1+TEA)^(1/12)−1 = 2,1176% m.v. exacto) truncada a 4
-// decimales, para quedar siempre un pelo por debajo del límite legal.
-// Si la consulta SFC responde, la tasa operativa se recalcula en vivo.
-const TASA_PRODUCTO = TASA_MENSUAL_REFERENCIA
+// Cargo fijo de originación que se financia con la moto. Implícito en
+// la simulación: ajustar aquí si la política del producto lo cambia.
+const GASTOS_ADMINISTRATIVOS = 200_000
 
-const initial = {
-  valorVehiculo: 10_000_000,
-  cuotaInicial: 1_000_000,
-  adicionales: 1_150_000,
-  gastosAdministrativos: 0,
-  tasaMensual: TASA_PRODUCTO,
-  plazoMeses: 48,
+interface FormSimulador {
+  valorVehiculo: number | null
+  cuotaInicial: number | null
+  adicionales: number | null
+  tasaMensual: number | null
+  plazoMeses: number | null
+}
+
+// Los campos arrancan vacíos: los placeholders anuncian valores de
+// ejemplo y la simulación usa la tasa operativa y el plazo máximo.
+const initial: FormSimulador = {
+  valorVehiculo: null,
+  cuotaInicial: null,
+  adicionales: null,
+  tasaMensual: null,
+  plazoMeses: null,
 }
 
 const DIAS_MES = 30
@@ -107,23 +119,95 @@ export default function Simulador() {
     [rangos.plazoMin, rangos.plazoMax],
   )
 
-  const actualizarValor = (key: keyof typeof initial, n: number | null) =>
-    setForm((prev) => ({ ...prev, [key]: n ?? 0 }))
+  // Modo Credicontado: el logo aplica sus condiciones fijas (tasa 0,
+  // plazo 4–12 y cuota inicial por tabla); editar la tasa o la cuota
+  // inicial —o un plazo por fuera del 4–12— devuelve el simulador al
+  // producto propio.
+  const [modoCredicontado, setModoCredicontado] = useState(false)
+
+  const actualizarValor = (key: keyof FormSimulador, n: number | null) => {
+    if (
+      key === 'tasaMensual' ||
+      key === 'cuotaInicial' ||
+      (key === 'plazoMeses' &&
+        n != null &&
+        (n < CREDICONTADO_PLAZO_MIN || n > CREDICONTADO_PLAZO_MAX))
+    )
+      setModoCredicontado(false)
+    setForm((prev) => ({ ...prev, [key]: n }))
+  }
+
+  const aplicarCredicontado = () => {
+    setModoCredicontado(true)
+    setForm((prev) => ({
+      ...prev,
+      tasaMensual: CREDICONTADO_TASA_MV,
+      plazoMeses: plazoCredicontado(prev.plazoMeses ?? CREDICONTADO_PLAZO_MAX),
+    }))
+  }
+
+  // Salir del modo Credicontado: tasa y plazo vuelven a los valores
+  // por defecto del producto propio (campos vacíos → tasa tope y
+  // plazo máximo); los montos digitados por el usuario se conservan.
+  const salirCredicontado = () => {
+    setModoCredicontado(false)
+    setForm((prev) => ({ ...prev, tasaMensual: null, plazoMeses: null }))
+  }
+
+  // Tasa operativa: la del producto — usura de consumo y ordinario en
+  // m.v. menos un punto base (2,1175% cuando la usura es 28,59% EA) —
+  // para quedar estrictamente bajo el límite que valida la evaluación.
+  const tasaOperativa = useMemo(
+    () => tasaProductoMv(consultaTasa.data?.ordinario.usura_ea),
+    [consultaTasa.data],
+  )
+
+  // Tope editable: nunca sobre la tasa del producto; el rango comercial
+  // puede acotar más por debajo.
+  const tasaMaxEfectiva =
+    tasaOperativa != null
+      ? Math.min(rangos.tasaMax, tasaOperativa)
+      : rangos.tasaMax
+
+  // Campo vacío → se simula con la tasa tope y el plazo máximo del
+  // producto (los placeholders los anuncian como ejemplo). En modo
+  // Credicontado la tasa es 0 fija y el plazo vive en 4–12 meses.
+  const tasaEfectiva = modoCredicontado
+    ? (form.tasaMensual ?? CREDICONTADO_TASA_MV)
+    : (form.tasaMensual ?? tasaMaxEfectiva)
+  const plazoEfectivo = modoCredicontado
+    ? plazoCredicontado(form.plazoMeses ?? CREDICONTADO_PLAZO_MAX)
+    : (form.plazoMeses ?? rangos.plazoMax)
+
+  // En modo Credicontado la cuota inicial no se digita: la impone la
+  // tabla por tramo de plazo sobre el saldo bruto a financiar.
+  const saldoBruto =
+    (form.valorVehiculo ?? 0) + (form.adicionales ?? 0) + GASTOS_ADMINISTRATIVOS
+  const cuotaInicialPara = (plazo: number) =>
+    Math.round(saldoBruto * tramoCredicontado(plazo).cuotaInicial)
+  const cuotaInicialEfectiva = modoCredicontado
+    ? cuotaInicialPara(plazoEfectivo)
+    : (form.cuotaInicial ?? 0)
+
+  // La tabla de comparación ofrece el rango de la línea activa: en
+  // Credicontado sus plazos comerciales (4, 6, 8 y 12); en el
+  // producto propio los hitos anuales del catálogo.
+  const plazosTabla = modoCredicontado ? CREDICONTADO_PLAZOS_TABLA : plazos
 
   const resultado = useMemo(() => {
     // Saldo a financiar = valor moto + adicionales + gastos
     // administrativos de originación − cuota inicial.
     const montoFinanciar = Math.max(
       0,
-      form.valorVehiculo +
-        form.adicionales +
-        form.gastosAdministrativos -
-        form.cuotaInicial,
+      (form.valorVehiculo ?? 0) +
+        (form.adicionales ?? 0) +
+        GASTOS_ADMINISTRATIVOS -
+        cuotaInicialEfectiva,
     )
-    const plazoSeguro = Math.max(1, form.plazoMeses)
+    const plazoSeguro = Math.max(1, plazoEfectivo)
     const cuotaFinanciacion = cuotaAnualidad(
       montoFinanciar,
-      form.tasaMensual,
+      tasaEfectiva,
       plazoSeguro,
     )
     // Seguro de vida: prima mensual fija del 0,35 % sobre el saldo a
@@ -131,12 +215,8 @@ export default function Simulador() {
     const cuotaSeguros = (montoFinanciar * PRIMA_SEGURO_VIDA_PCT) / 100
     const cuota = cuotaFinanciacion + cuotaSeguros
     const cuotaDiaria = cuota / DIAS_MES
-    const tasaEA = (Math.pow(1 + form.tasaMensual / 100, 12) - 1) * 100
-    const tabla = tablaAmortizacion(
-      montoFinanciar,
-      form.tasaMensual,
-      plazoSeguro,
-    )
+    const tasaEA = (Math.pow(1 + tasaEfectiva / 100, 12) - 1) * 100
+    const tabla = tablaAmortizacion(montoFinanciar, tasaEfectiva, plazoSeguro)
     const totalIntereses = Math.max(
       0,
       cuotaFinanciacion * plazoSeguro - montoFinanciar,
@@ -155,53 +235,40 @@ export default function Simulador() {
       totalIntereses,
       totalSeguros,
     }
-  }, [form])
+  }, [form, tasaEfectiva, plazoEfectivo, cuotaInicialEfectiva])
 
-  // Tasa operativa: la del producto — usura de consumo y ordinario en
-  // m.v. menos un punto base (2,1175% cuando la usura es 28,59% EA) —
-  // para quedar estrictamente bajo el límite que valida la evaluación.
-  const tasaOperativa = useMemo(
-    () => tasaProductoMv(consultaTasa.data?.ordinario.usura_ea),
-    [consultaTasa.data],
-  )
-
-  // Tope editable: nunca sobre la tasa del producto; el rango comercial
-  // puede acotar más por debajo.
-  const tasaMaxEfectiva =
-    tasaOperativa != null
-      ? Math.min(rangos.tasaMax, tasaOperativa)
-      : rangos.tasaMax
-
-  // Precarga la tasa operativa apenas llega la referencia oficial;
-  // respeta la edición manual del asesor.
-  const tasaEditadaRef = useRef(false)
-  useEffect(() => {
-    if (tasaOperativa != null && !tasaEditadaRef.current) {
-      setForm((prev) => ({ ...prev, tasaMensual: tasaOperativa }))
-    }
-  }, [tasaOperativa])
-
-  // La tasa simulada nunca supera el tope aprobado vigente (usura
+  // La tasa digitada nunca supera el tope aprobado vigente (usura
   // operativa): si quedó por encima — p. ej. digitada antes de que
   // llegara la referencia oficial — se corrige sola.
   useEffect(() => {
     setForm((prev) =>
-      prev.tasaMensual > tasaMaxEfectiva
+      prev.tasaMensual != null && prev.tasaMensual > tasaMaxEfectiva
         ? { ...prev, tasaMensual: tasaMaxEfectiva }
         : prev,
     )
   }, [tasaMaxEfectiva])
 
+  // Las alertas validan lo digitado; con el formulario vacío no se
+  // muestra ninguna advertencia.
+  const hayMontos =
+    form.valorVehiculo != null ||
+    form.adicionales != null ||
+    form.cuotaInicial != null
+
   const alertaMonto =
-    resultado.montoFinanciar > rangos.montoMax
+    hayMontos && resultado.montoFinanciar > rangos.montoMax
       ? `El monto a financiar supera el máximo del producto (${currency(rangos.montoMax)}).`
-      : resultado.montoFinanciar > 0 &&
+      : hayMontos &&
+          resultado.montoFinanciar > 0 &&
           resultado.montoFinanciar < rangos.montoMin
         ? `El monto a financiar está por debajo del mínimo del producto (${currency(rangos.montoMin)}).`
         : null
 
-  const alertaTasa =
-    form.tasaMensual < rangos.tasaMin || form.tasaMensual > tasaMaxEfectiva
+  const alertaTasa = modoCredicontado
+    ? null
+    : form.tasaMensual != null &&
+        (form.tasaMensual < rangos.tasaMin ||
+          form.tasaMensual > tasaMaxEfectiva)
       ? `La tasa del producto está entre ${rangos.tasaMin}% y ${tasaMaxEfectiva}% m.v.${
           tasaMaxEfectiva < rangos.tasaMax
             ? ` — la usura vigente topa la tasa para este monto`
@@ -209,16 +276,16 @@ export default function Simulador() {
         }`
       : null
 
-  const alertaPlazo =
-    form.plazoMeses < rangos.plazoMin || form.plazoMeses > rangos.plazoMax
+  const alertaPlazo = modoCredicontado
+    ? null
+    : form.plazoMeses != null &&
+        (form.plazoMeses < rangos.plazoMin || form.plazoMeses > rangos.plazoMax)
       ? `El plazo del producto está entre ${rangos.plazoMin} y ${rangos.plazoMax} meses.`
       : null
 
   // Animación de conteo al cargar/cambiar las cifras del hero
   const cuotaAnim = useCuentaAscendente(resultado.cuota)
   const montoAnim = useCuentaAscendente(resultado.montoFinanciar)
-  const totalAnim = useCuentaAscendente(resultado.totalPagar)
-  const interesesAnim = useCuentaAscendente(resultado.totalIntereses)
 
   return (
     <>
@@ -249,7 +316,7 @@ export default function Simulador() {
 
             <section
               aria-label="Resultado de la simulación"
-              className="relative overflow-hidden rounded-2xl bg-[var(--navy-panel)] p-5 text-white shadow-lg sm:p-6"
+              className="relative overflow-hidden rounded-2xl bg-[rgb(0_70_138)] p-5 text-white shadow-lg sm:p-6"
             >
               {/* Acento de marca: un solo brillo cyan en la esquina */}
               <div
@@ -262,7 +329,7 @@ export default function Simulador() {
                   <h2 className="text-sm font-medium text-cyan-100/75">
                     Cuota mensual estimada
                   </h2>
-                  <p className="mt-1 text-5xl font-bold tabular-nums tracking-tight text-[var(--brand-light)] sm:text-6xl">
+                  <p className="mt-1 text-5xl font-bold tabular-nums tracking-tight text-white [text-shadow:0_0_28px_rgb(255_255_255/45%),0_0_8px_rgb(255_255_255/30%)] sm:text-6xl">
                     {currency(Math.round(cuotaAnim))}
                   </p>
                   <p className="mt-2.5 inline-flex items-baseline gap-1.5 rounded-full bg-[rgb(var(--brand-rgb)/25%)] px-3.5 py-1 text-sm font-semibold tabular-nums text-white ring-1 ring-[rgb(var(--brand-rgb)/40%)]">
@@ -273,7 +340,7 @@ export default function Simulador() {
                   </p>
                 </div>
                 <span className="rounded-full bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-cyan-100 ring-1 ring-white/15">
-                  {form.plazoMeses} meses
+                  {plazoEfectivo} meses
                 </span>
               </div>
 
@@ -291,10 +358,10 @@ export default function Simulador() {
                     ],
                     [
                       'Tasa mensual',
-                      `${form.tasaMensual}% MV`,
+                      `${tasaEfectiva}% MV`,
                       `${resultado.tasaEA.toFixed(2)}% EA`,
                     ],
-                    ['Plazo', `${form.plazoMeses} meses`],
+                    ['Plazo', `${plazoEfectivo} meses`],
                   ] as const
                 ).map(([dt, dd, extra]) => (
                   <div key={dt} className="sm:px-4 sm:first:pl-0 sm:last:pr-0">
@@ -315,7 +382,7 @@ export default function Simulador() {
                 <div className="flex items-baseline justify-between gap-3 py-2">
                   <dt className="text-cyan-100/70">Valor moto</dt>
                   <dd className="font-medium tabular-nums">
-                    {currency(form.valorVehiculo)}
+                    {currency(form.valorVehiculo ?? 0)}
                   </dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-3 py-2">
@@ -323,60 +390,29 @@ export default function Simulador() {
                     Adicionales (matrícula, SOAT, impuestos)
                   </dt>
                   <dd className="font-medium tabular-nums">
-                    {currency(form.adicionales)}
+                    {currency(form.adicionales ?? 0)}
                   </dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-3 py-2">
                   <dt className="text-cyan-100/70">Gastos administrativos</dt>
                   <dd className="font-medium tabular-nums">
-                    {currency(form.gastosAdministrativos)}
+                    {currency(GASTOS_ADMINISTRATIVOS)}
                   </dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-3 py-2">
                   <dt className="text-cyan-100/70">Cuota inicial</dt>
-                  <dd className="font-medium tabular-nums text-[var(--brand-light)]">
-                    − {currency(form.cuotaInicial)}
+                  <dd className="font-medium tabular-nums text-white [text-shadow:0_0_28px_rgb(255_255_255/45%),0_0_8px_rgb(255_255_255/30%)]">
+                    − {currency(form.cuotaInicial ?? 0)}
                   </dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-3 py-2.5">
                   <dt className="font-semibold text-white">
                     Saldo a financiar
                   </dt>
-                  <dd className="font-bold tabular-nums text-[var(--brand-light)]">
+                  <dd className="font-bold tabular-nums text-white [text-shadow:0_0_28px_rgb(255_255_255/45%),0_0_8px_rgb(255_255_255/30%)]">
                     {currency(Math.round(montoAnim))}
                   </dd>
                 </div>
-              </dl>
-
-              <dl className="relative mt-5 grid grid-cols-3 gap-x-4">
-                {(
-                  [
-                    [
-                      'Total intereses',
-                      currency(Math.round(interesesAnim)),
-                      false,
-                    ],
-                    [
-                      'Total seguros',
-                      currency(Math.round(resultado.totalSeguros)),
-                      false,
-                    ],
-                    ['Total a pagar', currency(Math.round(totalAnim)), true],
-                  ] as const
-                ).map(([dt, dd, destacado]) => (
-                  <div key={dt}>
-                    <dt className="text-xs text-cyan-100/70">{dt}</dt>
-                    <dd
-                      className={`mt-0.5 text-base tabular-nums ${
-                        destacado
-                          ? 'font-bold text-[var(--brand-light)]'
-                          : 'font-semibold'
-                      }`}
-                    >
-                      {dd}
-                    </dd>
-                  </div>
-                ))}
               </dl>
 
               <p className="relative mt-4 text-xs leading-relaxed text-cyan-100/55">
@@ -411,15 +447,20 @@ export default function Simulador() {
                     </tr>
                   </thead>
                   <tbody>
-                    {plazos.map((plazo) => {
+                    {plazosTabla.map((plazo) => {
+                      // En Credicontado la cuota inicial la fija el
+                      // tramo del plazo comparado: cada fila tiene
+                      // su propio saldo a financiar.
+                      const montoFila = modoCredicontado
+                        ? Math.max(0, saldoBruto - cuotaInicialPara(plazo))
+                        : resultado.montoFinanciar
+                      const segurosFila =
+                        (montoFila * PRIMA_SEGURO_VIDA_PCT) / 100
                       const cuota =
-                        cuotaAnualidad(
-                          resultado.montoFinanciar,
-                          form.tasaMensual,
-                          plazo,
-                        ) + resultado.cuotaSeguros
+                        cuotaAnualidad(montoFila, tasaEfectiva, plazo) +
+                        segurosFila
                       const total = cuota * plazo
-                      const activo = plazo === form.plazoMeses
+                      const activo = plazo === plazoEfectivo
                       return (
                         <tr
                           key={plazo}
@@ -460,9 +501,7 @@ export default function Simulador() {
                             {currency(
                               Math.max(
                                 0,
-                                total -
-                                  resultado.montoFinanciar -
-                                  resultado.cuotaSeguros * plazo,
+                                total - montoFila - segurosFila * plazo,
                               ),
                             )}
                           </td>
@@ -475,136 +514,188 @@ export default function Simulador() {
             </Tarjeta>
           </div>
 
-          <Tarjeta className="flex flex-col lg:order-1 lg:col-span-2">
-            <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
-              <Calculator size={18} /> Condiciones
-            </h3>
-            <div className="flex-1 space-y-4">
-              {producto && (
-                <p className="text-xs text-[var(--brand-ink)] rounded-lg bg-[var(--surface-tint)] border border-brand-100 p-3">
-                  {producto.nombre} · {producto.aliado}: tasa {rangos.tasaMin}%–
-                  {rangos.tasaMax}% m.v., plazo {rangos.plazoMin}–
-                  {rangos.plazoMax} meses, monto {currency(rangos.montoMin)}–
-                  {currency(rangos.montoMax)}.
-                </p>
-              )}
-              {catalogoError && !producto && (
-                <p
-                  role="status"
-                  className="text-xs text-amber-700 rounded-lg bg-amber-50 border border-amber-200 p-3"
+          <div className="lg:order-1 lg:col-span-2 self-start">
+            <Tarjeta>
+              <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                <Calculator size={18} /> Condiciones
+              </h3>
+              <div className="space-y-4">
+                {catalogoError && !producto && (
+                  <p
+                    role="status"
+                    className="text-xs text-amber-700 rounded-lg bg-amber-50 border border-amber-200 p-3"
+                  >
+                    Catálogo no disponible; usando rangos de referencia del
+                    producto propio.
+                  </p>
+                )}
+                <CampoNumerico
+                  className="input-base"
+                  label="Valor de la moto (COP)"
+                  formatoMiles
+                  minimo={0}
+                  maximo={500_000_000}
+                  placeholder="Ej: 10.000.000"
+                  value={form.valorVehiculo}
+                  onValor={(n) => actualizarValor('valorVehiculo', n)}
+                />
+                <CampoNumerico
+                  className="input-base"
+                  label="Adicionales: matrícula, SOAT, impuestos (COP)"
+                  formatoMiles
+                  minimo={0}
+                  maximo={500_000_000}
+                  placeholder="Ej: 1.150.000"
+                  value={form.adicionales}
+                  onValor={(n) => actualizarValor('adicionales', n)}
+                />
+                <CampoNumerico
+                  className="input-base"
+                  label={
+                    modoCredicontado
+                      ? `Cuota inicial Credicontado (${Math.round(
+                          tramoCredicontado(plazoEfectivo).cuotaInicial * 100,
+                        )}% del saldo)`
+                      : 'Cuota inicial (COP)'
+                  }
+                  formatoMiles
+                  minimo={0}
+                  maximo={500_000_000}
+                  placeholder="Ej: 1.000.000"
+                  value={
+                    modoCredicontado ? cuotaInicialEfectiva : form.cuotaInicial
+                  }
+                  onValor={(n) => actualizarValor('cuotaInicial', n)}
+                />
+                <CampoNumerico
+                  className="input-base"
+                  label={
+                    modoCredicontado
+                      ? 'Tasa mensual Credicontado (0% — sin interés)'
+                      : `Tasa mensual regular (${rangos.tasaMin}–${tasaMaxEfectiva}) %`
+                  }
+                  decimales
+                  mostrarCero={modoCredicontado}
+                  minimo={modoCredicontado ? undefined : rangos.tasaMin}
+                  maximo={modoCredicontado ? undefined : tasaMaxEfectiva}
+                  placeholder={
+                    modoCredicontado ? '0' : `Ej: ${tasaMaxEfectiva}`
+                  }
+                  value={form.tasaMensual}
+                  onValor={(n) => actualizarValor('tasaMensual', n)}
+                  aria-invalid={!!alertaTasa}
+                />
+                <CampoNumerico
+                  className="input-base"
+                  label={
+                    modoCredicontado
+                      ? `Plazo meses Credicontado (${CREDICONTADO_PLAZO_MIN}–${CREDICONTADO_PLAZO_MAX})`
+                      : `Plazo meses (${rangos.plazoMin}–${rangos.plazoMax})`
+                  }
+                  placeholder={
+                    modoCredicontado ? 'Ej: 12' : `Ej: ${rangos.plazoMax}`
+                  }
+                  value={form.plazoMeses}
+                  onValor={(n) => actualizarValor('plazoMeses', n)}
+                  aria-invalid={!!alertaPlazo}
+                />
+              </div>
+              <div className="pt-5">
+                <Boton
+                  variante="primario"
+                  className="w-full justify-center"
+                  iconoFin={<ArrowRight size={16} aria-hidden="true" />}
+                  onClick={() =>
+                    navigate('/nueva-solicitud', {
+                      state: {
+                        simulacion: {
+                          valorMoto: form.valorVehiculo ?? 0,
+                          plazoMeses: plazoEfectivo,
+                          adicionales: form.adicionales ?? 0,
+                          montoFinanciar: Math.round(resultado.montoFinanciar),
+                          cuotaMensual: Math.round(resultado.cuota),
+                        } satisfies SimulacionPrevia,
+                      },
+                    })
+                  }
                 >
-                  Catálogo no disponible; usando rangos de referencia del
-                  producto propio.
-                </p>
-              )}
-              <CampoNumerico
-                className="input-base"
-                label="Valor de la moto (COP)"
-                formatoMiles
-                minimo={0}
-                maximo={500_000_000}
-                value={form.valorVehiculo}
-                onValor={(n) => actualizarValor('valorVehiculo', n)}
-              />
-              <CampoNumerico
-                className="input-base"
-                label="Adicionales: matrícula, SOAT, impuestos (COP)"
-                formatoMiles
-                minimo={0}
-                maximo={500_000_000}
-                value={form.adicionales}
-                onValor={(n) => actualizarValor('adicionales', n)}
-              />
-              <CampoNumerico
-                className="input-base"
-                label="Gastos administrativos (COP)"
-                formatoMiles
-                minimo={0}
-                maximo={500_000_000}
-                value={form.gastosAdministrativos}
-                onValor={(n) => actualizarValor('gastosAdministrativos', n)}
-              />
-              <CampoNumerico
-                className="input-base"
-                label="Cuota inicial (COP)"
-                formatoMiles
-                minimo={0}
-                maximo={500_000_000}
-                value={form.cuotaInicial}
-                onValor={(n) => actualizarValor('cuotaInicial', n)}
-              />
-              {/* El seguro de vida no es editable: prima fija del 0,35 %
-                  m.v. sobre el saldo a financiar (política del producto). */}
-              <p className="text-xs text-[var(--brand-ink)] rounded-lg bg-[var(--surface-tint)] border border-brand-100 p-3 tabular-nums">
-                Seguro de vida: {PRIMA_SEGURO_VIDA_PCT}% m.v. sobre el saldo a
-                financiar — {currency(Math.round(resultado.cuotaSeguros))}/mes.
-              </p>
-              <CampoNumerico
-                className="input-base"
-                label={`Tasa mensual % (${rangos.tasaMin}–${tasaMaxEfectiva})`}
-                decimales
-                minimo={rangos.tasaMin}
-                maximo={tasaMaxEfectiva}
-                value={form.tasaMensual}
-                onValor={(n) => {
-                  tasaEditadaRef.current = true
-                  actualizarValor('tasaMensual', n)
-                }}
-                aria-invalid={!!alertaTasa}
-              />
-              {consultaTasa.data ? (
-                <p className="flex items-start gap-1.5 text-xs text-slate-500">
-                  <Landmark
-                    size={14}
-                    className="mt-px shrink-0 text-[var(--brand-deep)]"
-                    aria-hidden="true"
-                  />
-                  <span>
-                    Usura consumo y ordinario (SFC):{' '}
-                    {consultaTasa.data.ordinario.usura_ea}% EA ≈{' '}
-                    {consultaTasa.data.ordinario.usura_mv.toFixed(6)}% m.v. — el
-                    producto opera por debajo · Res. SFC{' '}
-                    {consultaTasa.data.ordinario.resolucion} · vigente hasta{' '}
-                    {consultaTasa.data.ordinario.vigencia_hasta}
-                  </span>
-                </p>
-              ) : consultaTasa.isError ? (
-                <p className="text-xs text-slate-400">
-                  Referencia oficial no disponible — usando la tasa del
-                  producto.
-                </p>
-              ) : null}
-              <CampoNumerico
-                className="input-base"
-                label={`Plazo meses (${rangos.plazoMin}–${rangos.plazoMax})`}
-                value={form.plazoMeses}
-                onValor={(n) => actualizarValor('plazoMeses', n)}
-                aria-invalid={!!alertaPlazo}
-              />
-            </div>
-            <div className="mt-auto pt-5">
-              <Boton
-                variante="primario"
-                className="w-full justify-center"
-                iconoFin={<ArrowRight size={16} aria-hidden="true" />}
-                onClick={() =>
-                  navigate('/nueva-solicitud', {
-                    state: {
-                      simulacion: {
-                        valorMoto: form.valorVehiculo,
-                        plazoMeses: form.plazoMeses,
-                        adicionales: form.adicionales,
-                        montoFinanciar: Math.round(resultado.montoFinanciar),
-                        cuotaMensual: Math.round(resultado.cuota),
-                      } satisfies SimulacionPrevia,
-                    },
-                  })
+                  Usar en una solicitud
+                </Boton>
+              </div>
+            </Tarjeta>
+            <style>
+              {`
+                .btn-wobble {
+                  animation: wobble 2s ease-in-out infinite;
                 }
+                .btn-wobble:hover,
+                .btn-wobble:focus,
+                .btn-wobble:focus-visible,
+                .btn-wobble[aria-pressed='true'] {
+                  animation: none;
+                }
+                @media (prefers-reduced-motion: reduce) {
+                  .btn-wobble {
+                    animation: none;
+                  }
+                }
+                @keyframes wobble {
+                  0%,
+                  40%,
+                  100% {
+                    transform: translateX(0%);
+                  }
+                  6% {
+                    transform: translateX(-25%) rotate(-5deg);
+                  }
+                  12% {
+                    transform: translateX(20%) rotate(3deg);
+                  }
+                  18% {
+                    transform: translateX(-15%) rotate(-3deg);
+                  }
+                  24% {
+                    transform: translateX(10%) rotate(2deg);
+                  }
+                  30% {
+                    transform: translateX(-5%) rotate(-1deg);
+                  }
+                }
+              `}
+            </style>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                aria-pressed={modoCredicontado}
+                aria-label="Aplicar condiciones de la línea Credicontado"
+                title="Aplicar condiciones Credicontado: tasa 0 %, plazo 4–12 meses y cuota inicial según tabla"
+                className={`btn-wobble flex w-fit items-center justify-start rounded-full border px-2 py-0.5 shadow-md backdrop-blur-md transition-all duration-200 hover:bg-white/40 ${
+                  modoCredicontado
+                    ? 'border-brand-600 bg-white/50 ring-2 ring-brand-600/30'
+                    : 'border-slate-400 bg-white/30'
+                }`}
+                onClick={aplicarCredicontado}
               >
-                Usar en una solicitud
-              </Boton>
+                <img
+                  src="/brand/credicontado.png"
+                  alt="Credicontado"
+                  className="h-6 w-auto max-w-full object-contain"
+                />
+              </button>
+              {modoCredicontado && (
+                <button
+                  type="button"
+                  aria-label="Salir de la simulación Credicontado y volver a los valores por defecto"
+                  title="Volver a las condiciones por defecto del producto"
+                  className="flex items-center gap-1 rounded-full border border-slate-400 bg-white/30 px-2 py-1 text-xs text-slate-700 shadow-md backdrop-blur-md transition-all duration-200 hover:bg-white/40"
+                  onClick={salirCredicontado}
+                >
+                  <RotateCcw size={12} aria-hidden="true" />
+                  Salir de Credicontado
+                </button>
+              )}
             </div>
-          </Tarjeta>
+          </div>
         </div>
 
         <Tarjeta className="p-0">
@@ -613,7 +704,7 @@ export default function Simulador() {
               Tabla de amortización
             </h3>
             <p className="text-xs text-slate-500">
-              {form.plazoMeses} cuotas de{' '}
+              {plazoEfectivo} cuotas de{' '}
               {currency(Math.round(resultado.cuotaFinanciacion))} + seguro
               mensual de {currency(resultado.cuotaSeguros)}
             </p>

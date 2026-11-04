@@ -134,17 +134,17 @@ INSERT INTO criterio_evaluacion (codigo, descripcion, tipo) VALUES
     ('E9', 'Sin capacidad para moto solicitada', 'interno')
 ON CONFLICT (codigo) DO NOTHING;
 -- Usuarios de prueba de la plataforma (auth JWT). Contraseñas bcrypt:
---   admin@pacifico.co / Admin123!    (admin: ve todo)
---   asesor@pacifico.co / Asesor123!  (asesor: SUMOTO SA PALMIRA)
---   aliado@pacifico.co / Aliado123!  (aliado: Inversiones Pacífico)
+--   admin@sumoto.com.co / Admin123!    (admin: ve todo)
+--   asesor@sumoto.com.co / Asesor123!  (asesor: SUMOTO SA PALMIRA)
+--   aliado@sumoto.com.co / Aliado123!  (aliado: Inversiones Pacífico)
 -- Va al final del archivo: depende de rol, concesionario y
 -- aliado_financiero ya sembrados arriba.
 -- UUIDs en hex de 32 (sin guiones): Postgres los acepta en columnas
 -- uuid y SQLite los guarda igual que el ORM (CHAR(32) value.hex).
 INSERT INTO usuario (id_usuario, correo, hash_contrasena, estado, nombre_completo, fecha_verificacion) VALUES
-    ('0000000000004000800000000000000a', 'admin@pacifico.co', '$2b$12$5XYg0Klh2zHX6SEkGB9aQ.nx.OFj6HgkNLdAXgErT98sYAPGgfxDO', 'activo', 'Administrador Plataforma', CURRENT_TIMESTAMP),
-    ('0000000000004000800000000000001a', 'asesor@pacifico.co', '$2b$12$kgMN4JFNA8mB9ak/aftAueZ2djG5QcixL5cchV5iolgYo9dkt8fQa', 'activo', 'Asesor de Prueba', CURRENT_TIMESTAMP),
-    ('0000000000004000800000000000002a', 'aliado@pacifico.co', '$2b$12$TJqL5OAtBDvZCDFacbiepuli3/EmXwD5XZ.B6duwinPLxBTLx2pQa', 'activo', 'Aliado de Prueba', CURRENT_TIMESTAMP)
+    ('0000000000004000800000000000000a', 'admin@sumoto.com.co', '$2b$12$5XYg0Klh2zHX6SEkGB9aQ.nx.OFj6HgkNLdAXgErT98sYAPGgfxDO', 'activo', 'Administrador Plataforma', CURRENT_TIMESTAMP),
+    ('0000000000004000800000000000001a', 'asesor@sumoto.com.co', '$2b$12$kgMN4JFNA8mB9ak/aftAueZ2djG5QcixL5cchV5iolgYo9dkt8fQa', 'activo', 'Asesor de Prueba', CURRENT_TIMESTAMP),
+    ('0000000000004000800000000000002a', 'aliado@sumoto.com.co', '$2b$12$TJqL5OAtBDvZCDFacbiepuli3/EmXwD5XZ.B6duwinPLxBTLx2pQa', 'activo', 'Aliado de Prueba', CURRENT_TIMESTAMP)
 ON CONFLICT (correo) DO NOTHING;
 
 INSERT INTO usuario_rol (id_usuario, id_rol)
@@ -153,22 +153,22 @@ FROM usuario u
 -- CAST a TEXT: r.nombre es el enum rol_usuario en Postgres y un
 -- varchar en SQLite; el CASE produce texto — el cast iguala ambos.
 JOIN rol r ON CAST(r.nombre AS TEXT) = CASE u.correo
-    WHEN 'admin@pacifico.co' THEN 'admin'
-    WHEN 'asesor@pacifico.co' THEN 'asesor'
+    WHEN 'admin@sumoto.com.co' THEN 'admin'
+    WHEN 'asesor@sumoto.com.co' THEN 'asesor'
 END
-WHERE u.correo IN ('admin@pacifico.co', 'asesor@pacifico.co', 'aliado@pacifico.co')
+WHERE u.correo IN ('admin@sumoto.com.co', 'asesor@sumoto.com.co', 'aliado@sumoto.com.co')
 ON CONFLICT (id_usuario, id_rol) DO NOTHING;
 
 INSERT INTO asesor (id_usuario, nombre, id_concesionario)
 SELECT u.id_usuario, u.nombre_completo, c.id_concesionario
 FROM usuario u
 JOIN concesionario c ON c.nombre = 'SUMOTO SA PALMIRA'
-WHERE u.correo = 'asesor@pacifico.co'
+WHERE u.correo = 'asesor@sumoto.com.co'
 ON CONFLICT (id_usuario) DO NOTHING;
 
 INSERT INTO aliado_usuario (id_usuario, id_aliado, rol_interno)
 SELECT u.id_usuario, a.id_aliado, 'comercial'
 FROM usuario u
 JOIN aliado_financiero a ON a.nit = '814005081'
-WHERE u.correo = 'aliado@pacifico.co'
+WHERE u.correo = 'aliado@sumoto.com.co'
 ON CONFLICT (id_usuario, id_aliado) DO NOTHING;

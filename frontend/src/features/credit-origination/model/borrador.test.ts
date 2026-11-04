@@ -79,9 +79,24 @@ describe('borrador de originación', () => {
     datos.set(
       'inversiones-pacifico:borrador-originacion',
       JSON.stringify({
-        version: 1,
+        version: 2,
         paso: 'siete',
         contexto: null,
+        formalizacionIniciada: false,
+        guardadoEn: '2026-10-07',
+      }),
+    )
+    expect(cargarBorrador()).toBeNull()
+  })
+
+  it('descarta borradores v1 (numeración de pasos anterior)', () => {
+    const datos = stubLocalStorage()
+    datos.set(
+      'inversiones-pacifico:borrador-originacion',
+      JSON.stringify({
+        version: 1,
+        paso: 3,
+        contexto: {},
         formalizacionIniciada: false,
         guardadoEn: '2026-10-07',
       }),

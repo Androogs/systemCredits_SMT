@@ -1,0 +1,40 @@
+.confetti-celebracion {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.confetti-celebracion i {
+  position: absolute;
+  top: -1.5rem;
+  left: var(--x);
+  width: var(--s);
+  height: calc(var(--s) * 1.6);
+  border-radius: var(--r);
+  background: var(--c);
+  animation: confetti-celebracion-caer var(--d) cubic-bezier(0.3, 0.45, 0.6, 1)
+    var(--dl) both infinite;
+}
+
+@keyframes confetti-celebracion-caer {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -10%, 0) rotate(0deg);
+  }
+  12% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--dx, 0), 30rem, 0) rotate(620deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confetti-celebracion {
+    display: none;
+  }
+}

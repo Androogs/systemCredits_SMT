@@ -18,7 +18,7 @@ CLAVE_ASESOR = "Asesor123!"
 CLAVE_NUEVA = "ClaveNueva9!"
 
 
-def _login(client, correo="asesor@pacifico.co", contrasena=CLAVE_ASESOR):
+def _login(client, correo="asesor@sumoto.com.co", contrasena=CLAVE_ASESOR):
     return client.post(
         "/api/auth/login",
         json={"correo": correo, "contrasena": contrasena},
@@ -26,7 +26,7 @@ def _login(client, correo="asesor@pacifico.co", contrasena=CLAVE_ASESOR):
 
 
 def _id_asesor() -> str:
-    return uuid.uuid5(uuid.NAMESPACE_DNS, "asesor@pacifico.co").hex
+    return uuid.uuid5(uuid.NAMESPACE_DNS, "asesor@sumoto.com.co").hex
 
 
 def _sembrar_recuperacion(token_plano: str, *, expira_en, usado=False) -> None:
@@ -75,7 +75,7 @@ def test_refresh_rota_y_el_viejo_muere(client, usuarios_prueba):
     assert respuesta.status_code == 200
     assert respuesta.json()["refresh_token"] != token_viejo
     assert respuesta.json()["access_token"]
-    assert respuesta.json()["usuario"]["correo"] == "asesor@pacifico.co"
+    assert respuesta.json()["usuario"]["correo"] == "asesor@sumoto.com.co"
 
     # Reuso del token ya rotado → 401 (antireplay).
     reuso = client.post(
@@ -178,7 +178,7 @@ def test_cambiar_clave_mata_los_refresh(client, usuarios_prueba):
 
 def test_recuperar_correo_desconocido_responde_igual(client):
     respuesta = client.post(
-        "/api/auth/recuperar-clave", json={"correo": "nadie@pacifico.co"}
+        "/api/auth/recuperar-clave", json={"correo": "nadie@sumoto.com.co"}
     )
 
     # Misma respuesta que para un correo real: sin enumeración.
@@ -189,7 +189,7 @@ def test_recuperar_correo_desconocido_responde_igual(client):
 def test_recuperar_correo_real_genera_token(client, usuarios_prueba):
     respuesta = client.post(
         "/api/auth/recuperar-clave",
-        json={"correo": "ASESOR@PACIFICO.CO"},
+        json={"correo": "ASESOR@SUMOTO.COM.CO"},
     )
 
     assert respuesta.status_code == 200
@@ -206,7 +206,7 @@ def test_recuperar_invalida_enlaces_anteriores(client, usuarios_prueba):
     for _ in range(2):
         client.post(
             "/api/auth/recuperar-clave",
-            json={"correo": "asesor@pacifico.co"},
+            json={"correo": "asesor@sumoto.com.co"},
         )
 
     # Dos solicitudes → un solo enlace vigente (el último).

@@ -1,29 +1,18 @@
-import { useState } from 'react'
 import { Smartphone, Zap } from 'lucide-react'
 import CapturaCedula, { type ResultadoBiometrico } from './CapturaCedula'
 import RevisionDatos, { type DatosRevisados } from './RevisionDatos'
 import type { ResultadoOCR } from '../model/resultado-ocr'
+import type { DatosValidacion } from '../model/politicas-clave'
 import type { DatosEsperadosOCR, ResultadoOCRApi } from '../api/originacionApi'
 import CabeceraEtapaOriginacion from './CabeceraEtapaOriginacion'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import './CabeceraEtapaOriginacion.css'
 import './EvidenciaYDatos.css'
 
-export interface ResultadoEvidenciaYDatos {
-  biometria: ResultadoBiometrico
+export interface ResultadoDatosYPoliticas {
   ocr?: ResultadoOCR
-  revision?: DatosRevisados
-}
-
-interface EvidenciaYDatosProps {
-  numeroDocumento?: string
-  /** Nombres/apellidos capturados en el paso 1, para comparar contra el OCR. */
-  nombres?: string
-  apellidos?: string
-  /** Fecha de nacimiento (ISO) capturada en el paso 1. */
-  fechaNacimiento?: string
-  onContinue: (resultado: ResultadoEvidenciaYDatos) => void
-  onBack?: () => void
+  revision: DatosRevisados
+  validacion: DatosValidacion
 }
 
 /**
@@ -51,36 +40,32 @@ function resumirOCR(
     fechaNacimiento: api.fecha_nacimiento?.valor ?? '',
     fechaExpiracion: expira,
     vigente: !expira || expira >= hoy,
+    // El PPT se lee pero es un documento rechazado: solo se aceptan colombianos.
     calidadImagen:
-      api.disponible && Boolean(api.tipo_cedula) ? 'aprobada' : 'rechazada',
+      api.disponible && Boolean(api.tipo_cedula) && api.tipo_cedula !== 'ppt'
+        ? 'aprobada'
+        : 'rechazada',
     alteraciones,
     tipoCedula: api.tipo_cedula || null,
   }
 }
 
-// El OCR corre por debajo: la extracción llega lista a la revisión del
-// asesor sin pantalla de carga intermedia.
-function EvidenciaYDatos({
-  numeroDocumento,
-  nombres,
-  apellidos,
-  fechaNacimiento,
+interface CapturaEvidenciaProps {
+  /** Datos ya conocidos (solo al retomar) contra los que el OCR compara. */
+  datosEsperados?: DatosEsperadosOCR
+  onContinue: (biometria: ResultadoBiometrico) => void
+  onBack?: () => void
+}
+
+/** Paso 2: el cliente sube cédula y video desde el celular (QR). */
+export function CapturaEvidencia({
+  datosEsperados,
   onContinue,
   onBack,
-}: EvidenciaYDatosProps) {
-  const [biometria, setBiometria] = useState<ResultadoBiometrico | null>(null)
-
-  // Datos del paso 1 contra los que el OCR de la cédula compara.
-  const datosEsperados: DatosEsperadosOCR = {
-    ...(nombres ? { nombres } : {}),
-    ...(apellidos ? { apellidos } : {}),
-    ...(numeroDocumento ? { numero_documento: numeroDocumento } : {}),
-    ...(fechaNacimiento ? { fecha_nacimiento: fechaNacimiento } : {}),
-  }
-
+}: CapturaEvidenciaProps) {
   return (
     <div className="evidencia-datos">
-      <CabeceraEtapaOriginacion paso={3} titulo="Evidencia y datos personales">
+      <CabeceraEtapaOriginacion paso={2} titulo="Evidencia del cliente">
         <p className="evidencia-datos__tagline">
           <Zap size={14} aria-hidden="true" />
           Rápido y fácil
@@ -89,40 +74,60 @@ function EvidenciaYDatos({
           sin instalar apps
         </p>
       </CabeceraEtapaOriginacion>
-      <SeguimientoOriginacion pasoActual={3} />
-      {!biometria ? (
-        <CapturaCedula
-          compacto
-          datosEsperados={datosEsperados}
-          onContinue={(resultado) => setBiometria(resultado)}
-          onBack={onBack}
-        />
-      ) : (
-        <RevisionDatos
-          compacto
-          inicial={{
-            ...(numeroDocumento
-              ? { numeroIdentificacion: numeroDocumento }
-              : {}),
-            // Si el OCR leyó la fecha, su valor es el que se muestra y la
-            // diferencia sale como advertencia; si no, precarga lo digitado.
-            ...(fechaNacimiento && !biometria.ocr?.fecha_nacimiento?.valor
-              ? { fechaNacimiento }
-              : {}),
-          }}
-          ocr={biometria.ocr ?? null}
-          onContinue={(datos) =>
-            onContinue({
-              biometria,
-              ocr: resumirOCR(biometria.ocr, numeroDocumento),
-              revision: datos,
-            })
-          }
-          onBack={() => setBiometria(null)}
-        />
-      )}
+      <SeguimientoOriginacion pasoActual={2} />
+      <CapturaCedula
+        compacto
+        datosEsperados={datosEsperados}
+        onContinue={onContinue}
+        onBack={onBack}
+      />
     </div>
   )
 }
 
-export default EvidenciaYDatos
+interface DatosYPoliticasProps {
+  biometria: ResultadoBiometrico
+  revisionPrevia?: DatosRevisados
+  validacionPrevia?: DatosValidacion
+  onContinue: (resultado: ResultadoDatosYPoliticas) => void
+  onBack?: () => void
+}
+
+/**
+ * Paso 3: datos extraídos de la cédula (OCR) + verificación de políticas
+ * clave. El OCR corre por debajo: la extracción llega lista sin pantalla
+ * de carga intermedia.
+ */
+export function DatosYPoliticas({
+  biometria,
+  revisionPrevia,
+  validacionPrevia,
+  onContinue,
+  onBack,
+}: DatosYPoliticasProps) {
+  return (
+    <div className="evidencia-datos">
+      <CabeceraEtapaOriginacion
+        paso={3}
+        titulo="Datos personales y políticas"
+      />
+      <SeguimientoOriginacion pasoActual={3} />
+      <RevisionDatos
+        compacto
+        // Lo ya confirmado (volver desde el paso 4 o retomar) prima sobre
+        // lo leído por el OCR.
+        inicial={revisionPrevia}
+        inicialPoliticas={validacionPrevia}
+        ocr={biometria.ocr ?? null}
+        onContinue={(revision, validacion) =>
+          onContinue({
+            ocr: resumirOCR(biometria.ocr, validacion.numeroDocumento),
+            revision,
+            validacion,
+          })
+        }
+        onBack={onBack}
+      />
+    </div>
+  )
+}

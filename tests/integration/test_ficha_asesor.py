@@ -30,7 +30,7 @@ def _sede() -> int:
 
 def _payload_asesor(**extra) -> dict:
     return {
-        "correo": "ficha.asesor@pacifico.co",
+        "correo": "ficha.asesor@sumoto.com.co",
         "nombre": "Persona Uno",
         "contrasena": "ClaveSegura9!",
         "roles": ["asesor"],
@@ -55,7 +55,7 @@ def test_crear_asesor_sin_ficha_responde_422(client):
         {"id_concesionario": None},
     ):
         payload = _payload_asesor(**faltantes)
-        payload["correo"] = f"sin.ficha.{uuid.uuid4().hex[:6]}@pacifico.co"
+        payload["correo"] = f"sin.ficha.{uuid.uuid4().hex[:6]}@sumoto.com.co"
         respuesta = client.post("/api/usuarios", json=payload)
         assert respuesta.status_code == 422, faltantes
 
@@ -64,7 +64,7 @@ def test_concesionario_crear_asesor_sin_ficha_responde_422(
     client_concesionario,
 ):
     payload = _payload_asesor(cedula=None, telefono=None)
-    payload["correo"] = "sin.ficha.sede@pacifico.co"
+    payload["correo"] = "sin.ficha.sede@sumoto.com.co"
     respuesta = client_concesionario.post("/api/usuarios", json=payload)
     assert respuesta.status_code == 422
 

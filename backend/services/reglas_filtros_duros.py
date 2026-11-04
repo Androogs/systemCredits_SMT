@@ -45,6 +45,7 @@ vector de comportamiento se lee asumiendo que el carácter 0 es el mes
 más reciente (los primeros 12 caracteres = últimos 12 meses).
 """
 
+import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
@@ -348,7 +349,10 @@ def evaluar_politicas_solicitud(
             )
         )
 
-    nacionalidad = (solicitud.nacionalidad or "").strip().lower()
+    # Formas aceptadas de "colombiano": la UI histórica guardó la etiqueta
+    # 'Colombiano(a)' y el OCR puede traer 'COL'. Se normaliza quitando
+    # sufijos entre paréntesis antes de comparar.
+    nacionalidad = re.sub(r"\(.*?\)", "", solicitud.nacionalidad or "").strip().lower()
     if nacionalidad not in ("colombia", "colombiana", "colombiano", "co", "col"):
         c.append(CausalDisparada(Causal.R21, f"Nacionalidad: {solicitud.nacionalidad}"))
 

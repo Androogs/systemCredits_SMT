@@ -1,3 +1,5 @@
+import { MARCA } from '../../../shared/lib/marca'
+
 /**
  * Panel de marca de las pantallas de acceso (login, recuperación y
  * restablecimiento de clave): mismo lado izquierdo para que las vistas
@@ -6,22 +8,23 @@
 
 export default function VitrinaAcceso() {
   return (
-    <section className="access-showcase" aria-label="Inversiones Pacífico">
+    <section className="access-showcase" aria-label={MARCA.razonSocial}>
       <div className="access-showcase-glow" aria-hidden="true" />
       <div className="access-brand">
         <img
-          src="/brand/pacifico-blancos.png"
-          alt="Inversiones Pacífico"
-          width="580"
-          height="274"
+          src={MARCA.logoClaro}
+          alt={MARCA.razonSocial}
+          width="900"
+          height="129"
         />
       </div>
 
       <div className="access-showcase-content">
         <h1 className="access-title">Bienvenido</h1>
         <p className="access-description">
-          Sigamos transformando vidas y generando oportunidades de realización
-          personal.
+          Vive el poder de avanzar con Sumoto.
+          <br />
+          Respaldado por verdaderos expertos.
         </p>
       </div>
 
@@ -37,9 +40,9 @@ export default function VitrinaAcceso() {
             width="228"
             height="148"
             rx="16"
-            fill="white"
-            fillOpacity=".06"
-            stroke="white"
+            fill="#19255b"
+            fillOpacity=".04"
+            stroke="#19255b"
             strokeOpacity=".3"
             strokeWidth="2"
           />
@@ -49,13 +52,13 @@ export default function VitrinaAcceso() {
             width="46"
             height="7"
             rx="3.5"
-            fill="#8DE3F7"
-            fillOpacity=".9"
+            fill="#0052a1"
+            fillOpacity=".85"
           />
           <path
             d="M120 62H250"
-            stroke="white"
-            strokeOpacity=".4"
+            stroke="#19255b"
+            strokeOpacity=".32"
             strokeLinecap="round"
             strokeWidth="3"
           />
@@ -65,25 +68,25 @@ export default function VitrinaAcceso() {
             width="84"
             height="67"
             rx="9"
-            fill="#55C5E5"
-            fillOpacity=".18"
+            fill="#0052a1"
+            fillOpacity=".12"
           />
           <path
             d="M132 131V117M151 131V105M170 131V111M189 131V94"
-            stroke="#8DE3F7"
+            stroke="#2f74c0"
             strokeLinecap="round"
             strokeWidth="7"
           />
           <path
             d="M220 91H294M220 109H278M220 127H287"
-            stroke="white"
-            strokeOpacity=".64"
+            stroke="#19255b"
+            strokeOpacity=".5"
             strokeLinecap="round"
             strokeWidth="5"
           />
           <path
             d="M220 91H260"
-            stroke="white"
+            stroke="#0052a1"
             strokeLinecap="round"
             strokeWidth="5"
           />
@@ -91,8 +94,8 @@ export default function VitrinaAcceso() {
             cx="326"
             cy="58"
             r="35"
-            fill="#55C5E5"
-            stroke="#D6F8FF"
+            fill="#0052a1"
+            stroke="#ffffff"
             strokeWidth="3"
           />
           <circle
@@ -106,8 +109,8 @@ export default function VitrinaAcceso() {
           <text
             x="326"
             y="70"
-            fill="#00345C"
-            fontFamily="Inter, Arial, sans-serif"
+            fill="#ffffff"
+            fontFamily="Roboto, Arial, sans-serif"
             fontSize="35"
             fontWeight="700"
             textAnchor="middle"
@@ -116,8 +119,8 @@ export default function VitrinaAcceso() {
           </text>
           <path
             d="m78 35 3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7Z"
-            fill="#B8F0FF"
-            fillOpacity=".8"
+            fill="#0052a1"
+            fillOpacity=".5"
           />
         </svg>
       </div>

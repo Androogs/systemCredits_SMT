@@ -14,7 +14,7 @@ from backend.db_models.models import (
     SolicitudContactoVivienda,
     SolicitudCredito,
 )
-from backend.models.enums import TIPOS_ID_PERSONA_JURIDICA
+from backend.models.enums import TIPOS_ID_PERSONA_JURIDICA, Causal
 from backend.models.solicitud_models import (
     CausalSolicitudResponse,
     ConsentimientoResponse,
@@ -30,10 +30,12 @@ from backend.models.solicitud_models import (
     EvaluacionResumenSolicitud,
     MetricasEmbudoResponse,
     OfertaResponse,
+    RechazoPoliticasRequest,
     SeleccionarOfertaRequest,
     SolicitudDetalleResponse,
     SolicitudResumenResponse,
 )
+from backend.repositories.evaluacion_repository import EvaluacionRepository
 from backend.repositories.solicitud_repository import SolicitudRepository, oferta_expirada
 from backend.repositories.usuario_repository import UsuarioRepository
 from backend.services.documento_service import DocumentoService
@@ -116,6 +118,10 @@ def _resumen(
     solicitud, ver_detalle_interno: bool = True
 ) -> SolicitudResumenResponse:
     cliente = solicitud.cliente
+    laborales = solicitud.datos_laborales
+    oferta_sel = next(
+        (o for o in solicitud.ofertas if o.seleccionada), None
+    )
     return SolicitudResumenResponse(
         id_solicitud=solicitud.id_solicitud,
         num_solicitud=solicitud.num_solicitud,
@@ -140,6 +146,11 @@ def _resumen(
         destino_credito=solicitud.destino_credito,
         plazo_deseado_meses=solicitud.plazo_deseado_meses,
         fecha_hora_firma=solicitud.fecha_hora_firma,
+        tipo_contrato=laborales.tipo_contrato if laborales else None,
+        meses_continuidad=(
+            laborales.meses_continuidad if laborales else None
+        ),
+        cuota_total=oferta_sel.cuota_mensual if oferta_sel else None,
         evaluacion=_evaluacion_resumen(solicitud, ver_detalle_interno),
     )
 
@@ -190,7 +201,9 @@ class SolicitudService:
         (texto → FK `ciudad`)."""
         datos_cliente = cliente_in.model_dump(mode="python", exclude={"num_cedula"})
         datos_cliente["tipo_documento"] = cliente_in.tipo_documento.value
-        datos_cliente["ocupacion"] = OCUPACION_A_DB[cliente_in.ocupacion]
+        datos_cliente["ocupacion"] = (
+            OCUPACION_A_DB[cliente_in.ocupacion] if cliente_in.ocupacion else None
+        )
         datos_cliente["es_persona_natural"] = cliente_in.tipo_documento not in TIPOS_ID_PERSONA_JURIDICA
         # Las ciudades llegan como texto ("Palmira, Valle del Cauca") y
         # se resuelven al catálogo `ciudad` (FK).
@@ -215,7 +228,7 @@ class SolicitudService:
         # identidad: cada solicitud nueva actualiza la del cliente para
         # que el motor evalúe con la matriz correcta (empleado /
         # independiente / pensionado / FFMM).
-        if cliente.ocupacion != datos_cliente["ocupacion"]:
+        if datos_cliente["ocupacion"] and cliente.ocupacion != datos_cliente["ocupacion"]:
             cliente.ocupacion = datos_cliente["ocupacion"]
 
     def _datos_laborales_db(self, laborales_in) -> dict:
@@ -305,6 +318,33 @@ class SolicitudService:
             id_solicitud=solicitud.id_solicitud,
             num_solicitud=solicitud.num_solicitud,
             estado=solicitud.estado,
+        )
+
+    def rechazar_por_politicas(
+        self,
+        req: RechazoPoliticasRequest,
+        ip: str | None = None,
+        usuario: UsuarioActual | None = None,
+    ) -> CrearSolicitudResponse:
+        """Radica y cierra en un paso la solicitud que no pasa una
+        política clave: queda visible en el panel con decisión
+        rechazada y su causal, sin evaluación del motor (no se consumió
+        buró)."""
+        creada = self.crear(req, ip=ip, usuario=usuario)
+        causal = Causal[req.causal]
+        self.repo.actualizar_decision(
+            creada.id_solicitud,
+            "rechazado",
+            estado="rechazada",
+            descripcion_estado=causal.value,
+        )
+        EvaluacionRepository(self._db).registrar_causales(
+            creada.id_solicitud, [causal]
+        )
+        return CrearSolicitudResponse(
+            id_solicitud=creada.id_solicitud,
+            num_solicitud=creada.num_solicitud,
+            estado="rechazada",
         )
 
     def actualizar(
@@ -579,7 +619,18 @@ class SolicitudService:
                 )
             ],
             por_causal=[
-                EmbudoCausalResponse(**fila)
+                # La descripción sale del catálogo del motor, no de la
+                # guardada en la fila: hay datos históricos con el mismo
+                # código y textos distintos (con/sin tilde).
+                EmbudoCausalResponse(
+                    codigo=fila["codigo"],
+                    descripcion=(
+                        Causal.__members__[fila["codigo"]].value
+                        if fila["codigo"] in Causal.__members__
+                        else fila["descripcion"]
+                    ),
+                    total=fila["total"],
+                )
                 for fila in self.repo.conteos_por_causal(
                     desde=desde,
                     hasta=hasta,

@@ -1,17 +1,48 @@
 import { useQuery } from '@tanstack/react-query'
 import { obtenerOpcionesFiltro } from '../../features/credit-origination/api/originacionApi'
-import { Building2, UserRound, X } from 'lucide-react'
+import { Building2, Tag, UserRound, X } from 'lucide-react'
+import { SEDES_POR_MARCA } from '../../features/credit-origination/model/concesionarios'
 
 export interface DimensionesPanel {
   id_concesionario?: number
   id_asesor?: number
+  /** Filtros locales: la marca acota sedes y asesores; la sede se
+      resuelve a id_concesionario cuando el backend la conoce. */
+  marca?: string
+  sede?: string
 }
 
-/** Filtros dimensionales del panel (admin y aliado): concesionario y
-    asesor se envían al servidor y recalculan KPIs, gráficas, embudo y
-    tabla. Las opciones llegan acotadas al alcance del usuario — el
-    aliado solo ve sus sedes y sus asesores, base del reporte de
-    comisiones. El select de asesor se restringe a la sede elegida. */
+const MARCAS = Object.keys(SEDES_POR_MARCA).sort()
+
+/** Normaliza para comparar nombres de sede/marca sin acentos ni mayúsculas. */
+const norm = (s: string | null | undefined) =>
+  (s ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+
+/** La sede del backend se nombra "<Marca> <Sede>": parte la marca del
+    primer token y el resto es la sede. */
+export function coincideMarcaSede(
+  nombreConcesionario: string | null | undefined,
+  marca?: string,
+  sede?: string,
+): boolean {
+  if (!marca) return true
+  const nombre = norm(nombreConcesionario)
+  const m = norm(marca)
+  if (!nombre.startsWith(m)) return false
+  if (!sede) return true
+  return nombre.slice(m.length).trim() === norm(sede)
+}
+
+/** Filtros dimensionales del panel (admin y aliado): la marca habilita
+    el filtro de sede con su catálogo comercial; sin sede elegida se
+    acumulan todas las sedes de la marca. Asesor se restringe a la
+    marca/sede y sede+asesor viajan al servidor para recalcular KPIs,
+    gráficas, embudo y tabla. */
 export default function BarraFiltrosDimensionales({
   dimensiones,
   onCambiar,
@@ -26,37 +57,85 @@ export default function BarraFiltrosDimensionales({
   })
 
   const concesionarios = opciones?.concesionarios ?? []
-  const asesores = (opciones?.asesores ?? []).filter(
-    (a) =>
-      dimensiones.id_concesionario == null ||
-      a.id_concesionario === dimensiones.id_concesionario,
-  )
+  const sedesDeMarca = dimensiones.marca
+    ? (SEDES_POR_MARCA[dimensiones.marca] ?? [])
+    : []
+
+  /** Resuelve la sede elegida al concesionario del backend por nombre. */
+  const resolverConcesionario = (marca?: string, sede?: string) => {
+    const coincidencias = concesionarios.filter((c) =>
+      coincideMarcaSede(c.nombre, marca, sede),
+    )
+    return coincidencias.length === 1
+      ? coincidencias[0].id_concesionario
+      : undefined
+  }
+
+  const asesores = (opciones?.asesores ?? []).filter((a) => {
+    if (!dimensiones.marca) return true
+    const sede = concesionarios.find(
+      (c) => c.id_concesionario === a.id_concesionario,
+    )
+    return (
+      sede != null &&
+      coincideMarcaSede(sede.nombre, dimensiones.marca, dimensiones.sede)
+    )
+  })
   const hayFiltro =
-    dimensiones.id_concesionario != null || dimensiones.id_asesor != null
+    dimensiones.marca != null ||
+    dimensiones.id_concesionario != null ||
+    dimensiones.id_asesor != null
+
+  const select =
+    'rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-slate-700'
 
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
       <label className="flex items-center gap-2 text-slate-600">
-        <Building2 size={15} className="text-slate-400" aria-hidden="true" />
-        Concesionario
+        <Tag size={15} className="text-slate-400" aria-hidden="true" />
+        Marca
         <select
-          value={dimensiones.id_concesionario ?? ''}
+          value={dimensiones.marca ?? ''}
           onChange={(e) =>
             onCambiar({
-              id_concesionario: e.target.value
-                ? Number(e.target.value)
-                : undefined,
+              // Al cambiar la marca, sede y asesor quedan fuera.
+              marca: e.target.value || undefined,
+            })
+          }
+          className={select}
+          aria-label="Filtrar por marca"
+        >
+          <option value="">Todas</option>
+          {MARCAS.map((m) => (
+            <option key={m} value={m}>
+              {m.toUpperCase()}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center gap-2 text-slate-600">
+        <Building2 size={15} className="text-slate-400" aria-hidden="true" />
+        Sede
+        <select
+          value={dimensiones.sede ?? ''}
+          disabled={!dimensiones.marca}
+          onChange={(e) => {
+            const sede = e.target.value || undefined
+            onCambiar({
+              ...dimensiones,
+              sede,
+              id_concesionario: resolverConcesionario(dimensiones.marca, sede),
               // Al cambiar la sede el asesor elegido puede quedar fuera.
               id_asesor: undefined,
             })
-          }
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-slate-700"
-          aria-label="Filtrar por concesionario"
+          }}
+          className={`${select} disabled:opacity-50`}
+          aria-label="Filtrar por sede"
         >
           <option value="">Todos</option>
-          {concesionarios.map((c) => (
-            <option key={c.id_concesionario} value={c.id_concesionario}>
-              {c.nombre}
+          {sedesDeMarca.map((s) => (
+            <option key={s} value={s}>
+              {s}
             </option>
           ))}
         </select>
@@ -72,7 +151,7 @@ export default function BarraFiltrosDimensionales({
               id_asesor: e.target.value ? Number(e.target.value) : undefined,
             })
           }
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-slate-700"
+          className={select}
           aria-label="Filtrar por asesor"
         >
           <option value="">Todos</option>

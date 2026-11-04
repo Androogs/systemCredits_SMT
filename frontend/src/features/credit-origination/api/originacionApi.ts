@@ -143,6 +143,16 @@ export interface CrearSolicitudPayload {
   sesion_captura?: string
 }
 
+/** Radicación cerrada por una política clave (multas → R22): sin
+ * ocupación ni perfil económico, que aún no se han capturado. */
+export type RechazoPoliticasPayload = Omit<
+  CrearSolicitudPayload,
+  'cliente' | 'datos_laborales'
+> & {
+  cliente: Omit<CrearSolicitudPayload['cliente'], 'ocupacion'>
+  causal?: 'R22'
+}
+
 export interface EvaluarSolicitudPayload {
   saldo_financiar: number
   plazo: number
@@ -241,6 +251,13 @@ async function request<T>(ruta: string, init?: OpcionesRequest): Promise<T> {
 
 export function crearSolicitud(payload: CrearSolicitudPayload) {
   return request<CrearSolicitudResponse>('/api/solicitudes', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function rechazarPorPoliticas(payload: RechazoPoliticasPayload) {
+  return request<CrearSolicitudResponse>('/api/solicitudes/rechazo-politicas', {
     method: 'POST',
     body: JSON.stringify(payload),
   })
@@ -470,6 +487,13 @@ export interface SolicitudResumenApi {
   destino_credito: string | null
   plazo_deseado_meses: number | null
   fecha_hora_firma?: string | null
+  /** Perfil laboral del radicado: alimenta las distribuciones del
+      panel de resumen (tipo de contrato y continuidad). */
+  tipo_contrato?: string | null
+  meses_continuidad?: number | null
+  /** Cuota TOTAL mensual (anualidad + seguro) de la oferta seleccionada;
+      null hasta que el cliente elige financiación. */
+  cuota_total?: string | null
   evaluacion: EvaluacionResumenApi | null
 }
 
@@ -734,8 +758,9 @@ export interface DatosEsperadosOCR {
   fecha_nacimiento?: string
 }
 
-/** De dónde salió un campo: MRZ del reverso blanco, anverso, reverso o línea al pie de la amarilla. */
-export type FuenteOCR = 'mrz' | 'anverso' | 'reverso' | 'codigo_reverso' | ''
+/** De dónde salió un campo: MRZ del reverso blanco, anverso, reverso, línea al pie de la amarilla o valor impuesto por el tipo de documento (NO REPORTA del PPT). */
+export type FuenteOCR =
+  'mrz' | 'anverso' | 'reverso' | 'codigo_reverso' | 'documento' | ''
 
 /** Un campo extraído por el OCR, con su confianza (0-100). */
 export interface CampoOCRApi {
@@ -748,8 +773,8 @@ export interface CampoOCRApi {
 export interface ResultadoOCRApi {
   disponible: boolean
   texto_crudo: string
-  /** Diseño detectado: blanca (digital, con MRZ) o amarilla (hologramas). */
-  tipo_cedula?: 'blanca' | 'amarilla' | ''
+  /** Diseño detectado: blanca (digital, con MRZ), amarilla (hologramas) o ppt (permiso de Migración Colombia, documento rechazado). */
+  tipo_cedula?: 'blanca' | 'amarilla' | 'ppt' | ''
   numero_documento: CampoOCRApi
   nombres: CampoOCRApi
   apellidos: CampoOCRApi

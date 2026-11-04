@@ -5,8 +5,9 @@ contienen datos personales de terceros).
 """
 
 from datetime import datetime
+from uuid import UUID
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import DateTime, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.db_models.base import Base
@@ -51,7 +52,8 @@ class ConsultaBuro(Base):
     id_consulta: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tipo_id: Mapped[str] = mapped_column(String(2))
     numero_id: Mapped[str] = mapped_column(String(20), index=True)
-    id_solicitud: Mapped[str | None] = mapped_column(String(36), index=True)
+    # En Postgres es UUID REFERENCES solicitud_credito; en SQLite queda CHAR(32).
+    id_solicitud: Mapped[UUID | None] = mapped_column(Uuid, index=True)
     fecha_consulta: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora_utc, index=True)
     origen: Mapped[str] = mapped_column(String(30))  # experian
     hdc_json: Mapped[str] = mapped_column(Text)

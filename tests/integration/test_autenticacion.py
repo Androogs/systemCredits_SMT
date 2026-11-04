@@ -1,7 +1,7 @@
 """Pruebas de autenticación real: login contra `usuario` en BD + JWT.
 
 El fixture `usuarios_prueba` (conftest) siembra los tres usuarios del
-entorno demo: admin@ / asesor@ / aliado@pacifico.co.
+entorno demo: admin@ / asesor@ / aliado@sumoto.com.co.
 """
 
 import uuid
@@ -25,12 +25,12 @@ def _login(client, correo, contrasena):
 
 
 def test_login_devuelve_jwt_y_usuario(client, usuarios_prueba):
-    respuesta = _login(client, "admin@pacifico.co", CLAVE_ADMIN)
+    respuesta = _login(client, "admin@sumoto.com.co", CLAVE_ADMIN)
 
     assert respuesta.status_code == 200
     cuerpo = respuesta.json()
     assert cuerpo["token_type"] == "bearer"
-    assert cuerpo["usuario"]["correo"] == "admin@pacifico.co"
+    assert cuerpo["usuario"]["correo"] == "admin@sumoto.com.co"
     assert cuerpo["usuario"]["rol"] == "admin"
 
     claims = jwt.decode(
@@ -44,12 +44,12 @@ def test_login_devuelve_jwt_y_usuario(client, usuarios_prueba):
 
 
 def test_login_normaliza_correo(client, usuarios_prueba):
-    respuesta = _login(client, "  ADMIN@PACIFICO.CO ", CLAVE_ADMIN)
+    respuesta = _login(client, "  ADMIN@SUMOTO.COM.CO ", CLAVE_ADMIN)
     assert respuesta.status_code == 200
 
 
 def test_login_asesor_trae_su_concesionario(client, usuarios_prueba):
-    respuesta = _login(client, "asesor@pacifico.co", CLAVE_ASESOR)
+    respuesta = _login(client, "asesor@sumoto.com.co", CLAVE_ASESOR)
 
     assert respuesta.status_code == 200
     usuario = respuesta.json()["usuario"]
@@ -74,7 +74,7 @@ def test_login_con_varios_roles_devuelve_el_mas_privilegiado(
                             "contabilidad", "admin"],
     )
 
-    respuesta = _login(client, "admin@pacifico.co", CLAVE_ADMIN)
+    respuesta = _login(client, "admin@sumoto.com.co", CLAVE_ADMIN)
 
     assert respuesta.status_code == 200
     usuario = respuesta.json()["usuario"]
@@ -83,14 +83,14 @@ def test_login_con_varios_roles_devuelve_el_mas_privilegiado(
 
 
 def test_login_rechaza_contrasena_incorrecta(client, usuarios_prueba):
-    respuesta = _login(client, "admin@pacifico.co", "incorrecta")
+    respuesta = _login(client, "admin@sumoto.com.co", "incorrecta")
 
     assert respuesta.status_code == 401
     assert respuesta.json()["detail"] == "Correo o contraseña incorrectos."
 
 
 def test_login_rechaza_correo_desconocido_sin_oraculo(client, usuarios_prueba):
-    respuesta = _login(client, "nadie@pacifico.co", "x")
+    respuesta = _login(client, "nadie@sumoto.com.co", "x")
 
     assert respuesta.status_code == 401
     assert respuesta.json()["detail"] == "Correo o contraseña incorrectos."
@@ -99,36 +99,36 @@ def test_login_rechaza_correo_desconocido_sin_oraculo(client, usuarios_prueba):
 def test_login_rechaza_usuario_no_activo(client, usuarios_prueba):
     with SessionLocal() as db:
         db.execute(
-            text("UPDATE usuario SET estado='bloqueado' WHERE correo='asesor@pacifico.co'")
+            text("UPDATE usuario SET estado='bloqueado' WHERE correo='asesor@sumoto.com.co'")
         )
         db.commit()
 
-    respuesta = _login(client, "asesor@pacifico.co", CLAVE_ASESOR)
+    respuesta = _login(client, "asesor@sumoto.com.co", CLAVE_ASESOR)
     assert respuesta.status_code == 403
 
 
 def test_login_bloquea_tras_intentos_fallidos(client, usuarios_prueba):
     for _ in range(5):
-        respuesta = _login(client, "asesor@pacifico.co", "mala")
+        respuesta = _login(client, "asesor@sumoto.com.co", "mala")
         assert respuesta.status_code == 401
 
     # La contraseña correcta tampoco entra: la cuenta quedó bloqueada.
-    respuesta = _login(client, "asesor@pacifico.co", CLAVE_ASESOR)
+    respuesta = _login(client, "asesor@sumoto.com.co", CLAVE_ASESOR)
     assert respuesta.status_code == 403
 
     with SessionLocal() as db:
         bloqueado_hasta = db.execute(
             text(
                 "SELECT bloqueado_hasta FROM usuario "
-                "WHERE correo='asesor@pacifico.co'"
+                "WHERE correo='asesor@sumoto.com.co'"
             )
         ).scalar_one()
     assert bloqueado_hasta is not None
 
 
 def test_login_registra_auditoria(client, usuarios_prueba):
-    _login(client, "admin@pacifico.co", CLAVE_ADMIN)
-    _login(client, "admin@pacifico.co", "mala")
+    _login(client, "admin@sumoto.com.co", CLAVE_ADMIN)
+    _login(client, "admin@sumoto.com.co", "mala")
 
     with SessionLocal() as db:
         acciones = [
@@ -160,7 +160,7 @@ def test_login_rechaza_rol_sin_acceso_al_panel(client, usuarios_prueba):
         )
         db.commit()
 
-    respuesta = _login(client, "asesor@pacifico.co", CLAVE_ASESOR)
+    respuesta = _login(client, "asesor@sumoto.com.co", CLAVE_ASESOR)
     assert respuesta.status_code == 403
 
 
@@ -175,7 +175,7 @@ def test_login_expira_seguridad_sin_secreto_en_produccion(
     monkeypatch.setenv("JWT_SECRETO", "")
     get_settings.cache_clear()
     try:
-        respuesta = _login(client, "admin@pacifico.co", CLAVE_ADMIN)
+        respuesta = _login(client, "admin@sumoto.com.co", CLAVE_ADMIN)
     finally:
         get_settings.cache_clear()
 

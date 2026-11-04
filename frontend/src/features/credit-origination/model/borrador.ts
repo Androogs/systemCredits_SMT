@@ -7,7 +7,7 @@
  */
 
 import { z } from 'zod'
-import type { DatosValidacion } from '../ui/ValidacionInicial'
+import type { DatosValidacion } from './politicas-clave'
 import type { DatosAutorizacion } from '../ui/AutorizacionDatos'
 import type { ResultadoBiometrico } from '../ui/CapturaCedula'
 import type { ResultadoOCR } from './resultado-ocr'
@@ -42,8 +42,12 @@ export interface ContextoOriginacion {
   simulacion?: SimulacionPrevia
 }
 
+// v2: el orden de pasos cambió (Autorización → Evidencia → Datos y
+// políticas); los borradores v1 apuntan a pasos viejos y se descartan.
+const VERSION_BORRADOR = 2
+
 export interface BorradorOriginacion {
-  version: 1
+  version: typeof VERSION_BORRADOR
   paso: number
   contexto: ContextoOriginacion
   formalizacionIniciada: boolean
@@ -55,7 +59,7 @@ const CLAVE = 'inversiones-pacifico:borrador-originacion'
 // Valida el sobre del borrador; el contexto interno queda passthrough:
 // cada paso valida su propia forma al consumirla.
 const borradorSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(VERSION_BORRADOR),
   paso: z.number().int().min(1).max(5),
   contexto: z.custom<ContextoOriginacion>(
     (valor) => typeof valor === 'object' && valor !== null,
@@ -82,7 +86,7 @@ export function guardarBorrador(
 ): void {
   try {
     const borrador: BorradorOriginacion = {
-      version: 1,
+      version: VERSION_BORRADOR,
       paso,
       contexto,
       formalizacionIniciada,

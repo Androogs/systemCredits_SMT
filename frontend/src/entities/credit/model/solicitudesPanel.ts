@@ -24,6 +24,17 @@ export type EstadoVisual = EstadoSolicitud
 const ESTADOS_POSITIVOS = new Set(['aprobada', 'desembolsada'])
 const ESTADOS_NEGATIVOS = new Set(['rechazada', 'cancelada'])
 
+/** Visual positivo (decisión aprobada): incluye todo el ciclo
+    comercial posterior a la aprobación. Los estados granulares
+    (EN_PROCESO, FACTURADO, DESEMBOLSADO) vienen del modelo de
+    estados oficiales; aquí el pipeline positivo colapsa en APROBADO. */
+export const ESTADOS_POSITIVOS_VISTA: ReadonlySet<string> = new Set([
+  'EN_PROCESO',
+  'APROBADO',
+  'FACTURADO',
+  'DESEMBOLSADO',
+])
+
 /**
  * La decisión del motor manda; si aún no hay evaluación se usa el
  * estado del ciclo de vida de la solicitud. `creada`/`en_evaluacion`
@@ -74,6 +85,20 @@ export const OCUPACION_LABELS: Record<string, string> = {
   independiente: 'Independiente',
   pensionado: 'Pensionado',
   fuerzas_militares: 'Fuerzas militares',
+}
+
+export const TIPO_CONTRATO_LABELS: Record<string, string> = {
+  indefinido: 'Indefinido',
+  fijo: 'Fijo',
+  obra_labor: 'Obra o labor',
+  no_aplica: 'No aplica',
+}
+
+export const PERFIL_INGRESO_LABELS: Record<string, string> = {
+  ALTO: 'Alto',
+  MEDIO: 'Medio',
+  BAJO: 'Bajo',
+  GRIS: 'Gris',
 }
 
 export const ESTADO_LABELS: Record<string, string> = {

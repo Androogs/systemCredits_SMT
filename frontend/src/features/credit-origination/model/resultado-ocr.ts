@@ -10,11 +10,11 @@ export interface ResultadoOCR {
   fechaExpedicion: string
   /** false si la fecha de expiración (solo cédula blanca) ya pasó. */
   vigente: boolean
-  /** 'rechazada' si el OCR no pudo leer la cédula: el asesor digita los datos. */
+  /** 'rechazada' si el OCR no pudo leer la cédula o el documento no es válido (PPT): el asesor digita los datos. */
   calidadImagen: 'aprobada' | 'rechazada'
   /** true si anverso y reverso no concuerdan (posible documento alterado/ajeno). */
   alteraciones: boolean
-  tipoCedula?: 'blanca' | 'amarilla' | null
+  tipoCedula?: 'blanca' | 'amarilla' | 'ppt' | null
   fechaNacimiento?: string
   fechaExpiracion?: string
 }

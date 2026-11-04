@@ -14,7 +14,7 @@ solo el hash.
 
 D126 — backfill: las solicitudes históricas con `id_asesor` NULL (146,
 todas de SUMOTO SA PALMIRA) pasan al asesor de la sede decidido por
-negocio: el usuario asesor@pacifico.co ("Asesor de Prueba"). El UPDATE
+negocio: el usuario asesor@sumoto.com.co ("Asesor de Prueba"). El UPDATE
 está acotado a esa sede y es idempotente (solo toca filas NULL); si el
 asesor o la sede no existen en el entorno, no hace nada.
 
@@ -32,7 +32,7 @@ depends_on = None
 
 # Decisión de negocio aprobada: todas las heredadas sin radicador van a
 # un único asesor de la sede donde se originaron.
-_CORREO_ASESOR_BACKFILL = "asesor@pacifico.co"
+_CORREO_ASESOR_BACKFILL = "asesor@sumoto.com.co"
 _CONCESIONARIO_BACKFILL = "SUMOTO SA PALMIRA"
 
 

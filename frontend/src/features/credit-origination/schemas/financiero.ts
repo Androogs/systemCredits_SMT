@@ -1,5 +1,10 @@
 import { z } from 'zod'
 
 export const financieroSchema = z.object({
-  ingresosMensuales: z.number().positive('Ingresa los ingresos mensuales.'),
+  // null = campo vacío: se reporta como "ingresa los ingresos".
+  ingresosMensuales: z
+    .number()
+    .positive('Ingresa los ingresos mensuales.')
+    .nullable()
+    .refine((v) => v != null, 'Ingresa los ingresos mensuales.'),
 })

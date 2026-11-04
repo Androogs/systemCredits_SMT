@@ -283,7 +283,7 @@ export function contextoRadicacion(): { asesor: string; sede: string } {
 const CLAVE_CONCESIONARIO = 'uw_concesionario'
 /** Sede de respaldo cuando el usuario no trae concesionario (admin sin
  * sede): marca inferida para precargar el vehículo del financiamiento. */
-export const CONCESIONARIO_DEFECTO = 'Suzuki Palmira'
+export const CONCESIONARIO_DEFECTO = 'Sumoto Palmira'
 
 /** Sede operativa: la del usuario autenticado (asesor/aliado) o el
  * respaldo local. Ya no es un dato que el cliente elija libremente. */

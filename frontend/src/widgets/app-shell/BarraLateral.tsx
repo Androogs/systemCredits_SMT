@@ -15,6 +15,7 @@ import {
   UserCog,
   ShieldCheck,
 } from 'lucide-react'
+import { MARCA } from '../../shared/lib/marca'
 import { useRol, useUsuario, type RolSesion } from '../../shared/lib/sesion'
 
 interface ItemNav {
@@ -158,7 +159,8 @@ export default function BarraLateral({
         inert={esMovil && !menuMovilAbierto}
         className={`
         fixed md:sticky inset-y-0 left-0 top-0 z-50 md:z-auto
-        flex flex-col border-r border-white/10 bg-[rgba(0,0,51,1)]
+        flex flex-col border-r border-brand-900/10
+        bg-[linear-gradient(150deg,var(--surface-tint-deep),var(--border-tint)_82%)]
         h-screen w-64 shrink-0
         transition-all duration-300 ease-in-out
         ${menuMovilAbierto ? 'translate-x-0' : '-translate-x-full'}
@@ -171,21 +173,25 @@ export default function BarraLateral({
       >
         {/* HEADER - FIJO */}
         <div
-          className={`flex items-center h-20 border-b border-white/10 px-4 gap-2 shrink-0 ${
+          className={`flex items-center h-20 border-b border-brand-900/10 px-4 gap-2 shrink-0 ${
             collapsed ? 'md:justify-center md:px-2' : ''
           }`}
         >
-          <img
-            src="/brand/pacifico-blancos.png"
-            alt="Inversiones Pacífico"
-            width="1600"
-            height="769"
-            className={`h-20 w-auto object-contain flex-1 ${collapsed ? 'md:hidden' : ''}`}
-          />
+          <div
+            className={`flex min-w-0 flex-1 items-center ${collapsed ? 'md:hidden' : ''}`}
+          >
+            <img
+              src={MARCA.logoClaro}
+              alt={MARCA.razonSocial}
+              width="900"
+              height="129"
+              className="h-auto w-full max-w-[11rem] object-contain"
+            />
+          </div>
           <button
             ref={botonCerrarRef}
             onClick={cerrarMenu}
-            className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/20 transition ${
+            className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-brand-900/[.06] border border-brand-900/15 text-brand-900 hover:bg-brand-900/10 transition ${
               collapsed ? 'md:hidden' : ''
             }`}
             title="Ocultar menú"
@@ -200,7 +206,7 @@ export default function BarraLateral({
           </button>
           <button
             onClick={() => setCollapsed(false)}
-            className={`hidden w-8 h-8 shrink-0 items-center justify-center rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/20 transition ${
+            className={`hidden w-8 h-8 shrink-0 items-center justify-center rounded-lg bg-brand-900/[.06] border border-brand-900/15 text-brand-900 hover:bg-brand-900/10 transition ${
               collapsed ? 'md:flex' : ''
             }`}
             title="Mostrar menú"
@@ -224,7 +230,7 @@ export default function BarraLateral({
                 } ${
                   isActive
                     ? 'bg-brand-600 text-white shadow-sm'
-                    : 'text-white/70 hover:bg-white/10 hover:text-white'
+                    : 'text-brand-900/70 hover:bg-brand-900/[.06] hover:text-brand-900'
                 }`
               }
             >
@@ -245,10 +251,10 @@ export default function BarraLateral({
         </nav>
 
         {/* USUARIO + LOGOUT - FIJO ABAJO, SIEMPRE VISIBLE */}
-        <div className="shrink-0 p-3 border-t border-white/10 space-y-2">
+        <div className="shrink-0 p-3 border-t border-brand-900/10 space-y-2">
           {/* Rol asignado en el backend: informativo, no seleccionable. */}
           <div
-            className={`w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-white/70 ${
+            className={`w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-brand-900/70 ${
               collapsed ? 'md:justify-center md:px-0' : ''
             }`}
             title={`${usuario?.nombre ?? ''} · ${ROTULO_ROL[rol]}${
@@ -263,10 +269,10 @@ export default function BarraLateral({
             <span
               className={`flex-1 min-w-0 text-left ${collapsed ? 'md:hidden' : ''}`}
             >
-              <span className="block truncate text-white">
+              <span className="block truncate text-brand-900">
                 {usuario?.nombre ?? 'Usuario'}
               </span>
-              <span className="block text-[11px] text-white/50">
+              <span className="block text-[11px] text-brand-900/50">
                 {ROTULO_ROL[rol]}
                 {usuario?.concesionario
                   ? ` · ${usuario.concesionario.nombre}`
@@ -280,7 +286,7 @@ export default function BarraLateral({
               onLogout()
             }}
             title="Cerrar sesión"
-            className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/70 hover:bg-white/10 hover:text-white transition ${
+            className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-brand-900/70 hover:bg-brand-900/[.06] hover:text-brand-900 transition ${
               collapsed ? 'md:justify-center md:px-0' : ''
             }`}
           >

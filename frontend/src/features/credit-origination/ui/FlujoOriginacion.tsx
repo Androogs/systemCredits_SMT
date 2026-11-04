@@ -10,9 +10,9 @@ import {
   ShieldCheck,
   UserRound,
 } from 'lucide-react'
-import ValidacionInicial from './ValidacionInicial'
 import AutorizacionDatos from './AutorizacionDatos'
-import EvidenciaYDatos from './EvidenciaYDatos'
+import { CapturaEvidencia, DatosYPoliticas } from './EvidenciaYDatos'
+import RechazoPoliticas from './RechazoPoliticas'
 import CrearSolicitud, { type ResultadoCrearSolicitud } from './CrearSolicitud'
 import EvaluacionYResultado from './EvaluacionYResultado'
 import {
@@ -42,6 +42,7 @@ import {
   OCUPACION_LABELS,
 } from '../../../entities/credit/model/solicitudesPanel'
 import type { DatosSolicitud } from './CrearSolicitud'
+import { tituloPagina } from '../../../shared/lib/marca'
 import './FlujoOriginacion.css'
 
 /**
@@ -58,8 +59,8 @@ function identidadDesdeContexto(
   if (!validacion || !revision?.nombres.trim()) {
     return null
   }
-  // La cédula digitada en el paso 1 es la fuente de verdad: el OCR y la
-  // revisión la propagan ya formateada; aquí quedan solo dígitos.
+  // La cédula confirmada en el paso 3 (datos y políticas) es la fuente de
+  // verdad; aquí quedan solo dígitos.
   return {
     tipoDocumento: validacion.tipoDocumento,
     numeroDocumento: (
@@ -95,9 +96,9 @@ function contextoDesdeSolicitud(
     tipoContrato: laborales?.tipo_contrato ?? '',
     subtipoIndependiente: '',
     empresa: '',
-    mesesContinuidad: laborales?.meses_continuidad ?? 0,
+    mesesContinuidad: laborales?.meses_continuidad ?? null,
     aniosCamara: numero(laborales?.anios_camara_comercio),
-    ingresosMensuales: numero(laborales?.ingreso_mensual) ?? 0,
+    ingresosMensuales: numero(laborales?.ingreso_mensual) ?? null,
     entidadPagadora: '',
   }
   return {
@@ -144,6 +145,11 @@ function FlujoOriginacion() {
     simulacionRuta ? { simulacion: simulacionRuta } : {},
   )
   const [formalizacionIniciada, setFormalizacionIniciada] = useState(false)
+  // Multas confirmadas en el paso 3: se radica la solicitud rechazada y
+  // el proceso termina ('registrado' = ya persistida en el backend).
+  const [cierrePoliticas, setCierrePoliticas] = useState<
+    'pendiente' | 'registrado' | null
+  >(null)
   // Borrador detectado al abrir el flujo: se muestra la opción de
   // retomar antes de guardar nada encima.
   const [borradorPendiente, setBorradorPendiente] =
@@ -204,7 +210,7 @@ function FlujoOriginacion() {
     const title = heading?.textContent?.trim()
     if (!heading || !title) return
 
-    document.title = `${title} | Inversiones Pacífico`
+    document.title = tituloPagina(title)
     heading.tabIndex = -1
     heading.focus({ preventScroll: true })
   }, [pasoActual, borradorPendiente])
@@ -216,13 +222,19 @@ function FlujoOriginacion() {
   // formalización la solicitud ya vive en el backend.
   useEffect(() => {
     if (borradorPendiente) return
-    if (formalizacionIniciada) {
+    if (formalizacionIniciada || cierrePoliticas === 'registrado') {
       limpiarBorrador()
       return
     }
     if (pasoActual === 1 && Object.keys(contexto).length === 0) return
     guardarBorrador(pasoActual, contexto, formalizacionIniciada)
-  }, [pasoActual, contexto, formalizacionIniciada, borradorPendiente])
+  }, [
+    pasoActual,
+    contexto,
+    formalizacionIniciada,
+    borradorPendiente,
+    cierrePoliticas,
+  ])
 
   const retomarBorrador = () => {
     if (!borradorPendiente) return
@@ -248,6 +260,7 @@ function FlujoOriginacion() {
     setPasoActual(1)
     setContexto({})
     setFormalizacionIniciada(false)
+    setCierrePoliticas(null)
   }
 
   // Rechazo confirmado: la solicitud ya quedó evaluada en el backend, así
@@ -447,40 +460,74 @@ function FlujoOriginacion() {
   }
 
   const renderPasoActual = () => {
+    if (cierrePoliticas) {
+      return (
+        <RechazoPoliticas
+          identidad={identidadDesdeContexto(contexto)}
+          sesionCapturaToken={contexto.biometria?.sesionToken}
+          onRegistrada={() => setCierrePoliticas('registrado')}
+          onNuevaSolicitud={reiniciar}
+          onVolverSolicitudes={() => {
+            reiniciar()
+            navigate('/solicitudes')
+          }}
+          onBack={() => setCierrePoliticas(null)}
+        />
+      )
+    }
+
     if (pasoActual === 1) {
       return (
-        <ValidacionInicial
-          onContinue={(validacion) => {
-            setContexto((actual) => ({ ...actual, validacion }))
+        <AutorizacionDatos
+          onContinue={(autorizacion) => {
+            setContexto((actual) => ({ ...actual, autorizacion }))
             setPasoActual(2)
           }}
         />
       )
     }
 
-    if (pasoActual === 2) {
+    // Sin captura previa (p. ej. borrador guardado justo antes del QR) el
+    // paso 3 no tiene OCR que revisar: se vuelve a la captura.
+    if (pasoActual === 2 || (pasoActual === 3 && !contexto.biometria)) {
+      // Al retomar una solicitud ya hay cédula/nombre conocidos: el OCR
+      // los compara. En un flujo nuevo aún no hay nada digitado.
+      const { validacion, revision } = contexto
       return (
-        <AutorizacionDatos
+        <CapturaEvidencia
+          datosEsperados={{
+            ...(revision?.nombres ? { nombres: revision.nombres } : {}),
+            ...(revision?.apellidos ? { apellidos: revision.apellidos } : {}),
+            ...(validacion?.numeroDocumento
+              ? { numero_documento: validacion.numeroDocumento }
+              : {}),
+            ...(validacion?.fechaNacimiento
+              ? { fecha_nacimiento: validacion.fechaNacimiento }
+              : {}),
+          }}
           onBack={() => setPasoActual(1)}
-          onContinue={(autorizacion) => {
-            setContexto((actual) => ({ ...actual, autorizacion }))
+          onContinue={(biometria) => {
+            setContexto((actual) => ({ ...actual, biometria }))
             setPasoActual(3)
           }}
         />
       )
     }
 
-    if (pasoActual === 3) {
+    if (pasoActual === 3 && contexto.biometria) {
       return (
-        <EvidenciaYDatos
-          numeroDocumento={contexto.validacion?.numeroDocumento}
-          nombres={contexto.revision?.nombres}
-          apellidos={contexto.revision?.apellidos}
-          fechaNacimiento={contexto.validacion?.fechaNacimiento}
+        <DatosYPoliticas
+          biometria={contexto.biometria}
+          revisionPrevia={contexto.revision}
+          validacionPrevia={contexto.validacion}
           onBack={() => setPasoActual(2)}
-          onContinue={({ biometria, ocr, revision }) => {
-            setContexto((actual) => ({ ...actual, biometria, ocr, revision }))
-            setPasoActual(4)
+          onContinue={({ ocr, revision, validacion }) => {
+            setContexto((actual) => ({ ...actual, ocr, revision, validacion }))
+            if (validacion.multasPendientes) {
+              setCierrePoliticas('pendiente')
+            } else {
+              setPasoActual(4)
+            }
           }}
         />
       )

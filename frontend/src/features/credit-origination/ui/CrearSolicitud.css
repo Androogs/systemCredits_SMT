@@ -277,6 +277,27 @@
   padding-right: 2rem;
 }
 
+/* La opción Credicontado muestra su logo dentro del campo: el texto del
+   select se hace transparente y la imagen lo cubre. Las <option> del
+   desplegable se repintan en tinta normal (heredaban el transparente). */
+.solicitud__field select.has-logo {
+  color: transparent;
+}
+
+.solicitud__field select.has-logo option {
+  color: var(--demo-ink, var(--ink, #0f172a));
+}
+
+.solicitud__linea-logo {
+  position: absolute;
+  top: 50%;
+  left: 0.6rem;
+  height: 1.7rem;
+  width: auto;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
 .solicitud__field.has-error input,
 .solicitud__field.has-error select {
   border-color: var(--error-border);

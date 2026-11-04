@@ -41,7 +41,7 @@ services:
       APP_TITLE: Creditos API - QA
       SMMLV: ${SMMLV:-1750905}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      DEMO_USER_EMAIL: ${DEMO_USER_EMAIL:-qa@pacifico.co}
+      DEMO_USER_EMAIL: ${DEMO_USER_EMAIL:-qa@sumoto.com.co}
       DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:?define DEMO_USER_PASSWORD en .env.staging}
       CORS_ORIGINS: ${PUBLIC_URL:-http://localhost:8080}
       EVIDENCIAS_DIR: /app/uploads/evidencias

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
+import ConfettiCelebracion from '../shared/ui/ConfettiCelebracion'
 import TarjetaColapsable from '../shared/ui/TarjetaColapsable'
 import Skeleton from '../shared/ui/Skeleton'
 import CampoNumerico from '../shared/ui/CampoNumerico'
@@ -65,6 +66,7 @@ import {
   History,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { MARCA } from '../shared/lib/marca'
 
 const CONTRATO_LABELS: Record<string, string> = {
   indefinido: 'Término indefinido',
@@ -457,7 +459,7 @@ export default function DetalleSolicitud() {
     <>
       <Encabezado
         title={`Solicitud ${etiquetaSolicitud(datos)}`}
-        subtitle={`${datos.nombre_cliente} · ${datos.num_cedula}`}
+        subtitle={`${datos.nombre_cliente} · ${datos.num_cedula} · Estudio de crédito: ${MARCA.nombre}`}
         actions={
           <>
             {/* La solicitud sigue abierta en originación (sin oferta
@@ -491,7 +493,8 @@ export default function DetalleSolicitud() {
       <div className="p-6 space-y-6 overflow-auto max-w-6xl mx-auto w-full">
         {/* Resumen único: estado + métricas en una sola tarjeta, sin
             apilar tarjetas pequeñas que saturan la vista. */}
-        <Tarjeta className="space-y-5">
+        <Tarjeta className="space-y-5 relative overflow-hidden">
+          {visual === 'APROBADO' && <ConfettiCelebracion />}
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <InsigniaEstado status={visual} />

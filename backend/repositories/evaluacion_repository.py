@@ -9,6 +9,7 @@ from backend.db_models.models import (
     EvaluacionCredito,
     SolicitudCausal,
 )
+from backend.models.enums import Causal
 from backend.models.motor_models import ResultadoMotor
 
 
@@ -113,6 +114,10 @@ class EvaluacionRepository:
         return capacidad
 
     def reemplazar_causales(self, id_solicitud: uuid.UUID, resultado: ResultadoMotor) -> list[SolicitudCausal]:
+        return self.registrar_causales(id_solicitud, resultado.causales)
+
+    def registrar_causales(self, id_solicitud: uuid.UUID, causales: list[Causal]) -> list[SolicitudCausal]:
+        """Desactiva las causales vigentes y registra las nuevas."""
         (
             self.db.query(SolicitudCausal)
             .filter(SolicitudCausal.id_solicitud == id_solicitud, SolicitudCausal.activa.is_(True))
@@ -121,9 +126,9 @@ class EvaluacionRepository:
         criterios = {
             c.codigo: c.id_criterio
             for c in self.db.query(CriterioEvaluacion).filter(
-                CriterioEvaluacion.codigo.in_([c.codigo for c in resultado.causales])
+                CriterioEvaluacion.codigo.in_([c.codigo for c in causales])
             )
-        } if resultado.causales else {}
+        } if causales else {}
         nuevas = [
             SolicitudCausal(
                 id_solicitud=id_solicitud,
@@ -132,7 +137,7 @@ class EvaluacionRepository:
                 descripcion=c.value,
                 activa=True,
             )
-            for c in resultado.causales
+            for c in causales
         ]
         self.db.add_all(nuevas)
         self.db.flush()

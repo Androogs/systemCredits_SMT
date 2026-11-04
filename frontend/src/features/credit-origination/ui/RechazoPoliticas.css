@@ -1,0 +1,91 @@
+.rechazo-politicas {
+  display: grid;
+  min-height: 60vh;
+  place-items: center;
+  padding: 2rem 1rem;
+}
+
+.rechazo-politicas__tarjeta {
+  display: grid;
+  width: min(100%, 44rem);
+  justify-items: center;
+  gap: 1rem;
+  padding: clamp(1.75rem, 4vw, 2.75rem);
+  border: 1px solid var(--error-border);
+  border-radius: 1.25rem;
+  background: var(--white);
+  box-shadow: 0 1.25rem 3rem rgb(var(--shadow-rgb) / 10%);
+  text-align: center;
+}
+
+.rechazo-politicas__icono {
+  display: grid;
+  width: 5.5rem;
+  height: 5.5rem;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--error-bg);
+  box-shadow: inset 0 0 0 0.6rem rgb(255 255 255 / 55%);
+  color: var(--error-strong);
+}
+
+.rechazo-politicas__icono svg {
+  padding: 0.35rem;
+  border: 3px solid currentColor;
+  border-radius: 50%;
+  width: 3rem;
+  height: 3rem;
+}
+
+.rechazo-politicas__eyebrow {
+  margin: 0.25rem 0 0;
+  color: var(--slate-faint);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.rechazo-politicas__tarjeta h1 {
+  margin: 0;
+  color: var(--error-strong);
+  font-size: clamp(1.8rem, 3.5vw, 2.4rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.rechazo-politicas__texto {
+  max-width: 36rem;
+  margin: 0;
+  color: var(--slate-strong);
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+
+.rechazo-politicas__asesor {
+  display: grid;
+  width: min(100%, 22rem);
+  gap: 0.4rem;
+  color: var(--slate-strong);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.rechazo-politicas__error {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--error-border);
+  border-radius: 0.65rem;
+  background: var(--error-bg);
+  color: var(--error-strong);
+  font-size: 0.82rem;
+}
+
+.rechazo-politicas__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}

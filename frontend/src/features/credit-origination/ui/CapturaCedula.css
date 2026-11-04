@@ -417,6 +417,7 @@
 
 .captura__requisitos {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.55rem;
   margin: 0;
   padding: 0;
@@ -796,6 +797,10 @@
   }
 
   .captura__capturas-list {
+    grid-template-columns: 1fr;
+  }
+
+  .captura__requisitos {
     grid-template-columns: 1fr;
   }
 

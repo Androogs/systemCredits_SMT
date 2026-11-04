@@ -159,8 +159,12 @@ class SolicitudRepository:
                 joinedload(SolicitudCredito.cliente),
                 joinedload(SolicitudCredito.asesor),
                 joinedload(SolicitudCredito.concesionario),
+                # Perfil laboral y oferta seleccionada: los consume el
+                # resumen del panel (tipo de contrato, continuidad, cuota).
+                joinedload(SolicitudCredito.datos_laborales),
                 selectinload(SolicitudCredito.evaluaciones),
                 selectinload(SolicitudCredito.capacidades_pago),
+                selectinload(SolicitudCredito.ofertas),
             )
         )
         if concesionario_ids is not None:
@@ -831,10 +835,13 @@ class SolicitudRepository:
         cuentan solicitudes cuya decisión actual es 'rechazado': la
         re-evaluación desactiva las causales viejas, así la métrica
         refleja el motivo por el que hoy se está perdiendo gente."""
+        # Se agrupa solo por código: el catálogo histórico dejó el mismo
+        # código con descripciones distintas (con y sin tilde) y así se
+        # consolida una sola barra por causal.
         q = (
             self.db.query(
                 SolicitudCausal.codigo,
-                SolicitudCausal.descripcion,
+                func.max(SolicitudCausal.descripcion),
                 func.count(SolicitudCausal.id_solicitud_causal),
             )
             .join(
@@ -845,7 +852,7 @@ class SolicitudRepository:
                 SolicitudCausal.activa.is_(True),
                 SolicitudCredito.decision == "rechazado",
             )
-            .group_by(SolicitudCausal.codigo, SolicitudCausal.descripcion)
+            .group_by(SolicitudCausal.codigo)
         )
         if concesionario_ids is not None:
             q = q.filter(SolicitudCredito.id_concesionario.in_(concesionario_ids))
@@ -880,9 +887,11 @@ class SolicitudRepository:
             q = q.filter(SolicitudCredito.fecha_hora >= desde)
         if hasta is not None:
             q = q.filter(SolicitudCredito.fecha_hora < hasta)
+        # El panel dibuja todas las causales con producción; el tope 40
+        # cubre el catálogo completo (38 códigos) y acota el payload.
         q = q.order_by(
             func.count(SolicitudCausal.id_solicitud_causal).desc()
-        ).limit(8)
+        ).limit(40)
         return [
             {"codigo": codigo, "descripcion": descripcion, "total": total}
             for codigo, descripcion, total in q.all()
