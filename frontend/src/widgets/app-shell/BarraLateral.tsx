@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { RefObject } from 'react'
 import { NavLink } from 'react-router-dom'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -11,6 +10,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Calculator,
+  HandCoins,
+  Banknote,
+  ChartColumn,
   X,
   UserCog,
   ShieldCheck,
@@ -42,6 +44,24 @@ const nav: ItemNav[] = [
     icon: Calculator,
     roles: ['admin', 'asesor', 'concesionario'],
   },
+  {
+    to: '/comisiones',
+    label: 'Comisiones',
+    icon: HandCoins,
+    roles: ['admin', 'asesor'],
+  },
+  {
+    to: '/desembolsos',
+    label: 'Desembolsos',
+    icon: Banknote,
+    roles: ['admin', 'contabilidad'],
+  },
+  {
+    to: '/analitica',
+    label: 'Analítica',
+    icon: ChartColumn,
+    roles: ['admin'],
+  },
   { to: '/ajustes', label: 'Ajustes', icon: Settings2 },
 ]
 
@@ -50,18 +70,17 @@ const ROTULO_ROL: Record<RolSesion, string> = {
   asesor: 'Asesor',
   aliado: 'Aliado',
   concesionario: 'Administrador de sede',
+  contabilidad: 'Operaciones',
 }
 
 export default function BarraLateral({
   onLogout,
   mobileMenuOpen,
   onMobileMenuChange,
-  botonMenuRef,
 }: {
   onLogout: () => void
   mobileMenuOpen: boolean
   onMobileMenuChange: (open: boolean) => void
-  botonMenuRef: RefObject<HTMLButtonElement | null>
 }) {
   const [collapsed, setCollapsed] = useState(false)
   const menuMovilAbierto = mobileMenuOpen
@@ -77,7 +96,6 @@ export default function BarraLateral({
   )
   const botonCerrarRef = useRef<HTMLButtonElement>(null)
   const asideRef = useRef<HTMLElement>(null)
-  const menuEstabaAbierto = useRef(false)
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 767.98px)')
@@ -95,11 +113,8 @@ export default function BarraLateral({
   useEffect(() => {
     if (menuMovilAbierto) {
       botonCerrarRef.current?.focus()
-    } else if (menuEstabaAbierto.current) {
-      botonMenuRef.current?.focus()
     }
-    menuEstabaAbierto.current = menuMovilAbierto
-  }, [menuMovilAbierto, botonMenuRef])
+  }, [menuMovilAbierto])
 
   useEffect(() => {
     if (!menuMovilAbierto) return
@@ -159,8 +174,7 @@ export default function BarraLateral({
         inert={esMovil && !menuMovilAbierto}
         className={`
         fixed md:sticky inset-y-0 left-0 top-0 z-50 md:z-auto
-        flex flex-col border-r border-brand-900/10
-        bg-[linear-gradient(150deg,var(--surface-tint-deep),var(--border-tint)_82%)]
+        flex flex-col border-r border-white/10 bg-brand-500
         h-screen w-64 shrink-0
         transition-all duration-300 ease-in-out
         ${menuMovilAbierto ? 'translate-x-0' : '-translate-x-full'}
@@ -173,7 +187,7 @@ export default function BarraLateral({
       >
         {/* HEADER - FIJO */}
         <div
-          className={`flex items-center h-20 border-b border-brand-900/10 px-4 gap-2 shrink-0 ${
+          className={`flex items-center h-20 border-b border-white/10 px-4 gap-2 shrink-0 ${
             collapsed ? 'md:justify-center md:px-2' : ''
           }`}
         >
@@ -181,7 +195,7 @@ export default function BarraLateral({
             className={`flex min-w-0 flex-1 items-center ${collapsed ? 'md:hidden' : ''}`}
           >
             <img
-              src={MARCA.logoClaro}
+              src={MARCA.logoOscuro}
               alt={MARCA.razonSocial}
               width="900"
               height="129"
@@ -191,7 +205,7 @@ export default function BarraLateral({
           <button
             ref={botonCerrarRef}
             onClick={cerrarMenu}
-            className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-brand-900/[.06] border border-brand-900/15 text-brand-900 hover:bg-brand-900/10 transition ${
+            className={`shrink-0 w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/20 transition ${
               collapsed ? 'md:hidden' : ''
             }`}
             title="Ocultar menú"
@@ -206,7 +220,7 @@ export default function BarraLateral({
           </button>
           <button
             onClick={() => setCollapsed(false)}
-            className={`hidden w-8 h-8 shrink-0 items-center justify-center rounded-lg bg-brand-900/[.06] border border-brand-900/15 text-brand-900 hover:bg-brand-900/10 transition ${
+            className={`hidden w-8 h-8 shrink-0 items-center justify-center rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/20 transition ${
               collapsed ? 'md:flex' : ''
             }`}
             title="Mostrar menú"
@@ -230,7 +244,7 @@ export default function BarraLateral({
                 } ${
                   isActive
                     ? 'bg-brand-600 text-white shadow-sm'
-                    : 'text-brand-900/70 hover:bg-brand-900/[.06] hover:text-brand-900'
+                    : 'text-white/70 hover:bg-white/10 hover:text-white'
                 }`
               }
             >
@@ -251,10 +265,10 @@ export default function BarraLateral({
         </nav>
 
         {/* USUARIO + LOGOUT - FIJO ABAJO, SIEMPRE VISIBLE */}
-        <div className="shrink-0 p-3 border-t border-brand-900/10 space-y-2">
+        <div className="shrink-0 p-3 border-t border-white/10 space-y-2">
           {/* Rol asignado en el backend: informativo, no seleccionable. */}
           <div
-            className={`w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-brand-900/70 ${
+            className={`w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-white/70 ${
               collapsed ? 'md:justify-center md:px-0' : ''
             }`}
             title={`${usuario?.nombre ?? ''} · ${ROTULO_ROL[rol]}${
@@ -269,10 +283,10 @@ export default function BarraLateral({
             <span
               className={`flex-1 min-w-0 text-left ${collapsed ? 'md:hidden' : ''}`}
             >
-              <span className="block truncate text-brand-900">
+              <span className="block truncate text-white">
                 {usuario?.nombre ?? 'Usuario'}
               </span>
-              <span className="block text-[11px] text-brand-900/50">
+              <span className="block text-[11px] text-white/50">
                 {ROTULO_ROL[rol]}
                 {usuario?.concesionario
                   ? ` · ${usuario.concesionario.nombre}`
@@ -286,7 +300,7 @@ export default function BarraLateral({
               onLogout()
             }}
             title="Cerrar sesión"
-            className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-brand-900/70 hover:bg-brand-900/[.06] hover:text-brand-900 transition ${
+            className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/70 hover:bg-white/10 hover:text-white transition ${
               collapsed ? 'md:justify-center md:px-0' : ''
             }`}
           >

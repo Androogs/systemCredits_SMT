@@ -64,11 +64,13 @@ class UsuarioActual:
         """Concesionarios cuyas solicitudes puede ver.
 
         - admin → None (sin filtro, ve todo)
+        - contabilidad → None: es el back-office de operaciones, opera
+          la bandeja de desembolsos sobre todas las sedes
         - asesor → su sede (sin sede asignada → set vacío: no ve nada)
         - concesionario → su sede (vínculo `concesionario_usuario`)
         - aliado → los concesionarios vigentes de su aliado
         """
-        if self.es_admin():
+        if self.es_admin() or "contabilidad" in self.roles:
             return None
         if "asesor" in self.roles or self.es_concesionario():
             return (

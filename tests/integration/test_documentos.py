@@ -142,7 +142,7 @@ def _crear_solicitud_firmada(db) -> uuid.UUID:
     return solicitud.id_solicitud
 
 
-def test_paquete_genera_los_ocho_documentos(client, tmp_path, monkeypatch):
+def test_paquete_genera_los_trece_documentos(client, tmp_path, monkeypatch):
     monkeypatch.setenv("EVIDENCIAS_DIR", str(tmp_path / "evid"))
     get_settings.cache_clear()
     db = db_session.SessionLocal()
@@ -151,12 +151,14 @@ def test_paquete_genera_los_ocho_documentos(client, tmp_path, monkeypatch):
         docs = DocumentoService(db).generar_paquete(id_solicitud)
         db.commit()
 
-        assert len(docs) == 9
+        assert len(docs) == 13
         tipos = {d.tipo for d in docs}
         assert tipos == {
-            "doc_autorizacion", "doc_carta_aprobacion", "doc_pagare",
+            "doc_autorizacion", "doc_carta_aprobacion",
+            "doc_autorizacion_datos", "doc_pagare",
             "doc_instrucciones", "doc_prenda", "doc_asegurabilidad",
             "doc_solicitud", "doc_compromiso", "doc_amortizacion",
+            "doc_compra_venta", "doc_dacion", "doc_transferencia",
         }
         for doc in docs:
             ruta = tmp_path / "evid" / doc.ruta
@@ -214,16 +216,22 @@ def _qrs_decodificados(ruta: Path) -> list[str]:
             )
             if img is None:
                 continue
-            texto, _, _ = detector.detectAndDecode(img)
-            if not texto:
-                # El detector varía por versión de OpenCV: un upscale
-                # suele recuperar QRs que a tamaño nativo no decodifica.
-                grande = cv2.resize(
-                    img, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC
-                )
-                texto, _, _ = detector.detectAndDecode(grande)
-            if texto:
-                decodificados.append(texto)
+            # El detector varía por versión de OpenCV y por el patrón del
+            # propio QR: upscale + binarización recuperan los que a
+            # tamaño nativo no decodifica.
+            _, binaria = cv2.threshold(
+                img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+            )
+            variantes = [img, binaria] + [
+                cv2.resize(v, None, fx=f, fy=f, interpolation=cv2.INTER_CUBIC)
+                for v in (img, binaria)
+                for f in (3, 4)
+            ]
+            for variante in variantes:
+                texto, _, _ = detector.detectAndDecode(variante)
+                if texto:
+                    decodificados.append(texto)
+                    break
     return decodificados
 
 
@@ -335,7 +343,7 @@ def test_pagare_lleva_los_datos_de_la_solicitud(client, tmp_path, monkeypatch):
 
         salida = (
             tmp_path / "evid" / "legalizacion" / str(id_solicitud)
-            / "3. Pagare - 1015464714.docx"
+            / "12. Pagare - 1015464714.docx"
         )
         texto = _texto_docx(salida)
         assert "RUBIO URREGO EDDY SLEIDER" in texto
@@ -380,16 +388,16 @@ def test_literales_de_las_otras_plantillas(client, tmp_path, monkeypatch):
             base / "4. Carta de instrucciones - 1015464714.docx"
         )
         assert "No 001" not in instrucciones
-        assert "No 41" in instrucciones
+        assert "No. 41" in instrucciones
 
-        compromiso = _texto_docx(base / "8. Compromiso de pago - 1015464714.docx")
+        compromiso = _texto_docx(base / "9. Politicas de cartera - 1015464714.docx")
         assert "DIANA" not in compromiso
         assert "28549365" not in compromiso
         assert "RUBIO URREGO EDDY SLEIDER" in compromiso
         assert "1015464714" in compromiso
 
         asegurabilidad = _texto_docx(
-            base / "6. Declaracion asegurabilidad - 1015464714.docx"
+            base / "14. Declaracion asegurabilidad - 1015464714.docx"
         )
         assert "DEUDORFirma" not in asegurabilidad
         assert "CC 1015464714" in asegurabilidad
@@ -403,7 +411,7 @@ def test_literales_de_las_otras_plantillas(client, tmp_path, monkeypatch):
         assert "Identificador único de firma electrónica" in autorizacion
 
         # Prenda: los datos de la moto capturados en la formalización.
-        prenda = _texto_docx(base / "5. Prenda sin tenencia - 1015464714.docx")
+        prenda = _texto_docx(base / "13. Prenda sin tenencia - 1015464714.docx")
         assert "Fratelli" in prenda
         assert "RFR" in prenda
         assert "2026" in prenda
@@ -464,7 +472,7 @@ def test_tabla_amortizacion_lleva_datos_y_cuadra(
         db.commit()
         amort = next(d for d in docs if d.tipo == "doc_amortizacion")
         ruta = tmp_path / "evid" / amort.ruta
-        assert ruta.name == "9. Tabla de amortizacion - 1015464714.docx"
+        assert ruta.name == "15. Tabla de amortizacion - 1015464714.docx"
 
         texto = _texto_docx(ruta)
         assert "RUBIO URREGO EDDY SLEIDER" in texto
@@ -510,7 +518,7 @@ def test_endpoint_verificacion_firma(client, tmp_path, monkeypatch):
     assert datos["firmante"] == "RUBIO URREGO EDDY SLEIDER"
     assert datos["documento_identidad"] == "CC 1015464714"
     assert datos["num_solicitud"] == 41
-    assert datos["documentos"] == 9
+    assert datos["documentos"] == 13
     assert datos["fecha_hora_firma"].startswith("2026-03-15")
 
     assert client.get(f"/api/firmas/{uuid.uuid4()}").status_code == 404

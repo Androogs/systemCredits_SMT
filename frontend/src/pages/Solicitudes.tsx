@@ -8,6 +8,8 @@ import { currency, dateShort } from '../shared/lib/formatters'
 import { useRol } from '../shared/lib/sesion'
 import {
   estadoParaVista,
+  esRetomado,
+  ESTADOS_POSITIVOS_VISTA,
   etiquetaSolicitud,
   numero,
   ESTADOS_RETOMABLES,
@@ -114,6 +116,10 @@ export default function Solicitudes() {
             >
               <option value="">Todos los estados</option>
               <option value="APROBADO">Aprobado</option>
+              <option value="EN_PROCESO">En proceso</option>
+              <option value="FACTURADO">Facturado</option>
+              <option value="DESEMBOLSADO">Desembolsado</option>
+              <option value="FINALIZADO">Finalizado</option>
               <option value="RECHAZADO">Rechazado</option>
               <option value="PENDIENTE">Pendiente de evaluación</option>
             </select>
@@ -196,7 +202,8 @@ export default function Solicitudes() {
                 {visibles.map((s) => {
                   const cupo = numero(s.evaluacion?.cupo_sugerido)
                   const mostrarCupo =
-                    cupo != null && estadoParaVista(s) === 'APROBADO'
+                    cupo != null &&
+                    ESTADOS_POSITIVOS_VISTA.has(estadoParaVista(s))
                   return (
                     <tr
                       key={s.id_solicitud}
@@ -240,6 +247,14 @@ export default function Solicitudes() {
                       <td className="px-5 py-3">
                         <span className="inline-flex items-center gap-2">
                           <InsigniaEstado status={estadoParaVista(s)} />
+                          {esRetomado(s) && (
+                            <span
+                              title="Re-evaluada manualmente y aprobada"
+                              className="inline-flex items-center whitespace-nowrap rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700 ring-1 ring-violet-600/20"
+                            >
+                              Retomado
+                            </span>
+                          )}
                           {/* La decisión interna del motor solo la ve el
                               administrador, y solo cuando difiere de la
                               insignia (evaluaciones históricas). */}

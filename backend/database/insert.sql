@@ -10,25 +10,50 @@ ON CONFLICT (nombre) DO NOTHING;
 
 
 INSERT INTO aliado_financiero (nit, nombre, tipo, es_propio, activo)
-VALUES ('814005081', 'INVERSIONES PACIFICO S.A.', 'otro', TRUE, TRUE)
+VALUES ('800235505-9', 'SUMOTO S.A', 'otro', TRUE, TRUE)
 ON CONFLICT (nit) DO NOTHING;
 
 UPDATE aliado_financiero
 SET es_propio = TRUE
-WHERE nit = '814005081';
+WHERE nit = '800235505-9';
 
-INSERT INTO concesionario (nombre) VALUES
-    ('TULUA MOTOS SA'),
-    ('SUMOTO SA PALMIRA'),
-    ('PIJAOS MOTOS S.A')
+INSERT INTO concesionario (nombre, nit) VALUES
+    ('SUMOTO S.A', '800235505-9')
+ON CONFLICT (nombre) DO NOTHING;
+
+-- Puntos de venta de las marcas aliadas (concesionarios por marca+sede;
+-- la matriz SUMOTO S.A no lleva marca).
+INSERT INTO concesionario (nombre, marca, sede) VALUES
+    ('AKT PRINCIPAL', 'AKT', 'Principal'),
+    ('AKT CENTRO', 'AKT', 'Centro'),
+    ('AKT CALI', 'AKT', 'Cali'),
+    ('AKT BUGA', 'AKT', 'Buga'),
+    ('AKT YUMBO', 'AKT', 'Yumbo'),
+    ('AKT CANDELARIA', 'AKT', 'Candelaria'),
+    ('AKT PRADERA', 'AKT', 'Pradera'),
+    ('AUTECO CALI', 'Auteco', 'Cali'),
+    ('BAJAJ PALMIRA', 'Bajaj', 'Palmira'),
+    ('BAJAJ PRADERA', 'Bajaj', 'Pradera'),
+    ('BAJAJ FLORIDA', 'Bajaj', 'Florida'),
+    ('FRATELLI', 'Fratelli', NULL),
+    ('HERO PALMIRA', 'Hero', 'Palmira'),
+    ('HERO CALI', 'Hero', 'Cali'),
+    ('HERO FLORIDA', 'Hero', 'Florida'),
+    ('HONDA', 'Honda', NULL),
+    ('SUZUKI PRINCIPAL', 'Suzuki', 'Principal'),
+    ('SUZUKI CENTRO', 'Suzuki', 'Centro'),
+    ('SUZUKI EL CERRITO', 'Suzuki', 'El Cerrito'),
+    ('SUZUKI CANDELARIA', 'Suzuki', 'Candelaria'),
+    ('SUZUKI FLORIDA', 'Suzuki', 'Florida'),
+    ('SUZUKI PRADERA', 'Suzuki', 'Pradera')
 ON CONFLICT (nombre) DO NOTHING;
 
 INSERT INTO aliado_concesionario (id_aliado, id_concesionario)
 SELECT a.id_aliado, c.id_concesionario
 FROM aliado_financiero a
 CROSS JOIN concesionario c
-WHERE a.nit = '814005081'
-    AND c.nombre IN ('TULUA MOTOS SA', 'SUMOTO SA PALMIRA', 'PIJAOS MOTOS S.A')
+WHERE a.nit = '800235505-9'
+    AND c.nombre = 'SUMOTO S.A'
 ON CONFLICT (id_aliado, id_concesionario) DO NOTHING;
 
 INSERT INTO banco (codigo_ach, nombre, nit, activo) VALUES
@@ -44,25 +69,25 @@ INSERT INTO banco (codigo_ach, nombre, nit, activo) VALUES
 ON CONFLICT (codigo_ach) DO NOTHING;
 
 INSERT INTO cuenta_bancaria (id_banco, tipo, numero, titular, nit_titular, id_aliado, activa)
-SELECT b.id_banco, 'ahorros', '0000000000', 'INVERSIONES PACIFICO S.A.',
-       '814005081', a.id_aliado, TRUE
+SELECT b.id_banco, 'ahorros', '0000000000', 'SUMOTO S.A',
+       '800235505-9', a.id_aliado, TRUE
 FROM banco b, aliado_financiero a
 WHERE b.codigo_ach = '007'
-    AND a.nit = '814005081'
+    AND a.nit = '800235505-9'
 ON CONFLICT (id_banco, numero, tipo) DO NOTHING;
 
-INSERT INTO cuenta_bancaria (id_banco, tipo, numero, titular, id_concesionario, activa)
+INSERT INTO cuenta_bancaria (id_banco, tipo, numero, titular, nit_titular, id_concesionario, activa)
 -- TODO: reemplazar los números de cuenta ficticios por cuentas reales antes de producción.
-SELECT b.id_banco, 'ahorros', c.nombre || '-CTA', c.nombre, c.id_concesionario, TRUE
+SELECT b.id_banco, 'ahorros', c.nombre || '-CTA', c.nombre, '800235505-9', c.id_concesionario, TRUE
 FROM banco b, concesionario c
 WHERE b.codigo_ach = '007'
-    AND c.nombre IN ('TULUA MOTOS SA', 'SUMOTO SA PALMIRA', 'PIJAOS MOTOS S.A')
+    AND c.nombre = 'SUMOTO S.A'
 ON CONFLICT (id_banco, numero, tipo) DO NOTHING;
 
 INSERT INTO aliado_producto (id_aliado, nombre, activo)
 SELECT id_aliado, 'Financiacion de motocicleta', TRUE
 FROM aliado_financiero
-WHERE nit = '814005081'
+WHERE nit = '800235505-9'
 ON CONFLICT (id_aliado, nombre) DO NOTHING;
 
 -- Parametros comerciales del producto propio (alineados con la politica:
@@ -75,7 +100,7 @@ SET tasa_min = 1.5,
     monto_min = 500000,
     monto_max = 20000000
 WHERE nombre = 'Financiacion de motocicleta'
-  AND id_aliado = (SELECT id_aliado FROM aliado_financiero WHERE nit = '814005081');
+  AND id_aliado = (SELECT id_aliado FROM aliado_financiero WHERE nit = '800235505-9');
 
 -- Seguro de vida deudores incluido en la cuota. Prima vigente del
 -- negocio: 0,35 % mensual sobre el saldo financiado
@@ -135,7 +160,7 @@ INSERT INTO criterio_evaluacion (codigo, descripcion, tipo) VALUES
 ON CONFLICT (codigo) DO NOTHING;
 -- Usuarios de prueba de la plataforma (auth JWT). Contraseñas bcrypt:
 --   admin@sumoto.com.co / Admin123!    (admin: ve todo)
---   asesor@sumoto.com.co / Asesor123!  (asesor: SUMOTO SA PALMIRA)
+--   asesor@sumoto.com.co / Asesor123!  (asesor: SUMOTO S.A)
 --   aliado@sumoto.com.co / Aliado123!  (aliado: Inversiones Pacífico)
 -- Va al final del archivo: depende de rol, concesionario y
 -- aliado_financiero ya sembrados arriba.
@@ -162,13 +187,13 @@ ON CONFLICT (id_usuario, id_rol) DO NOTHING;
 INSERT INTO asesor (id_usuario, nombre, id_concesionario)
 SELECT u.id_usuario, u.nombre_completo, c.id_concesionario
 FROM usuario u
-JOIN concesionario c ON c.nombre = 'SUMOTO SA PALMIRA'
+JOIN concesionario c ON c.nombre = 'SUMOTO S.A'
 WHERE u.correo = 'asesor@sumoto.com.co'
 ON CONFLICT (id_usuario) DO NOTHING;
 
 INSERT INTO aliado_usuario (id_usuario, id_aliado, rol_interno)
 SELECT u.id_usuario, a.id_aliado, 'comercial'
 FROM usuario u
-JOIN aliado_financiero a ON a.nit = '814005081'
+JOIN aliado_financiero a ON a.nit = '800235505-9'
 WHERE u.correo = 'aliado@sumoto.com.co'
 ON CONFLICT (id_usuario, id_aliado) DO NOTHING;

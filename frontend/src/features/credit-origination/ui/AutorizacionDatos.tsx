@@ -181,7 +181,7 @@ function AutorizacionDatos({ onContinue, onBack }: AutorizacionDatosProps) {
               <a
                 className="autorizacion__legal-link"
                 href="/documentos/autorizacion-consulta-centrales-habeas-data.docx"
-                download="Autorizacion consulta centrales - Habeas Data - Inversiones Pacifico.docx"
+                download="Autorizacion consulta centrales - Habeas Data - Sumoto S.A.docx"
               >
                 <svg
                   className="autorizacion__legal-icon"

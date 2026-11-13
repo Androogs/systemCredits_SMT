@@ -9,7 +9,7 @@
  * el aliado o su logo, se ajusta aquí y en shared/lib/marca.ts.
  */
 
-import { ALIADO } from '../lib/marca'
+import { ALIADO, MARCA } from '../lib/marca'
 
 type Formato = 'sello' | 'powered' | 'texto'
 type Tono = 'claro' | 'oscuro'
@@ -71,24 +71,20 @@ export default function SelloAliado({
 
   return (
     <div
-      className={`inline-flex flex-col items-center gap-1.5 rounded-xl border px-4 py-2.5 ${
-        oscuro ? 'border-white/15 bg-white/5' : 'border-slate-200 bg-white'
-      } ${className}`}
+      className={`inline-flex flex-col items-center gap-1.5 rounded-xl border border-[#00468a] bg-[#0052a1] px-4 py-2.5 ${className}`}
     >
-      <span
-        className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${textoSuave}`}
-      >
+      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/75">
         {ALIADO.rol}
       </span>
       <img
-        src={logo}
-        alt={ALIADO.nombre}
-        width="520"
-        height="148"
+        src={MARCA.logoOscuro}
+        alt={MARCA.razonSocial}
+        width="900"
+        height="129"
         className="h-8 w-auto object-contain"
       />
       {leyenda && (
-        <span className={`max-w-[18rem] text-center text-[11px] ${textoSuave}`}>
+        <span className="max-w-[18rem] text-center text-[11px] text-white/75">
           {leyenda}
         </span>
       )}

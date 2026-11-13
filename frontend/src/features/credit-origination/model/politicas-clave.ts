@@ -10,6 +10,12 @@ export interface DatosValidacion {
   fechaNacimiento: string
   nacionalidad: string
   multasPendientes: boolean
+  /** Persona a la que pertenece la consulta SIMIT ('tipo:numero' del
+   * API): al volver al paso se compara con el documento actual y una
+   * diferencia re-dispara la consulta. */
+  simitDocumento?: string
+  /** Texto del resultado SIMIT ya mostrado (deuda o paz y salvo). */
+  simitResumen?: string
 }
 
 export const NACIONALIDADES = [

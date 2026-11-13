@@ -60,7 +60,7 @@ export default function IniciarSesion() {
       <main className="access-card">
         <div className="access-mobile-brand">
           <img
-            src={MARCA.logoClaro}
+            src={MARCA.logoOscuro}
             alt={MARCA.razonSocial}
             width="900"
             height="129"

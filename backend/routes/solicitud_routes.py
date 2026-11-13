@@ -1,31 +1,43 @@
 """Solicitudes del esquema SUMOTO: alta, evaluación y ofertas."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from backend.auth.dependencies import UsuarioActual, requiere_roles, usuario_actual
 from backend.config import get_settings
 from backend.db_models.session import get_db
+from backend.models.analitica_models import AnaliticaResponse
 from backend.models.motor_models import EvaluarSolicitudRequest, ResultadoBinarioResponse, ResultadoMotorResponse
 from backend.models.solicitud_models import (
     CancelarSolicitudRequest,
+    ConteoSolicitudesResponse,
     CrearSolicitudRequest,
     CrearSolicitudResponse,
     DatosFormalizacionRequest,
+    DesembolsoMasivoRequest,
+    DesembolsoMasivoResponse,
     DesembolsoResponse,
+    FacturaRegistradaResponse,
+    FacturaResponse,
     GenerarOtpRequest,
     GenerarOtpResponse,
     MetricasEmbudoResponse,
     OfertaResponse,
+    PrendaVehiculoRequest,
     RechazoPoliticasRequest,
     RegistrarDesembolsoRequest,
     SeleccionarOfertaRequest,
+    SimitConsultaRequest,
+    SimitConsultaResponse,
     SolicitudDetalleResponse,
     SolicitudResumenResponse,
+    VehiculoPrendaResponse,
+    VentaContadoRequest,
     VerificarOtpRequest,
     VerificarOtpResponse,
 )
@@ -35,9 +47,11 @@ from backend.routes.dependencies import (
     get_evaluacion_service,
     get_tasa_mercado_service,
 )
+from backend.services.analitica_service import AnaliticaService
 from backend.services.desembolso_service import DesembolsoService
 from backend.services.documento_service import DocumentoService
 from backend.services.evaluacion_service import EvaluacionService
+from backend.services.factura_service import FacturaService
 from backend.services.motor_exceptions import (
     DataCreditoError,
     SolicitudNoEncontradaError,
@@ -45,6 +59,7 @@ from backend.services.motor_exceptions import (
 )
 from backend.services.notificacion_service import NotificacionService
 from backend.services.otp_service import OtpError, OtpService
+from backend.services.analitica_service import AnaliticaService
 from backend.services.solicitud_service import SolicitudService
 from backend.services.tasa_mercado_service import TasaMercadoService
 
@@ -75,26 +90,23 @@ def _rechazar_tasa_sobre_usura(
         )
 
 
-def _paquete_legalizacion(db: Session, id_solicitud: uuid.UUID) -> None:
-    """Genera el paquete de documentos y lo envía al correo del cliente.
+def _paquete_legalizacion(db: Session, id_solicitud: uuid.UUID) -> str | None:
+    """Genera el paquete de documentos tras la firma OTP.
 
-    Best-effort: la firma quedó registrada aunque la generación o el
-    envío fallen; el asesor puede regenerarlo desde el detalle.
+    Ya no se envía al correo aquí: la prenda aún no tiene motor/chasis
+    (llegan con la factura del concesionario). El envío del paquete
+    definitivo —convertido a PDF— ocurre al registrar la factura
+    (`enviar_documentos_finales`).
+
+    Best-effort: la firma quedó registrada aunque la generación falle;
+    el paquete se regenera al cargar la factura. Devuelve None si el
+    paquete quedó completo; el motivo del fallo si no — la respuesta del
+    endpoint lo expone al asesor en lugar de dejar el paquete parcial en
+    silencio.
     """
-    from pathlib import Path
-
     try:
-        docs = DocumentoService(db).generar_paquete(id_solicitud)
-        if not docs:
-            return
-        settings = get_settings()
-        adjuntos = [Path(settings.evidencias_dir) / d.ruta for d in docs]
-        solicitud = SolicitudRepository(db).obtener_detalle(id_solicitud)
-        if solicitud is not None:
-            NotificacionService().notificar(
-                "legalizacion", solicitud, adjuntos=adjuntos
-            )
-    except Exception:  # noqa: BLE001
+        generadas = DocumentoService(db).generar_paquete(id_solicitud)
+    except Exception as exc:  # noqa: BLE001
         import logging
 
         # La sesión quedó con la transacción en error: rollback para que
@@ -104,6 +116,17 @@ def _paquete_legalizacion(db: Session, id_solicitud: uuid.UUID) -> None:
         logging.getLogger(__name__).exception(
             "No se pudo generar el paquete de legalización de %s", id_solicitud
         )
+        return (
+            "La firma quedó registrada, pero el paquete de legalización "
+            f"no se generó ({exc}). Se reintenta al cargar la factura."
+        )
+    if not generadas:
+        return (
+            "La firma quedó registrada, pero no se generó ningún "
+            "documento de legalización. Revisa las plantillas del "
+            "paquete o vuelve a intentarlo al cargar la factura."
+        )
+    return None
 
 
 def _notificar(db: Session, id_solicitud: uuid.UUID, evento: str, datos: dict | None = None) -> None:
@@ -149,6 +172,66 @@ def listar(
     )
 
 
+@router.get("/conteo", response_model=ConteoSolicitudesResponse)
+def conteo(
+    estado: str | None = None,
+    decision: str | None = None,
+    busqueda: str | None = None,
+    id_concesionario: int | None = None,
+    id_asesor: int | None = None,
+    usuario: UsuarioActual = Depends(usuario_actual),
+    db: Session = Depends(get_db),
+) -> ConteoSolicitudesResponse:
+    """Total bajo los mismos filtros de `listar`, sin paginación:
+    alimenta la paginación server-side de las bandejas."""
+    return ConteoSolicitudesResponse(
+        total=SolicitudService(db).contar(
+            estado=estado,
+            decision=decision,
+            busqueda=busqueda,
+            concesionario_ids=usuario.concesionario_ids(),
+            asesor_ids=usuario.asesor_ids(),
+            asesor_cedula=usuario.cedula_asesor,
+            persona_desde=usuario.persona_desde_asesor,
+            filtro_id_concesionario=id_concesionario,
+            filtro_id_asesor=id_asesor,
+        )
+    )
+
+
+@router.post("/desembolso-masivo", response_model=DesembolsoMasivoResponse)
+def desembolso_masivo(
+    payload: DesembolsoMasivoRequest,
+    request: Request,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "contabilidad")),
+    db: Session = Depends(get_db),
+) -> DesembolsoMasivoResponse:
+    """Bandeja de operaciones: marca en bloque facturadas como
+    desembolsadas una vez radicado el cargue de garantías en RUNT Pro.
+    Cada ítem corre en su propio SAVEPOINT — una factura sin prenda u
+    oferta falla sin revertir el lote; el giro (cuenta + referencia)
+    llega después por webhook de tesorería o desde el detalle."""
+    resultados = DesembolsoService(db).desembolsar_masivo(
+        payload.id_solicitudes
+    )
+    procesadas = sum(1 for r in resultados if r["ok"])
+    for r in resultados:
+        auditar_acceso(
+            db,
+            usuario,
+            "desembolso_masivo",
+            f"solicitud {r['id_solicitud']}: "
+            + ("desembolsada" if r["ok"] else f"falló — {r['error']}"),
+            request,
+        )
+    db.commit()
+    return DesembolsoMasivoResponse(
+        procesadas=procesadas,
+        fallidas=len(resultados) - procesadas,
+        resultados=resultados,
+    )
+
+
 @router.get("/metricas/embudo", response_model=MetricasEmbudoResponse)
 def metricas_embudo(
     desde: datetime | None = None,
@@ -181,6 +264,24 @@ def metricas_embudo(
     )
 
 
+@router.get("/metricas/analitica", response_model=AnaliticaResponse)
+def metricas_analitica(
+    desde: date | None = None,
+    hasta: date | None = None,
+    usuario: UsuarioActual = Depends(requiere_roles("admin")),
+    db: Session = Depends(get_db),
+) -> AnaliticaResponse:
+    """Efectividad y perfil por sector — insumo para campañas.
+
+    Cruza todo el portafolio (cargue histórico + flujo normal) sin
+    alcance de sede/asesor: efectividad por sede/marca/asesor,
+    distribución de score e ingreso, causales de rechazo y
+    segmentación por dimensiones de campaña. `desde`/`hasta` acotan
+    por fecha de radicación (hasta inclusivo); sin ambos, devuelve el
+    histórico completo."""
+    return AnaliticaService(db).obtener(desde=desde, hasta=hasta)
+
+
 @router.get("/{id_solicitud}", response_model=SolicitudDetalleResponse)
 def detalle(
     id_solicitud: uuid.UUID,
@@ -209,6 +310,46 @@ def detalle(
         f"detalle solicitud {resultado.num_solicitud}", request,
     )
     return resultado
+
+
+@router.post(
+    "/simit",
+    response_model=SimitConsultaResponse,
+    response_model_exclude_none=True,
+)
+def consultar_simit(
+    payload: SimitConsultaRequest,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
+    servicio: EvaluacionService = Depends(get_evaluacion_service),
+) -> SimitConsultaResponse:
+    """Paso 3 de originación ("puerta SIMIT"): estado de cuenta de
+    tránsito de la persona. Reemplaza la verificación manual del
+    asesor en el portal — la consulta siempre es en línea (el paso es
+    inherentemente una visita al portal) y reutiliza el caché por
+    documento (SIMIT_CACHE_DIAS) que también escribe el precache del
+    consentimiento. Si el proveedor no responde, tiene_multas=None y
+    el frontend vuelve al popup manual."""
+    if not payload.autorizo_habeas:
+        raise ValidacionError(
+            "La consulta SIMIT requiere la autorización de tratamiento de datos (Habeas Data)."
+        )
+    if not get_settings().simit_habilitado:
+        return SimitConsultaResponse(habilitado=False)
+    try:
+        res = servicio.consultar_simit_en_linea(
+            payload.tipo_documento, payload.num_cedula
+        )
+    except DataCreditoError:
+        return SimitConsultaResponse(habilitado=True)
+    return SimitConsultaResponse(
+        habilitado=True,
+        tiene_multas=not res.paz_y_salvo,
+        total_deuda=res.total_deuda,
+        total_items=res.total_items,
+        origen=res.origen,
+    )
+
+
 
 
 @router.post("", response_model=CrearSolicitudResponse, status_code=status.HTTP_201_CREATED)
@@ -362,6 +503,21 @@ def datos_formalizacion(
     servicio.guardar_datos_formalizacion(id_solicitud, payload)
 
 
+@router.put("/{id_solicitud}/venta-contado", status_code=status.HTTP_204_NO_CONTENT)
+def venta_contado(
+    id_solicitud: uuid.UUID,
+    payload: VentaContadoRequest,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
+    db: Session = Depends(get_db),
+) -> None:
+    """Hoja de negocio de la venta de contado: vehículo, liquidación
+    (anticipo, retoma, otros gastos, ciudad de matrícula) y a quién se
+    expide la factura — puede ser un tercero ('facturar a')."""
+    servicio = SolicitudService(db)
+    servicio.verificar_alcance(id_solicitud, usuario)
+    servicio.guardar_venta_contado(id_solicitud, payload)
+
+
 @router.post("/{id_solicitud}/otp", response_model=GenerarOtpResponse, status_code=status.HTTP_201_CREATED)
 def generar_otp(
     id_solicitud: uuid.UUID,
@@ -415,6 +571,7 @@ def verificar_otp(
     except OtpError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
     uuid_firma = None
+    advertencia = None
     if payload.accion == "firma_pagare":
         solicitud = SolicitudRepository(db).obtener_detalle(id_solicitud)
         if solicitud is not None:
@@ -435,8 +592,102 @@ def verificar_otp(
         # generación falla, la firma queda sellada y el paquete se
         # puede regenerar sin repetir el OTP.
         db.commit()
-        _paquete_legalizacion(db, id_solicitud)
-    return VerificarOtpResponse(verificado=True, uuid_firma=uuid_firma)
+        advertencia = _paquete_legalizacion(db, id_solicitud)
+    return VerificarOtpResponse(
+        verificado=True, uuid_firma=uuid_firma, advertencia=advertencia
+    )
+
+
+@router.post(
+    "/{id_solicitud}/factura",
+    response_model=FacturaRegistradaResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def subir_factura(
+    id_solicitud: uuid.UUID,
+    request: Request,
+    archivo: UploadFile = File(...),
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
+    db: Session = Depends(get_db),
+) -> FacturaRegistradaResponse:
+    """Factura del vehículo emitida por el concesionario (tras la firma
+    del pagaré). El PDF se lee y verifica contra la solicitud: pre-llena
+    la prenda (motor/chasis/VIN/color) y mueve el ciclo a 'facturada'.
+    Re-subirla reemplaza el archivo vigente (antes del desembolso)."""
+    try:
+        SolicitudService(db).verificar_alcance(id_solicitud, usuario)
+    except (HTTPException, SolicitudNoEncontradaError):
+        auditar_acceso(
+            db, usuario, "acceso_denegado",
+            f"carga factura solicitud {id_solicitud}", request,
+        )
+        db.commit()  # persiste aunque el request termine en rollback
+        raise
+    servicio = FacturaService(db)
+    factura = servicio.registrar_factura(
+        id_solicitud, archivo, cargada_por=usuario.nombre
+    )
+    entrega = servicio.enviar_documentos_finales(id_solicitud)
+    auditar_acceso(
+        db, usuario, "carga_factura",
+        f"factura {archivo.filename} solicitud {id_solicitud}", request,
+    )
+    return FacturaRegistradaResponse(**factura, entrega_documentos=entrega)
+
+
+@router.get("/{id_solicitud}/factura")
+def descargar_factura(
+    id_solicitud: uuid.UUID,
+    request: Request,
+    usuario: UsuarioActual = Depends(usuario_actual),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    """El archivo de la factura vigente (sesión + alcance; 404 sin
+    factura — no se revela ni su existencia fuera del alcance)."""
+    try:
+        SolicitudService(db).verificar_alcance(id_solicitud, usuario)
+        ruta, mime, nombre = FacturaService(db).factura_archivo(id_solicitud)
+    except (HTTPException, SolicitudNoEncontradaError):
+        auditar_acceso(
+            db, usuario, "acceso_denegado",
+            f"factura solicitud {id_solicitud}", request,
+        )
+        db.commit()  # persiste aunque el request termine en rollback
+        raise
+    auditar_acceso(
+        db, usuario, "acceso_factura",
+        f"factura solicitud {id_solicitud}", request,
+    )
+    return FileResponse(ruta, media_type=mime, filename=nombre)
+
+
+@router.patch("/{id_solicitud}/vehiculo", response_model=VehiculoPrendaResponse)
+def actualizar_prenda(
+    id_solicitud: uuid.UUID,
+    payload: PrendaVehiculoRequest,
+    request: Request,
+    usuario: UsuarioActual = Depends(requiere_roles("admin", "asesor", "concesionario")),
+    db: Session = Depends(get_db),
+) -> VehiculoPrendaResponse:
+    """Confirma/corrige la identificación de la moto prendada (motor,
+    chasis, VIN, color y también marca/referencia/modelo: la captura de
+    originación pudo no coincidir con la factura). Solo estando
+    'facturada'; regenera los documentos legales con los datos finales."""
+    try:
+        SolicitudService(db).verificar_alcance(id_solicitud, usuario)
+    except (HTTPException, SolicitudNoEncontradaError):
+        auditar_acceso(
+            db, usuario, "acceso_denegado",
+            f"prenda solicitud {id_solicitud}", request,
+        )
+        db.commit()  # persiste aunque el request termine en rollback
+        raise
+    vehiculo = FacturaService(db).actualizar_prenda(id_solicitud, payload)
+    auditar_acceso(
+        db, usuario, "actualiza_prenda",
+        f"datos prenda solicitud {id_solicitud}", request,
+    )
+    return VehiculoPrendaResponse(**vehiculo)
 
 
 @router.post("/{id_solicitud}/desembolso", response_model=DesembolsoResponse, status_code=status.HTTP_201_CREATED)

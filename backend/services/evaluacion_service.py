@@ -38,6 +38,7 @@ from backend.integrations.simit.client import (
     ResultadoSimit,
     crear_cliente_simit,
 )
+from backend.repositories.consulta_simit_repository import ConsultaSimitRepository
 from backend.integrations.simit.mock_simit import resultado_mock as simit_mock
 from backend.models.buro_models import HDC_CODIGO_CONSULTA_EFECTIVA, RespuestaHDC, RespuestaValorIngreso
 from backend.models.enums import Causal, Decision, DecisionFinal, Ocupacion, TipoContrato, TipoIdentificacion
@@ -231,11 +232,14 @@ class EvaluacionService:
         solicitud: Solicitud,
         en_linea: bool,
         escenario_mock: str | None,
+        id_solicitud=None,
     ) -> ResultadoSimit | None:
         """Paz y salvo de tránsito antes de gastar la consulta de buró.
 
-        Sin credenciales o en demo responde el mock; en línea usa el
-        proveedor de `simit_proveedor` (hoy PlacaPi). Si el proveedor
+        Declarado en la solicitud → rechazo sintético; en demo responde
+        el mock por escenario (SIMIT_MOCK_EN_DEMO); en línea usa el
+        proveedor de `simit_proveedor` con el caché por documento (el
+        precache del consentimiento ya dejó la fila). Si el proveedor
         falla: fail-open por defecto (la evaluación sigue sin el
         pre-filtro), salvo simit_requerido.
         """
@@ -250,16 +254,26 @@ class EvaluacionService:
                 total_items=0,
                 origen="declarado en la solicitud",
             )
-        if not en_linea:
+        # El mock por escenario solo aplica a la evaluación en demo: la
+        # puerta SIMIT del paso 3 y el precache del consentimiento
+        # consultan siempre el proveedor real.
+        if self.settings.environment == "demo" and self.settings.simit_mock_en_demo:
             return simit_mock(escenario_mock)
-        if not self.settings.simit_api_key:
+        if not en_linea:
+            return None
+        if (
+            (self.settings.simit_proveedor or "").lower() == "placapi"
+            and not self.settings.simit_api_key
+        ):
             logger.warning(
                 "SIMIT en línea sin API key (SIMIT_API_KEY): se omite el pre-filtro"
             )
             return None
         try:
-            return crear_cliente_simit(self.settings).estado_cuenta_transito(
-                solicitud.tipo_id, solicitud.numero_id
+            return self.consultar_simit_en_linea(
+                solicitud.tipo_id,
+                solicitud.numero_id,
+                id_solicitud=id_solicitud,
             )
         except DataCreditoError as exc:
             if self.settings.simit_requerido:
@@ -271,6 +285,46 @@ class EvaluacionService:
                 exc.message,
             )
             return None
+
+    def consultar_simit_en_linea(
+        self,
+        tipo_id: TipoIdentificacion,
+        numero_id: str,
+        id_solicitud=None,
+        usar_cache: bool = True,
+    ) -> ResultadoSimit:
+        """Proveedor SIMIT configurado con caché por documento.
+
+        A diferencia de `_consultar_simit` (que decide mock/fail-open
+        para la evaluación), este método propaga `DataCreditoError`:
+        lo usan la evaluación en línea y el precache que corre en
+        background al registrar el consentimiento Habeas Data.
+        """
+        repo = (
+            ConsultaSimitRepository(self.db)
+            if self.db is not None and self.settings.simit_cache_dias > 0
+            else None
+        )
+        if usar_cache and repo is not None:
+            previa = repo.ultima_vigente(
+                tipo_id.value, numero_id, self.settings.simit_cache_dias
+            )
+            if previa is not None:
+                logger.info(
+                    "Reuso de consulta SIMIT vigente",
+                    extra={
+                        "numero_id": numero_id,
+                        "consulta_id": previa.id_consulta,
+                        "fecha_consulta": previa.fecha_consulta.isoformat(),
+                    },
+                )
+                return repo.a_resultado(previa)
+        resultado = crear_cliente_simit(self.settings).estado_cuenta_transito(
+            tipo_id, numero_id
+        )
+        if repo is not None:
+            repo.registrar(tipo_id.value, numero_id, id_solicitud, resultado)
+        return resultado
 
     def _rechazo_simit(
         self, solicitud: Solicitud, simit: ResultadoSimit
@@ -358,7 +412,9 @@ class EvaluacionService:
 
         params = self.store.cargar()
         en_linea = req.consultar_experian or self.settings.environment == "produccion"
-        simit = self._consultar_simit(solicitud, en_linea, req.escenario_mock)
+        simit = self._consultar_simit(
+            solicitud, en_linea, req.escenario_mock, id_solicitud=id_solicitud
+        )
         origen = "evaluacion"
         if simit is not None and not simit.paz_y_salvo:
             resultado = self._rechazo_simit(solicitud, simit)

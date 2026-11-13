@@ -51,6 +51,29 @@ _ESTADOS_EDITABLES = {"activo", "bloqueado", "inactivo"}
 _SIN_CAMBIO = object()
 
 
+def _normalizar_marcas(
+    marcas: list[str] | None, marca_legado: str | None
+) -> list[str]:
+    """Conjunto de marcas de la ficha: limpia espacios, deduplica
+    (case-insensitive) y conserva el orden recibido — la primera queda
+    como principal en `usuario.marca`. `marcas` (nuevo) gana sobre
+    `marca` (legado, valor único)."""
+    fuente = (
+        marcas
+        if marcas is not None
+        else ([marca_legado] if marca_legado else [])
+    )
+    vistas: set[str] = set()
+    out: list[str] = []
+    for m in fuente:
+        nombre = " ".join(str(m).split()).strip()[:120]
+        clave = nombre.upper()
+        if nombre and clave not in vistas:
+            vistas.add(clave)
+            out.append(nombre)
+    return out
+
+
 class UsuarioService:
     def __init__(self, db: Session):
         self.db = db
@@ -66,7 +89,13 @@ class UsuarioService:
                 self._sede_del_actor(actor)
             )
         )
-        return [self._gestion(u) for u in usuarios]
+        marcas_map = self.repo.marcas_por_usuarios(
+            [u.id_usuario for u in usuarios]
+        )
+        return [
+            self._gestion(u, marcas_map.get(u.id_usuario, []))
+            for u in usuarios
+        ]
 
     def opciones(
         self, actor: UsuarioActual
@@ -97,6 +126,7 @@ class UsuarioService:
                     )
                     for a in self.repo.asesores()
                 ],
+                marcas=self.repo.marcas(),
             )
         sede = self._sede_del_actor(actor)
         rol_asesor = self.repo.rol_por_nombre("asesor")
@@ -131,6 +161,7 @@ class UsuarioService:
                 )
                 for a in self.repo.asesores_de_concesionario(sede)
             ],
+            marcas=self.repo.marcas(),
         )
 
     def crear(
@@ -152,6 +183,7 @@ class UsuarioService:
         self._validar_roles(payload.roles)
         if "asesor" in payload.roles:
             self._validar_ficha_asesor(payload)
+        marcas = _normalizar_marcas(payload.marcas, payload.marca)
 
         usuario = self.repo.guardar(
             Usuario(
@@ -160,10 +192,15 @@ class UsuarioService:
                 hash_contrasena=self._hash(payload.contrasena),
                 estado="activo",
                 nombre_completo=payload.nombre.strip(),
+                cedula=(payload.cedula or "").strip() or None,
+                marca=marcas[0] if marcas else None,
+                sede=(payload.sede or "").strip() or None,
+                observaciones=(payload.observaciones or "").strip() or None,
                 requiere_cambio_password=True,
             )
         )
         self.repo.asignar_roles(usuario, payload.roles)
+        self.repo.asignar_marcas(usuario, marcas)
         self._vincular_sede(
             usuario,
             payload.id_concesionario,
@@ -268,6 +305,22 @@ class UsuarioService:
                 usuario.intentos_fallidos_login = 0
         if payload.nombre is not None:
             usuario.nombre_completo = payload.nombre.strip()
+        nuevas_marcas = _SIN_CAMBIO
+        if "marcas" in cambios:
+            nuevas_marcas = _normalizar_marcas(payload.marcas, None)
+        elif "marca" in cambios:
+            nuevas_marcas = _normalizar_marcas(None, payload.marca)
+        if nuevas_marcas is not _SIN_CAMBIO:
+            usuario.marca = nuevas_marcas[0] if nuevas_marcas else None
+            self.repo.asignar_marcas(usuario, nuevas_marcas)
+        if "sede" in cambios:
+            usuario.sede = (payload.sede or "").strip() or None
+        if "observaciones" in cambios:
+            usuario.observaciones = (
+                (payload.observaciones or "").strip() or None
+            )
+        if "cedula" in cambios and payload.cedula is not None:
+            usuario.cedula = payload.cedula.strip() or None
         if ("cedula" in cambios or "telefono" in cambios) and (
             payload.cedula == "" or payload.telefono == ""
         ):
@@ -537,7 +590,9 @@ class UsuarioService:
             for fila in self.repo.historial_asesor(asesor.id_asesor)
         ]
 
-    def _gestion(self, usuario: Usuario) -> UsuarioGestionResponse:
+    def _gestion(
+        self, usuario: Usuario, marcas: list[str] | None = None
+    ) -> UsuarioGestionResponse:
         concesionario = self.repo.concesionario_de_asesor(
             usuario.id_usuario
         ) or self.repo.concesionario_de_concesionario(usuario.id_usuario)
@@ -571,8 +626,17 @@ class UsuarioService:
                 else None
             ),
             aliados=aliados,
-            cedula=asesor.num_cedula if asesor else None,
+            cedula=usuario.cedula or (asesor.num_cedula if asesor else None),
             telefono=asesor.telefono if asesor else None,
+            marca=usuario.marca,
+            marcas=(
+                marcas
+                if marcas is not None
+                else self.repo.marcas_de(usuario.id_usuario)
+            ),
+            sede=usuario.sede,
+            observaciones=usuario.observaciones,
+            fecha_creacion=usuario.fecha_creacion,
             requiere_cambio_password=usuario.requiere_cambio_password,
             fecha_ultimo_acceso=usuario.fecha_ultimo_acceso,
             bloqueado_hasta=usuario.bloqueado_hasta,

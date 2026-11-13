@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -16,6 +17,7 @@ import {
   CREDICONTADO_PLAZO_MIN,
   tramoCredicontado,
 } from '../../../shared/lib/credicontado'
+import { TASA_LINEA_MV } from '../../../shared/lib/lineas-credito'
 import { useCuentaAscendente } from '../../../shared/lib/useCuentaAscendente'
 import {
   marcaDeConcesionario,
@@ -37,6 +39,7 @@ import { MARCAS_VEHICULO, REFERENCIAS_VEHICULO } from '../model/concesionarios'
 import {
   generarOtp,
   guardarDatosFormalizacion,
+  listarVehiculos,
   obtenerOfertas,
   obtenerSolicitud,
   seleccionarOferta,
@@ -46,6 +49,7 @@ import {
 } from '../api/originacionApi'
 import DatosClienteFormalizacion from './DatosClienteFormalizacion'
 import SelectorMarca from './SelectorMarca'
+import SelectorVehiculo from './SelectorVehiculo'
 import { datosFormDesdeApi, type DatosForm } from '../model/datos-formalizacion'
 import type { DatosSolicitud } from './CrearSolicitud'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
@@ -148,15 +152,6 @@ function ResultadoCredito({
     }
   }, [pasoFirma])
 
-  // Celebración sonora: suena completa al mostrar el cupo aprobado; si
-  // el navegador bloquea el autoplay sin gesto previo queda en silencio.
-  useEffect(() => {
-    if (!aprobado || formalizacionIniciada) return
-    const audio = new Audio('/audio/aprobado.mp4')
-    audio.play().catch(() => undefined)
-    return () => audio.pause()
-  }, [aprobado, formalizacionIniciada])
-
   useEffect(() => {
     if (pasoFirma !== 'datos' || datosCargados) return
     const empresa = (
@@ -207,9 +202,12 @@ function ResultadoCredito({
   const cupoMaximo = ofertaElegible?.monto_aprobado
     ? Number(ofertaElegible.monto_aprobado)
     : resultado.montoSugerido
+  // Sin oferta del backend (demo o fallo de /ofertas) la tasa visible
+  // es la comercial de la línea elegida; una línea vieja o desconocida
+  // conserva la referencia del motor.
   const tasaOferta = ofertaElegible?.tasa_ofrecida
     ? Number(ofertaElegible.tasa_ofrecida)
-    : resultado.tasaMensual
+    : (TASA_LINEA_MV[solicitud?.lineaCredito ?? ''] ?? resultado.tasaMensual)
   // Credicontado financia a tasa cero (N/A en la tabla): el negocio
   // cobra cuota inicial más fondo de garantía en vez de intereses.
   const tasaEfectiva = esCredicontado ? 0 : tasaOferta
@@ -232,6 +230,32 @@ function ResultadoCredito({
     marcaSugerida(obtenerConcesionario()),
   )
   const [referencia, setReferencia] = useState('')
+  // Con catálogo de la marca la referencia se elige del listado de
+  // precios; 'manual' deja el campo libre para una moto no listada.
+  const [referenciaManual, setReferenciaManual] = useState(false)
+  const catalogoQuery = useQuery({
+    queryKey: ['vehiculos-catalogo', marca],
+    queryFn: () => listarVehiculos(marca || undefined),
+    enabled: aprobado && Boolean(marca),
+    staleTime: 10 * 60_000,
+  })
+  const catalogoVehiculos = catalogoQuery.data ?? []
+  // La fila del listado precarga la hoja de negocio: precio de lista,
+  // bono en pesos (descuento), SOAT, matrícula e impuesto. El asesor
+  // puede ajustar cualquier valor después.
+  const elegirVehiculo = (ref: string) => {
+    setReferencia(ref)
+    const v = catalogoVehiculos.find((c) => c.referencia === ref)
+    if (!v) return
+    setValorMoto(Number(v.precio_lista))
+    if (v.bono_pesos != null) {
+      setTipoDescuento('valor')
+      setDescuento(Number(v.bono_pesos))
+    }
+    if (v.soat != null) setSoat(Number(v.soat))
+    if (v.matricula != null) setMatricula(Number(v.matricula))
+    if (v.impuesto != null) setImpuestos(Number(v.impuesto))
+  }
   const [modelo, setModelo] = useState<number | null>(null)
   const [color, setColor] = useState('')
   const [valorMoto, setValorMoto] = useState<number | null>(
@@ -248,6 +272,11 @@ function ResultadoCredito({
   const [soat, setSoat] = useState<number | null>(0)
   const [impuestos, setImpuestos] = useState<number | null>(0)
   const [avalPct, setAvalPct] = useState<number | null>(0)
+  // Retoma: el cliente entrega su moto usada como parte de pago. Su
+  // valor abona primero la obligación inicial (en Credicontado cubre la
+  // cuota inicial en efectivo) y el excedente reduce lo financiado.
+  const [entregaRetoma, setEntregaRetoma] = useState(false)
+  const [valorRetoma, setValorRetoma] = useState<number | null>(0)
   // Fee de originación fijo ($200.000): no lo edita el asesor, pero sí
   // entra al saldo y se muestra al cliente en el panel de la moto.
   const gastosAdmin = GASTOS_ADMINISTRATIVOS
@@ -275,7 +304,16 @@ function ResultadoCredito({
   const cuotaInicialValor = tramo
     ? Math.round(saldoBase * tramo.cuotaInicial)
     : 0
-  const saldoFinanciar = Math.round(saldoBase - cuotaInicialValor)
+  // La retoma es un pago del cliente: cubre primero la cuota inicial
+  // obligatoria y lo que sobre baja el saldo financiado. En crédito sin
+  // cuota inicial baja directamente el saldo.
+  const retomaValor = entregaRetoma ? (valorRetoma ?? 0) : 0
+  const saldoFinanciar = Math.round(
+    Math.max(0, saldoBase - Math.max(cuotaInicialValor, retomaValor)),
+  )
+  // Lo que aún debe poner en efectivo quien entrega una retoma menor a
+  // la cuota inicial exigida (0 para crédito normal o retoma suficiente).
+  const cuotaInicialEfectivo = Math.max(0, cuotaInicialValor - retomaValor)
   const fondoGarantiaValor = tramo
     ? Math.round(saldoFinanciar * tramo.fondo)
     : 0
@@ -295,7 +333,7 @@ function ResultadoCredito({
     }
   }, [ofertaElegible?.plazo_ofrecido])
 
-  // Credicontado solo financia a 4–12 meses: el plazo heredado de la
+  // Credicontado solo financia a 1–12 meses: el plazo heredado de la
   // evaluación o del simulador (que llega hasta 48) se topa al rango.
   useEffect(() => {
     if (esCredicontado) {
@@ -310,7 +348,7 @@ function ResultadoCredito({
 
   // El máximo de plazo no es un rango comercial quemado: es el plazo
   // que el motor evaluó y la oferta fijó (el cliente solo puede bajar).
-  // En Credicontado lo impone la tabla: 4–12 meses.
+  // En Credicontado lo impone la tabla: 1–12 meses.
   const plazoMinimo = esCredicontado ? CREDICONTADO_PLAZO_MIN : 12
   const plazoMaximo = esCredicontado
     ? CREDICONTADO_PLAZO_MAX
@@ -374,6 +412,7 @@ function ResultadoCredito({
         impuestos,
         aval_pct: avalPct,
         gastos_administrativos: gastosAdmin,
+        valor_retoma: retomaValor || null,
       },
     ).then(() => oferta)
   }
@@ -444,12 +483,23 @@ function ResultadoCredito({
     // código sigue vigente para reintentar tras corregir.
     confirmarOferta()
       .then((oferta) =>
-        verificarOtp(idSolicitud, otpCodigo).then(() => {
-          emitirToast({
-            tipo: 'exito',
-            titulo: 'Pagaré firmado',
-            mensaje: 'La oferta y el vehículo quedaron formalizados.',
-          })
+        verificarOtp(idSolicitud, otpCodigo).then((resp) => {
+          if (resp.advertencia) {
+            // La firma quedó sellada pero el paquete legal no salió
+            // completo: sin este aviso la solicitud parecería firmada
+            // y sin documentos.
+            emitirToast({
+              tipo: 'error',
+              titulo: 'Pagaré firmado con advertencia',
+              mensaje: resp.advertencia,
+            })
+          } else {
+            emitirToast({
+              tipo: 'exito',
+              titulo: 'Pagaré firmado',
+              mensaje: 'La oferta y el vehículo quedaron formalizados.',
+            })
+          }
           onFormalizar(oferta)
         }),
       )
@@ -740,24 +790,52 @@ function ResultadoCredito({
                     <SelectorMarca
                       value={marca}
                       disabled={formalizacionIniciada || confirmando}
-                      onChange={setMarca}
+                      onChange={(m) => {
+                        setMarca(m)
+                        setReferencia('')
+                        setReferenciaManual(false)
+                      }}
                     />
                   </label>
                   <label>
                     Referencia
-                    <input
-                      className="input-base"
-                      value={referencia}
-                      disabled={formalizacionIniciada || confirmando}
-                      placeholder="PULSAR NS 160FI UG"
-                      list="rc-referencias"
-                      onChange={(e) => setReferencia(e.target.value)}
-                    />
-                    <datalist id="rc-referencias">
-                      {(REFERENCIAS_VEHICULO[marca] ?? []).map((r) => (
-                        <option key={r} value={r} />
-                      ))}
-                    </datalist>
+                    {catalogoVehiculos.length > 0 && !referenciaManual ? (
+                      <SelectorVehiculo
+                        vehiculos={catalogoVehiculos}
+                        value={referencia}
+                        disabled={formalizacionIniciada || confirmando}
+                        onElegir={elegirVehiculo}
+                        onOtra={() => {
+                          setReferencia('')
+                          setReferenciaManual(true)
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <input
+                          className="input-base"
+                          value={referencia}
+                          disabled={formalizacionIniciada || confirmando}
+                          placeholder="PULSAR NS 160FI UG"
+                          list="rc-referencias"
+                          onChange={(e) => setReferencia(e.target.value)}
+                        />
+                        <datalist id="rc-referencias">
+                          {(REFERENCIAS_VEHICULO[marca] ?? []).map((r) => (
+                            <option key={r} value={r} />
+                          ))}
+                        </datalist>
+                        {referenciaManual && catalogoVehiculos.length > 0 && (
+                          <button
+                            type="button"
+                            className="resultado-credito__listado-link"
+                            onClick={() => setReferenciaManual(false)}
+                          >
+                            Elegir del listado
+                          </button>
+                        )}
+                      </>
+                    )}
                   </label>
                   <label>
                     Modelo (año)
@@ -777,7 +855,8 @@ function ResultadoCredito({
                       value={color}
                       disabled={formalizacionIniciada || confirmando}
                       placeholder="NEGRO CRISTAL ONIX"
-                      onChange={(e) => setColor(e.target.value)}
+                      style={{ textTransform: 'uppercase' }}
+                      onChange={(e) => setColor(e.target.value.toUpperCase())}
                     />
                   </label>
                   <label>
@@ -910,6 +989,31 @@ function ResultadoCredito({
                       onValor={(n) => setAvalPct(n)}
                     />
                   </label>
+                  <div className="resultado-credito__retoma">
+                    <label className="resultado-credito__retoma-check">
+                      <input
+                        type="checkbox"
+                        checked={entregaRetoma}
+                        disabled={formalizacionIniciada || confirmando}
+                        onChange={(e) => setEntregaRetoma(e.target.checked)}
+                      />
+                      El cliente entrega moto en retoma
+                    </label>
+                  </div>
+                  {entregaRetoma && (
+                    <label>
+                      Valor de retoma
+                      <CampoNumerico
+                        className="input-base"
+                        formatoMiles
+                        minimo={0}
+                        value={valorRetoma}
+                        disabled={formalizacionIniciada || confirmando}
+                        placeholder="1.500.000"
+                        onValor={(n) => setValorRetoma(n)}
+                      />
+                    </label>
+                  )}
                   <div className="resultado-credito__plazo">
                     <label htmlFor="rc-plazo">Plazo</label>
                     <CampoNumerico
@@ -1022,6 +1126,18 @@ function ResultadoCredito({
                     <dd>{currency(fondoGarantiaValor)}</dd>
                   </div>
                 </>
+              )}
+              {retomaValor > 0 && (
+                <div>
+                  <dt>Retoma (moto del cliente)</dt>
+                  <dd>−{currency(retomaValor)}</dd>
+                </div>
+              )}
+              {tramo && retomaValor > 0 && (
+                <div>
+                  <dt>Cuota inicial en efectivo</dt>
+                  <dd>{currency(cuotaInicialEfectivo)}</dd>
+                </div>
               )}
               <div className="resultado-credito__vehiculo-saldo">
                 <dt>Saldo a financiar</dt>

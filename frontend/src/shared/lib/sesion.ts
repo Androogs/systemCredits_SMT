@@ -10,6 +10,8 @@
  * - asesor: opera el flujo solo sobre sus propias radicaciones; NO ve
  *   score ni causales del motor (dato sensible del cliente).
  * - aliado: solo lectura, acotada a los concesionarios de su aliado.
+ * - contabilidad: back-office de operaciones — bandeja de desembolsos
+ *   y cargues de garantías; NO ve score ni causales del motor.
  *
  * La UI usa el rol solo para pintar: la autorización real es la API
  * (un rol manipulado en localStorage recibe 403/404 del servidor).
@@ -17,19 +19,21 @@
 
 import { useSyncExternalStore } from 'react'
 
-export type RolSesion = 'admin' | 'asesor' | 'aliado' | 'concesionario'
+export type RolSesion =
+  'admin' | 'asesor' | 'aliado' | 'concesionario' | 'contabilidad'
 
 const ROLES_PANEL: readonly RolSesion[] = [
   'admin',
   'asesor',
   'aliado',
   'concesionario',
+  'contabilidad',
 ]
 
 const CLAVE_TOKEN = 'uw_token'
 const CLAVE_REFRESH = 'uw_refresh'
 const CLAVE_USUARIO = 'uw_usuario'
-const EVENTO_SESION = 'inversiones-pacifico:sesion'
+const EVENTO_SESION = 'sumoto:sesion'
 
 /* ---------- Usuario autenticado ---------- */
 
@@ -283,7 +287,7 @@ export function contextoRadicacion(): { asesor: string; sede: string } {
 const CLAVE_CONCESIONARIO = 'uw_concesionario'
 /** Sede de respaldo cuando el usuario no trae concesionario (admin sin
  * sede): marca inferida para precargar el vehículo del financiamiento. */
-export const CONCESIONARIO_DEFECTO = 'Sumoto Palmira'
+export const CONCESIONARIO_DEFECTO = 'Sumoto S.A'
 
 /** Sede operativa: la del usuario autenticado (asesor/aliado) o el
  * respaldo local. Ya no es un dato que el cliente elija libremente. */

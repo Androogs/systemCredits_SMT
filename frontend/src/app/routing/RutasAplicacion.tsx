@@ -23,6 +23,9 @@ const Clientes = lazy(() => import('../../pages/Clientes'))
 const Riesgo = lazy(() => import('../../pages/Riesgo'))
 const Estados = lazy(() => import('../../pages/Estados'))
 const Ajustes = lazy(() => import('../../pages/Ajustes'))
+const Comisiones = lazy(() => import('../../pages/Comisiones'))
+const Desembolsos = lazy(() => import('../../pages/Desembolsos'))
+const Analitica = lazy(() => import('../../pages/Analitica'))
 
 function RequireAuth({ children }: { children: ReactNode }) {
   if (!haySesionVigente()) return <Navigate to="/login" replace />
@@ -131,6 +134,34 @@ export default function RutasAplicacion() {
           element={
             <RequireRol roles={['admin', 'asesor', 'concesionario']}>
               <Simulador />
+            </RequireRol>
+          }
+        />
+        <Route
+          path="comisiones"
+          element={
+            <RequireRol roles={['admin', 'asesor']}>
+              <Comisiones />
+            </RequireRol>
+          }
+        />
+        {/* Bandeja de operaciones: facturada → desembolsada y cargue
+            de garantías al SGM (RUNT Pro). */}
+        <Route
+          path="desembolsos"
+          element={
+            <RequireRol roles={['admin', 'contabilidad']}>
+              <Desembolsos />
+            </RequireRol>
+          }
+        />
+        {/* Analítica del portafolio: efectividad por sede/asesor y
+            perfil del cliente para campañas — expediente interno. */}
+        <Route
+          path="analitica"
+          element={
+            <RequireRol roles={['admin']}>
+              <Analitica />
             </RequireRol>
           }
         />

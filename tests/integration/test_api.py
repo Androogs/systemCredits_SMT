@@ -760,7 +760,7 @@ def test_actualizar_solicitud_completa_datos_sin_duplicar(client):
                 "correo": "c@correo.com",
             },
             "consentimiento": {"aceptado": True},
-            "linea_credito": "Inversiones Pacífico",
+            "linea_credito": "Crédito Directo",
             "destino_credito": "Financiamiento de Vehículos",
             "plazo_deseado_meses": 36,
         },
@@ -772,7 +772,7 @@ def test_actualizar_solicitud_completa_datos_sin_duplicar(client):
     assert d["datos_laborales"]["ingreso_mensual"] == "7200000.00"
     assert d["datos_laborales"]["meses_continuidad"] == 18
     assert d["contacto_vivienda"]["telefono"] == "3001234567"
-    assert d["linea_credito"] == "Inversiones Pacífico"
+    assert d["linea_credito"] == "Crédito Directo"
     assert d["plazo_deseado_meses"] == 36
     assert len(d["consentimientos"]) == 1
     # Sigue siendo una sola solicitud: no hubo radicación duplicada.
@@ -882,7 +882,11 @@ def test_evaluar_genera_documentos_de_radicacion(client, tmp_path, monkeypatch):
     db = db_session.SessionLocal()
     try:
         docs = db.query(DocumentoEvidencia).all()
-        assert {d.tipo for d in docs} == {"doc_autorizacion", "doc_solicitud"}
+        assert {d.tipo for d in docs} == {
+            "doc_autorizacion",
+            "doc_autorizacion_datos",
+            "doc_solicitud",
+        }
         for d in docs:
             assert (tmp_path / "evid" / d.ruta).exists(), d.tipo
             assert d.hash_sha256

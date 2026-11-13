@@ -5,7 +5,7 @@ CREATE TYPE rol_usuario AS ENUM ('cliente', 'asesor', 'aliado', 'admin', 'contab
 CREATE TYPE estado_usuario AS ENUM ('pendiente_verificacion', 'activo', 'bloqueado', 'inactivo');
 CREATE TYPE ocupacion_cliente AS ENUM ('empleado', 'independiente', 'pensionado', 'fuerzas_militares');
 CREATE TYPE decision_credito AS ENUM ('aprobado', 'rechazado', 'perfil_gris');
-CREATE TYPE estado_solicitud AS ENUM ('creada', 'en_evaluacion', 'aprobada', 'rechazada', 'en_revision', 'desembolsada', 'cancelada');
+CREATE TYPE estado_solicitud AS ENUM ('creada', 'en_evaluacion', 'aprobada', 'facturada', 'rechazada', 'en_revision', 'desembolsada', 'cancelada');
 CREATE TYPE tipo_contrato AS ENUM ('indefinido', 'fijo', 'obra_labor', 'no_aplica');
 CREATE TYPE estado_otp AS ENUM ('pendiente', 'aprobado', 'expirado', 'fallido');
 CREATE TYPE tipo_aliado AS ENUM ('fintech', 'banco', 'cooperativa', 'libranza', 'bnpl', 'otro');
@@ -44,6 +44,10 @@ CREATE TABLE usuario (
     correo CITEXT NOT NULL UNIQUE,
     hash_contrasena TEXT NOT NULL,
     nombre_completo VARCHAR(180),
+    cedula VARCHAR(40),
+    marca VARCHAR(120),
+    sede VARCHAR(120),
+    observaciones TEXT,
     estado estado_usuario NOT NULL DEFAULT 'pendiente_verificacion',
     fecha_verificacion TIMESTAMPTZ,
     fecha_ultimo_acceso TIMESTAMPTZ,
@@ -61,6 +65,16 @@ CREATE TABLE usuario_rol (
     id_rol SMALLINT NOT NULL REFERENCES rol(id_rol),
     fecha_asignacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id_usuario, id_rol)
+);
+
+-- Marcas que atiende el usuario (ficha general). usuario.marca queda
+-- como la principal — la primera de este conjunto — y es a la que
+-- pertenece la etiqueta de usuario.sede.
+CREATE TABLE usuario_marca (
+    id_usuario UUID NOT NULL REFERENCES usuario(id_usuario) ON DELETE CASCADE,
+    marca VARCHAR(120) NOT NULL,
+    fecha_asignacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id_usuario, marca)
 );
 
 CREATE TABLE archivo_carga (
@@ -227,6 +241,30 @@ CREATE TABLE solicitud_credito (
     fecha_hora_firma TIMESTAMPTZ,
     uuid_firma UUID UNIQUE,
     autenticacion VARCHAR(100),
+    -- Factura del vehículo (emitida por el concesionario tras la firma
+    -- del pagaré): el PDF se parsea y verifica contra la solicitud.
+    factura_ruta VARCHAR(512),
+    factura_nombre VARCHAR(255),
+    factura_mime VARCHAR(120),
+    factura_hash VARCHAR(64),
+    factura_cargada_en TIMESTAMPTZ,
+    factura_cargada_por VARCHAR(180),
+    factura_verificacion JSONB,
+    -- Trazabilidad del cargue de garantías mobiliarias al SGM (RUNT
+    -- Pro): cuándo y en qué lote salió la prenda en un Excel de cargue.
+    garantia_runt_exportada_en TIMESTAMPTZ,
+    garantia_runt_lote VARCHAR(30),
+    -- A quién se expide la factura en la venta de contado (puede ser
+    -- distinto del cliente), asesor externo y observaciones de la venta.
+    facturar_a_documento VARCHAR(30),
+    facturar_a_nombre VARCHAR(180),
+    facturar_a2_documento VARCHAR(30),
+    facturar_a2_nombre VARCHAR(180),
+    asesor_externo VARCHAR(180),
+    observaciones_venta TEXT,
+    -- Procedencia: 'flujo' radicada en la app, 'cargue_historico'
+    -- importada del log de transacciones para la analítica.
+    origen VARCHAR(30) NOT NULL DEFAULT 'flujo',
     CONSTRAINT ck_solicitud_moneda CHECK (moneda ~ '^[A-Z]{3}$'),
     CONSTRAINT ck_solicitud_plazo_deseado CHECK (plazo_deseado_meses IS NULL OR plazo_deseado_meses > 0)
 );
@@ -426,7 +464,7 @@ CREATE TABLE evaluacion_credito (
     vigente BOOLEAN NOT NULL DEFAULT TRUE,
     id_usuario_evaluador UUID REFERENCES usuario(id_usuario) ON DELETE SET NULL,
     fecha_evaluacion TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    origen_evaluacion VARCHAR(40) NOT NULL DEFAULT 'motor_pacifico',
+    origen_evaluacion VARCHAR(40) NOT NULL DEFAULT 'motor_sumoto',
     quanto NUMERIC(18,2),
     quanto3_medio NUMERIC(18,2),
     valor_ingreso NUMERIC(18,2),
@@ -572,6 +610,11 @@ CREATE TABLE producto_vehiculo (
     referencia VARCHAR(120),
     modelo VARCHAR(30),
     color VARCHAR(60),
+    -- Identificación de la moto prendada: llega con la factura (o se
+    -- confirma a mano antes del desembolso); no se captura en originación.
+    numero_motor VARCHAR(60),
+    numero_chasis VARCHAR(60),
+    vin VARCHAR(30),
     valor_moto_iva NUMERIC(18,2),
     descuento_pesos NUMERIC(18,2) NOT NULL DEFAULT 0,
     descuento_pct NUMERIC(8,4) NOT NULL DEFAULT 0,
@@ -582,7 +625,30 @@ CREATE TABLE producto_vehiculo (
     -- Captura del % de fondo de garantía al elegir la oferta; el
     -- desembolso lo propaga a credito_financiacion.aval_pct.
     aval_pct NUMERIC(8,4),
+    -- Liquidación de la venta de contado (cierre de venta).
+    otros_gastos NUMERIC(18,2) NOT NULL DEFAULT 0,
+    anticipo NUMERIC(18,2) NOT NULL DEFAULT 0,
+    retoma_valor NUMERIC(18,2) NOT NULL DEFAULT 0,
+    ciudad_matricula VARCHAR(120),
     CONSTRAINT ck_vehiculo_descuento_pct CHECK (descuento_pct BETWEEN 0 AND 100)
+);
+
+-- Catálogo comercial de motos financiables (listado de precios por
+-- vigencia): la originación lo consulta para precargar la hoja de
+-- negocio al elegir la referencia — valor de la moto, bono en pesos,
+-- SOAT, matrícula e impuesto de rodamiento.
+CREATE TABLE vehiculo_catalogo (
+    id_vehiculo_catalogo BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    marca VARCHAR(60) NOT NULL,
+    referencia VARCHAR(120) NOT NULL,
+    precio_lista NUMERIC(18,2) NOT NULL,
+    bono_pesos NUMERIC(18,2),
+    soat NUMERIC(18,2),
+    matricula NUMERIC(18,2),
+    impuesto NUMERIC(18,2),
+    vigencia VARCHAR(30),
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    CONSTRAINT uq_vehiculo_catalogo UNIQUE (marca, referencia)
 );
 
 CREATE TABLE credito_financiacion (
@@ -1130,6 +1196,26 @@ CREATE TABLE consulta_buro (
 
 CREATE INDEX idx_consulta_buro_persona ON consulta_buro (tipo_id, numero_id, fecha_consulta DESC);
 
+-- =====================================================================
+-- Resultado del estado de cuenta de tránsito SIMIT por persona
+-- (migración 0024). El proveedor "portal" es gratis pero frágil: el
+-- resultado se guarda por documento durante SIMIT_CACHE_DIAS para no
+-- repetir la consulta en cada re-evaluación y dejar trazado qué
+-- respondió el SIMIT. resultado_json guarda el detalle normalizado
+-- (paz_y_salvo, total_deuda, total_items, origen), no la cruda.
+-- =====================================================================
+CREATE TABLE consulta_simit (
+    id_consulta        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    tipo_id            VARCHAR(2)  NOT NULL,
+    numero_id          VARCHAR(20) NOT NULL,
+    id_solicitud       UUID        REFERENCES solicitud_credito (id_solicitud),
+    fecha_consulta     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    origen             VARCHAR(30) NOT NULL,
+    resultado_json     TEXT        NOT NULL
+);
+
+CREATE INDEX idx_consulta_simit_persona ON consulta_simit (tipo_id, numero_id, fecha_consulta DESC);
+
 -- Captura remota de evidencias documentales (cédula frontal/reverso y
 -- video de prueba de vida) desde el celular del cliente, por link con token.
 CREATE TABLE sesion_captura (
@@ -1149,7 +1235,7 @@ CREATE TABLE documento_evidencia (
     id_evidencia    BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     id_sesion       UUID         NOT NULL REFERENCES sesion_captura (id_sesion) ON DELETE CASCADE,
     id_solicitud    UUID         REFERENCES solicitud_credito (id_solicitud),
-    tipo            VARCHAR(20)  NOT NULL,
+    tipo            VARCHAR(40)  NOT NULL,
     ruta            VARCHAR(255) NOT NULL,
     nombre_original VARCHAR(255),
     mime            VARCHAR(120) NOT NULL,
@@ -1198,3 +1284,23 @@ CREATE TABLE token_recuperacion (
 
 CREATE INDEX idx_recuperacion_hash    ON token_recuperacion (token_hash);
 CREATE INDEX idx_recuperacion_usuario ON token_recuperacion (id_usuario);
+
+-- =====================================================================
+-- Cargue masivo de garantías mobiliarias a RUNTPRO (archivo plano RNGM)
+-- =====================================================================
+-- Consecutivo diario del nombre de archivo <NIT>RGM<###><AAAAMMDD>.txt
+-- y auditoría de cada archivo generado (insumo de la "Consulta de
+-- solicitudes de cargue" en RUNTPRO).
+CREATE TABLE rngm_archivo_lote (
+    id_lote        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    fecha_corte    DATE         NOT NULL,
+    consecutivo    SMALLINT     NOT NULL,
+    nombre_archivo VARCHAR(40)  NOT NULL UNIQUE,
+    tipo_novedad   VARCHAR(1)   NOT NULL DEFAULT 'R',
+    n_garantias    INTEGER      NOT NULL,
+    n_registros    INTEGER      NOT NULL,
+    n_advertencias INTEGER      NOT NULL DEFAULT 0,
+    generado_por   VARCHAR(180),
+    creado_en      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT uq_rngm_fecha_consecutivo UNIQUE (fecha_corte, consecutivo)
+);

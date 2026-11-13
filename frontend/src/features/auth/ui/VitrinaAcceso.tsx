@@ -12,7 +12,7 @@ export default function VitrinaAcceso() {
       <div className="access-showcase-glow" aria-hidden="true" />
       <div className="access-brand">
         <img
-          src={MARCA.logoClaro}
+          src={MARCA.logoOscuro}
           alt={MARCA.razonSocial}
           width="900"
           height="129"
@@ -40,25 +40,17 @@ export default function VitrinaAcceso() {
             width="228"
             height="148"
             rx="16"
-            fill="#19255b"
-            fillOpacity=".04"
-            stroke="#19255b"
-            strokeOpacity=".3"
+            fill="white"
+            fillOpacity=".1"
+            stroke="white"
+            strokeOpacity=".55"
             strokeWidth="2"
           />
-          <rect
-            x="120"
-            y="39"
-            width="46"
-            height="7"
-            rx="3.5"
-            fill="#0052a1"
-            fillOpacity=".85"
-          />
+          <rect x="120" y="39" width="46" height="7" rx="3.5" fill="#C5DAF5" />
           <path
             d="M120 62H250"
-            stroke="#19255b"
-            strokeOpacity=".32"
+            stroke="white"
+            strokeOpacity=".5"
             strokeLinecap="round"
             strokeWidth="3"
           />
@@ -68,25 +60,25 @@ export default function VitrinaAcceso() {
             width="84"
             height="67"
             rx="9"
-            fill="#0052a1"
-            fillOpacity=".12"
+            fill="#19255b"
+            fillOpacity=".28"
           />
           <path
             d="M132 131V117M151 131V105M170 131V111M189 131V94"
-            stroke="#2f74c0"
+            stroke="#C5DAF5"
             strokeLinecap="round"
             strokeWidth="7"
           />
           <path
             d="M220 91H294M220 109H278M220 127H287"
-            stroke="#19255b"
-            strokeOpacity=".5"
+            stroke="white"
+            strokeOpacity=".8"
             strokeLinecap="round"
             strokeWidth="5"
           />
           <path
             d="M220 91H260"
-            stroke="#0052a1"
+            stroke="white"
             strokeLinecap="round"
             strokeWidth="5"
           />
@@ -94,22 +86,22 @@ export default function VitrinaAcceso() {
             cx="326"
             cy="58"
             r="35"
-            fill="#0052a1"
-            stroke="#ffffff"
+            fill="#ffffff"
+            stroke="#C5DAF5"
             strokeWidth="3"
           />
           <circle
             cx="326"
             cy="58"
             r="27"
-            stroke="white"
-            strokeOpacity=".55"
+            stroke="#0052a1"
+            strokeOpacity=".45"
             strokeWidth="1.5"
           />
           <text
             x="326"
             y="70"
-            fill="#ffffff"
+            fill="#0052a1"
             fontFamily="Roboto, Arial, sans-serif"
             fontSize="35"
             fontWeight="700"
@@ -119,8 +111,8 @@ export default function VitrinaAcceso() {
           </text>
           <path
             d="m78 35 3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7Z"
-            fill="#0052a1"
-            fillOpacity=".5"
+            fill="#ffffff"
+            fillOpacity=".9"
           />
         </svg>
       </div>

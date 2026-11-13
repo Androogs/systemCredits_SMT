@@ -1,6 +1,7 @@
 """Alta de solicitudes en el esquema SUMOTO y gestión de ofertas."""
 
 import logging
+import threading
 import uuid
 from datetime import UTC, datetime
 
@@ -14,7 +15,8 @@ from backend.db_models.models import (
     SolicitudContactoVivienda,
     SolicitudCredito,
 )
-from backend.models.enums import TIPOS_ID_PERSONA_JURIDICA, Causal
+from backend.config import get_settings
+from backend.models.enums import TIPOS_ID_PERSONA_JURIDICA, Causal, TipoIdentificacion
 from backend.models.solicitud_models import (
     CausalSolicitudResponse,
     ConsentimientoResponse,
@@ -28,12 +30,15 @@ from backend.models.solicitud_models import (
     EmbudoReevaluacionResponse,
     EtapaEmbudoResponse,
     EvaluacionResumenSolicitud,
+    FacturaResponse,
     MetricasEmbudoResponse,
     OfertaResponse,
     RechazoPoliticasRequest,
     SeleccionarOfertaRequest,
     SolicitudDetalleResponse,
     SolicitudResumenResponse,
+    VehiculoPrendaResponse,
+    VentaContadoRequest,
 )
 from backend.repositories.evaluacion_repository import EvaluacionRepository
 from backend.repositories.solicitud_repository import SolicitudRepository, oferta_expirada
@@ -151,6 +156,7 @@ def _resumen(
             laborales.meses_continuidad if laborales else None
         ),
         cuota_total=oferta_sel.cuota_mensual if oferta_sel else None,
+        monto_aprobado=oferta_sel.monto_aprobado if oferta_sel else None,
         evaluacion=_evaluacion_resumen(solicitud, ver_detalle_interno),
     )
 
@@ -171,6 +177,48 @@ def _desembolso_response(d) -> DesembolsoResponse | None:
         receptor=d.receptor,
         referencia_pago=d.referencia_pago,
         fecha_desembolso=d.fecha_desembolso,
+    )
+
+
+def _factura_response(solicitud) -> FacturaResponse | None:
+    """Metadatos + verificación persistida de la factura del vehículo;
+    el detalle se re-renderiza sin releer el PDF."""
+    if not solicitud.factura_ruta:
+        return None
+    verificacion = solicitud.factura_verificacion or None
+    return FacturaResponse(
+        nombre=solicitud.factura_nombre or "factura",
+        mime=solicitud.factura_mime or "application/octet-stream",
+        hash_sha256=solicitud.factura_hash or "",
+        cargada_en=solicitud.factura_cargada_en,
+        cargada_por=solicitud.factura_cargada_por or "",
+        verificacion=verificacion,
+    )
+
+
+def _vehiculo_response(vehiculo) -> VehiculoPrendaResponse | None:
+    """La moto que queda en garantía (prenda), pre-llenada por la
+    factura y confirmable en la tarjeta 'Datos de la prenda'."""
+    if vehiculo is None:
+        return None
+    return VehiculoPrendaResponse(
+        marca=vehiculo.marca,
+        referencia=vehiculo.referencia,
+        modelo=vehiculo.modelo,
+        color=vehiculo.color,
+        numero_motor=vehiculo.numero_motor,
+        numero_chasis=vehiculo.numero_chasis,
+        vin=vehiculo.vin,
+        valor_moto_iva=vehiculo.valor_moto_iva,
+        descuento_pesos=vehiculo.descuento_pesos,
+        accesorios=vehiculo.accesorios,
+        matricula=vehiculo.matricula,
+        soat=vehiculo.soat,
+        impuestos=vehiculo.impuestos,
+        otros_gastos=vehiculo.otros_gastos,
+        anticipo=vehiculo.anticipo,
+        retoma_valor=vehiculo.retoma_valor,
+        ciudad_matricula=vehiculo.ciudad_matricula,
     )
 
 
@@ -428,7 +476,49 @@ class SolicitudService:
         )
         self._db.add(consentimiento)
         self._db.flush()
+        self._precalentar_simit(id_solicitud)
         return consentimiento
+
+    def _precalentar_simit(self, id_solicitud: uuid.UUID) -> None:
+        """Consulta el SIMIT en background apenas el titular acepta el
+        tratamiento de datos.
+
+        El consentimiento es el requisito habilitante para tratar datos
+        personales: desde ese momento el resultado queda cacheado en
+        consulta_simit y la evaluación posterior lo reusa vigente
+        (SIMIT_CACHE_DIAS) en vez de pegarle al portal FCM en caliente.
+        Best-effort: si el portal falla aquí, la evaluación reintenta
+        en línea. El gate es proveedor real configurado — no el
+        ambiente: el mock solo aplica al motor de evaluación en demo.
+        """
+        settings = get_settings()
+        if not settings.simit_habilitado or not settings.simit_proveedor_configurado():
+            return
+
+        def trabajo() -> None:
+            try:
+                from backend.db_models.session import SessionLocal
+                from backend.services.evaluacion_service import EvaluacionService
+
+                with SessionLocal() as db:
+                    solicitud = db.get(SolicitudCredito, id_solicitud)
+                    cliente = solicitud.cliente if solicitud else None
+                    if cliente is None:
+                        return
+                    tipo = TipoIdentificacion(cliente.tipo_documento)
+                    EvaluacionService(db).consultar_simit_en_linea(
+                        tipo, cliente.num_cedula, id_solicitud=id_solicitud
+                    )
+                    db.commit()
+            except Exception:
+                logger.info(
+                    "Precache SIMIT falló; la evaluación reintentará en línea",
+                    exc_info=True,
+                )
+
+        threading.Thread(
+            target=trabajo, daemon=True, name=f"simit-precache-{id_solicitud}"
+        ).start()
 
     def cancelar(
         self,
@@ -540,6 +630,33 @@ class SolicitudService:
             orden=orden,
         )
         return [_resumen(s, ver_detalle_interno) for s in filas]
+
+    def contar(
+        self,
+        *,
+        estado: str | None = None,
+        decision: str | None = None,
+        busqueda: str | None = None,
+        concesionario_ids: set[int] | None = None,
+        asesor_ids: set[int] | None = None,
+        asesor_cedula: str | None = None,
+        persona_desde: datetime | None = None,
+        filtro_id_concesionario: int | None = None,
+        filtro_id_asesor: int | None = None,
+    ) -> int:
+        """Total bajo los mismos filtros de `listar` (paginación
+        server-side de la bandeja de desembolsos)."""
+        return self.repo.contar(
+            estado=estado,
+            decision=decision,
+            busqueda=busqueda,
+            concesionario_ids=concesionario_ids,
+            asesor_ids=asesor_ids,
+            asesor_cedula=asesor_cedula,
+            persona_desde=persona_desde,
+            filtro_id_concesionario=filtro_id_concesionario,
+            filtro_id_asesor=filtro_id_asesor,
+        )
 
     def metricas_embudo(
         self,
@@ -796,6 +913,19 @@ class SolicitudService:
             desembolso=_desembolso_response(
                 self.repo.obtener_desembolso(id_solicitud)
             ),
+            factura=_factura_response(solicitud),
+            vehiculo=_vehiculo_response(
+                self._db.query(ProductoVehiculo)
+                .filter(ProductoVehiculo.id_solicitud == id_solicitud)
+                .order_by(ProductoVehiculo.id_vehiculo.desc())
+                .first()
+            ),
+            facturar_a_documento=solicitud.facturar_a_documento,
+            facturar_a_nombre=solicitud.facturar_a_nombre,
+            facturar_a2_documento=solicitud.facturar_a2_documento,
+            facturar_a2_nombre=solicitud.facturar_a2_nombre,
+            asesor_externo=solicitud.asesor_externo,
+            observaciones_venta=solicitud.observaciones_venta,
         )
 
     def ofertas(self, id_solicitud: uuid.UUID) -> list[OfertaResponse]:
@@ -890,16 +1020,20 @@ class SolicitudService:
 
         self._db.flush()
 
-    def _guardar_vehiculo(self, id_solicitud: uuid.UUID, datos) -> None:
+    def _guardar_vehiculo(self, id_solicitud: uuid.UUID, datos) -> ProductoVehiculo | None:
         """Persiste el vehículo financiado capturado en la formalización.
 
         Desde la migración 0010 el desglose de la hoja de negocio
         (descuento, accesorios, matrícula, SOAT, impuestos, % aval) queda en
         columnas de producto_vehiculo — alimenta el documento
-        'Solicitud de crédito' del paquete de legalización."""
+        'Solicitud de crédito' del paquete de legalización.
+
+        Devuelve la fila persistida: la sesión corre sin autoflush, así
+        que un vehículo recién creado no es visible aún para las
+        consultas que el llamador haga después."""
         solicitud = self.repo.obtener_detalle(id_solicitud)
         if solicitud is None:
-            return
+            return None
         vehiculo = (
             self._db.query(ProductoVehiculo)
             .filter(ProductoVehiculo.id_solicitud == id_solicitud)
@@ -927,3 +1061,72 @@ class SolicitudService:
             valor = getattr(datos, campo, None)
             if valor is not None:
                 setattr(vehiculo, atributo, valor)
+        return vehiculo
+
+    def guardar_venta_contado(
+        self, id_solicitud: uuid.UUID, datos: VentaContadoRequest
+    ) -> None:
+        """Cierra la hoja de negocio de una venta de contado: vehículo +
+        liquidación (anticipo, retoma, otros gastos, ciudad de matrícula)
+        y a quién se expide la factura (puede ser un tercero)."""
+        solicitud = self.repo.obtener_detalle(id_solicitud)
+        if solicitud is None:
+            raise SolicitudNoEncontradaError(f"No existe la solicitud {id_solicitud}")
+        if (solicitud.linea_credito or "").strip().casefold() != "contado":
+            raise ValidacionError(
+                "La liquidación de venta aplica solo a solicitudes de "
+                "forma de pago 'Contado'."
+            )
+        if solicitud.estado not in ("creada", "facturada"):
+            raise ConflictoEstadoError(
+                f"La solicitud está '{solicitud.estado}'; la venta de "
+                "contado se cierra recién radicada (o ya facturada)."
+            )
+        for campo in (
+            "asesor_externo",
+            "facturar_a_documento",
+            "facturar_a_nombre",
+            "facturar_a2_documento",
+            "facturar_a2_nombre",
+        ):
+            valor = getattr(datos, campo, None)
+            if valor is not None:
+                setattr(solicitud, campo, valor.strip() or None)
+        if datos.observaciones is not None:
+            solicitud.observaciones_venta = datos.observaciones.strip() or None
+        vehiculo = (
+            self._guardar_vehiculo(id_solicitud, datos.vehiculo)
+            if datos.vehiculo is not None
+            else None
+        )
+        # Los campos propios de la liquidación/identificación de la moto
+        # no van en VehiculoFinanciadoRequest (formalización de crédito).
+        # La fila se toma de _guardar_vehiculo porque sin autoflush un
+        # vehículo recién creado aún no es visible para las consultas.
+        if vehiculo is None:
+            vehiculo = (
+                self._db.query(ProductoVehiculo)
+                .filter(ProductoVehiculo.id_solicitud == id_solicitud)
+                .order_by(ProductoVehiculo.id_vehiculo.desc())
+                .first()
+            )
+        if vehiculo is not None:
+            for campo, atributo in (
+                ("numero_motor", "numero_motor"),
+                ("numero_chasis", "numero_chasis"),
+                ("vin", "vin"),
+                ("ciudad_matricula", "ciudad_matricula"),
+                ("anticipo", "anticipo"),
+                ("retoma", "retoma_valor"),
+                ("otros_gastos", "otros_gastos"),
+            ):
+                valor = getattr(datos, campo, None)
+                if valor is not None:
+                    setattr(vehiculo, atributo, valor)
+        self._db.flush()
+        # El paquete físico de legalización del contado (autorizaciones,
+        # transferencia de dominio y acta de entrega, sin sello OTP) se
+        # regenera con los datos de la venta para imprimirlo en la
+        # entrega. Un error aquí se propaga: el documento es el fin de
+        # la venta, no un accesorio.
+        DocumentoService(self._db).generar_paquete_contado(id_solicitud)

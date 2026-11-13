@@ -230,9 +230,14 @@ def _servicio_solicitud(monkeypatch, **settings_overrides):
     return SolicitudService(MagicMock())
 
 
-def test_precache_dispara_hilo_en_produccion(monkeypatch):
+@pytest.mark.parametrize("environment", ["produccion", "demo"])
+def test_precache_dispara_hilo_con_proveedor_configurado(
+    monkeypatch, environment
+):
+    """El gate es el proveedor real ('portal' no exige credenciales),
+    no el ambiente: el mock solo aplica al motor en demo."""
     hilos = _capturar_hilos(monkeypatch)
-    svc = _servicio_solicitud(monkeypatch, environment="produccion")
+    svc = _servicio_solicitud(monkeypatch, environment=environment)
 
     svc._precalentar_simit(uuid.uuid4())
 
@@ -240,14 +245,16 @@ def test_precache_dispara_hilo_en_produccion(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "environment,habilitado",
-    [("demo", True), ("produccion", False)],
+    "overrides",
+    [
+        {"simit_habilitado": False},
+        {"simit_proveedor": "placapi", "simit_api_key": ""},
+        {"simit_proveedor": "manual"},
+    ],
 )
-def test_precache_no_dispara_sin_condiciones(monkeypatch, environment, habilitado):
+def test_precache_no_dispara_sin_condiciones(monkeypatch, overrides):
     hilos = _capturar_hilos(monkeypatch)
-    svc = _servicio_solicitud(
-        monkeypatch, environment=environment, simit_habilitado=habilitado
-    )
+    svc = _servicio_solicitud(monkeypatch, **overrides)
 
     svc._precalentar_simit(uuid.uuid4())
 

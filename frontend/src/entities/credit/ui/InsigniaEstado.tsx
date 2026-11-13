@@ -1,4 +1,12 @@
-import { CheckCircle2, XCircle, Clock } from 'lucide-react'
+import {
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Receipt,
+  Banknote,
+  Flag,
+  Loader,
+} from 'lucide-react'
 import type { EstadoSolicitud } from '../model/solicitudesPanel'
 
 const CONFIG: Record<
@@ -13,6 +21,26 @@ const CONFIG: Record<
     Icon: CheckCircle2,
     className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
     label: 'Aprobado',
+  },
+  EN_PROCESO: {
+    Icon: Loader,
+    className: 'bg-brand-50 text-brand-800 ring-brand-500/20',
+    label: 'En proceso',
+  },
+  FACTURADO: {
+    Icon: Receipt,
+    className: 'bg-violet-50 text-violet-700 ring-violet-600/20',
+    label: 'Facturado',
+  },
+  DESEMBOLSADO: {
+    Icon: Banknote,
+    className: 'bg-emerald-100 text-emerald-800 ring-emerald-600/30',
+    label: 'Desembolsado',
+  },
+  FINALIZADO: {
+    Icon: Flag,
+    className: 'bg-slate-200 text-slate-700 ring-slate-400/30',
+    label: 'Finalizado',
   },
   RECHAZADO: {
     Icon: XCircle,

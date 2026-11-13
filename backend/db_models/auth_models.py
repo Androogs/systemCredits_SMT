@@ -65,6 +65,17 @@ class Usuario(Base):
         server_default="pendiente_verificacion",
     )
     nombre_completo: Mapped[str | None] = mapped_column(String(180))
+    # Ficha general del usuario (además de la ficha de asesor cuando el
+    # rol lo exige): cédula de la persona, marca principal que atiende
+    # (el conjunto completo vive en `usuario_marca`) y notas libres del
+    # admin (p. ej. relevo de personal).
+    cedula: Mapped[str | None] = mapped_column(String(40))
+    marca: Mapped[str | None] = mapped_column(String(120))
+    # Sede del catálogo de la marca (Principal, Palmira, etc.) — dato
+    # descriptivo de la ficha; el vínculo operativo sigue siendo
+    # id_concesionario del asesor/admin de sede.
+    sede: Mapped[str | None] = mapped_column(String(120))
+    observaciones: Mapped[str | None] = mapped_column(Text)
     fecha_verificacion: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     fecha_ultimo_acceso: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     fecha_ultimo_cambio_password: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -93,6 +104,23 @@ class UsuarioRol(Base):
         Uuid(as_uuid=True), ForeignKey("usuario.id_usuario"), primary_key=True
     )
     id_rol: Mapped[int] = mapped_column(ForeignKey("rol.id_rol"), primary_key=True)
+    fecha_asignacion: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_ahora_utc, server_default=func.now()
+    )
+
+
+class UsuarioMarca(Base):
+    """Marcas que atiende el usuario (ficha general). Un asesor o un
+    admin de sede puede vender varias marcas de moto; `usuario.marca`
+    queda como la principal — la primera del conjunto — y es a la que
+    pertenece la etiqueta de `usuario.sede`."""
+
+    __tablename__ = "usuario_marca"
+
+    id_usuario: Mapped[object] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("usuario.id_usuario"), primary_key=True
+    )
+    marca: Mapped[str] = mapped_column(String(120), primary_key=True)
     fecha_asignacion: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_ahora_utc, server_default=func.now()
     )
@@ -134,6 +162,10 @@ class Concesionario(Base):
     nit: Mapped[str | None] = mapped_column(String(30), unique=True)
     nombre: Mapped[str] = mapped_column(String(180), unique=True)
     id_ciudad: Mapped[int | None] = mapped_column(ForeignKey("ciudad.id_ciudad"))
+    # Marca que vende el punto de venta ('Suzuki', 'AKT'...) — NULL en la
+    # matriz SUMOTO S.A — y su etiqueta de sede ('Palmira', 'El Cerrito').
+    marca: Mapped[str | None] = mapped_column(String(60))
+    sede: Mapped[str | None] = mapped_column(String(120))
 
 
 class AliadoUsuario(Base):

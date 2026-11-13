@@ -1,12 +1,8 @@
 /**
- * Co-marca SUMOTO + Inversiones Pacífico.
+ * Marca única: SUMOTO S.A.
  *
- * SUMOTO S.A. es la marca principal: opera la plataforma y radica la
- * solicitud. Inversiones Pacífico es la financiera aliada que estudia y
- * aprueba el crédito; aparece SOLO como sello secundario de respaldo.
- *
- * Constantes de co-marca. SelloAliado.tsx es el único componente que pinta
- * la identidad de Pacífico.
+ * SUMOTO S.A. opera la plataforma, radica la solicitud y es también la
+ * financiera que estudia y aprueba el crédito.
  */
 
 export const MARCA = {
@@ -20,10 +16,10 @@ export const MARCA = {
 } as const
 
 export const ALIADO = {
-  nombre: 'Inversiones Pacífico',
+  nombre: 'SUMOTO S.A',
   rol: 'Financiera aliada',
-  logoClaro: '/brand/pacifico-sello-azul.png',
-  logoOscuro: '/brand/pacifico-sello-blanco.png',
+  logoClaro: '/brand/sm-bicolor.png',
+  logoOscuro: '/brand/sm-blanco.png',
 } as const
 
 /** Título de pestaña con la marca principal. */

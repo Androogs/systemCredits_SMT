@@ -13,6 +13,7 @@ import {
   estadoParaVista,
   etiquetaSolicitud,
   numero,
+  ESTADOS_POSITIVOS_VISTA,
 } from '../entities/credit/model/solicitudesPanel'
 import { currency, dateShort } from '../shared/lib/formatters'
 import { useRol } from '../shared/lib/sesion'
@@ -25,6 +26,9 @@ import {
   FileSearch,
   Clock,
   ListChecks,
+  Receipt,
+  Banknote,
+  Flag,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -43,6 +47,33 @@ const CONFIG: Record<
     titulo: 'Solicitud aprobada',
     subtitulo:
       'El perfil del cliente cumple las políticas de crédito vigentes.',
+  },
+  EN_PROCESO: {
+    Icon: Clock,
+    tono: 'brand',
+    titulo: 'En proceso',
+    subtitulo:
+      'Cliente aprobado sin generar los documentos con firma electrónica.',
+  },
+  FACTURADO: {
+    Icon: Receipt,
+    tono: 'brand',
+    titulo: 'Facturado',
+    subtitulo: 'Crédito aprobado con factura cargada en el sistema.',
+  },
+  DESEMBOLSADO: {
+    Icon: Banknote,
+    tono: 'emerald',
+    titulo: 'Desembolsado',
+    subtitulo:
+      'Crédito facturado con prenda registrada y pago al concesionario.',
+  },
+  FINALIZADO: {
+    Icon: Flag,
+    tono: 'slate',
+    titulo: 'Finalizado',
+    subtitulo:
+      'Crédito en proceso que no cerró exitosamente al último día hábil del mes.',
   },
   RECHAZADO: {
     Icon: XCircle,
@@ -68,6 +99,11 @@ const CONFIG: Record<
 }
 
 const tonos: Record<string, { fondo: string; icono: string; borde: string }> = {
+  brand: {
+    fondo: 'bg-brand-50',
+    icono: 'bg-brand-500 text-white',
+    borde: 'border-brand-100',
+  },
   emerald: {
     fondo: 'bg-emerald-50',
     icono: 'bg-emerald-600 text-white',
@@ -196,7 +232,7 @@ export default function Resultado() {
           <Tarjeta
             className={`${tono.fondo} ${tono.borde} text-center py-10 relative overflow-hidden`}
           >
-            {visual === 'APROBADO' && <ConfettiCelebracion />}
+            {ESTADOS_POSITIVOS_VISTA.has(visual) && <ConfettiCelebracion />}
             <div
               className={`mx-auto h-16 w-16 rounded-full grid place-items-center ${tono.icono}`}
             >
@@ -212,7 +248,7 @@ export default function Resultado() {
             </p>
           </Tarjeta>
 
-          {visual === 'APROBADO' && (
+          {ESTADOS_POSITIVOS_VISTA.has(visual) && (
             <>
               <Tarjeta>
                 <h3 className="font-semibold text-slate-900 mb-4">

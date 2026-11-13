@@ -326,8 +326,9 @@
 }
 
 .captura-movil__aviso-icono--error {
-  background: var(--error-bg);
-  color: var(--error-strong);
+  background: linear-gradient(135deg, var(--brand-light), var(--brand));
+  color: var(--white);
+  box-shadow: 0 10px 20px -8px rgb(var(--brand-rgb) / 55%);
 }
 
 .captura-movil__aviso-icono--ok {
@@ -337,7 +338,8 @@
 }
 
 .captura-movil__aviso--error {
-  border-color: var(--error-border);
+  border-color: var(--border-tint);
+  background: var(--surface-tint-light);
 }
 
 .captura-movil__aviso--ok {

@@ -22,7 +22,7 @@ function detalle(
     num_cedula: '1000000001',
     tipo_documento: '1',
     ocupacion: 'empleado',
-    linea_credito: 'Inversiones Pacífico',
+    linea_credito: 'Crédito Directo',
     destino_credito: 'Financiamiento de Vehículos',
     plazo_deseado_meses: 24,
     fecha_hora_firma: null,

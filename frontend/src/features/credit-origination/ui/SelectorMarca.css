@@ -93,3 +93,17 @@
   font-weight: 700;
   background: var(--surface-tint-deep);
 }
+
+/* Precio de lista al lado de la referencia (selector de vehículo). */
+.selector-vehiculo__precio {
+  margin-left: auto;
+  padding-right: 0.35rem;
+  color: var(--slate-soft);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.selector-marca__opcion--activa .selector-vehiculo__precio {
+  color: inherit;
+}

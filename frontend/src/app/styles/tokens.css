@@ -45,10 +45,10 @@
   --success-bg: #f2faf5;
 
   /* --- Advertencia --- */
-  --warning-ink: #9b6412;
-  --warning: #e9c36b;
-  --warning-bg: #fffaf0;
-  --warning-bg-deep: #fef3c7;
+  --warning-ink: #854d0e;
+  --warning: #eab308;
+  --warning-bg: #fde68a;
+  --warning-bg-deep: #fcd34d;
 
   /* --- Error --- */
   --error: #d92d20;
@@ -85,10 +85,10 @@
   --success-bright-rgb: 92 224 153;
   --success-border-rgb: 184 223 202;
   --success-bg-rgb: 242 250 245;
-  --warning-rgb: 233 195 107;
-  --warning-ink-rgb: 155 100 18;
-  --warning-bg-rgb: 255 250 240;
-  --warning-bg-deep-rgb: 254 243 199;
+  --warning-rgb: 234 179 8;
+  --warning-ink-rgb: 133 77 14;
+  --warning-bg-rgb: 253 230 138;
+  --warning-bg-deep-rgb: 252 211 77;
   --error-rgb: 217 45 32;
   --error-ink-rgb: 164 35 26;
   --error-strong-rgb: 180 35 24;

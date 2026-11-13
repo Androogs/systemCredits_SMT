@@ -16,7 +16,6 @@ import {
   TIPO_CONTRATO_LABELS,
   useSolicitudes,
 } from '../entities/credit/model/solicitudesPanel'
-import { SEDES_POR_MARCA } from '../features/credit-origination/model/concesionarios'
 import type {
   FiltrosSolicitudes,
   SolicitudResumenApi,
@@ -47,6 +46,17 @@ import {
   PanelPerfilCliente,
   PanelRanking,
 } from '../widgets/dashboard/PanelesResumen'
+import {
+  distribuir,
+  marcaDe,
+  promedio,
+  MARCAS_CATALOGO,
+  RANGOS_CONTINUIDAD,
+  RANGOS_CUOTA,
+  RANGOS_MONTO,
+  RANGOS_PLAZO,
+  SIN_MARCA,
+} from '../widgets/dashboard/analiticaPortafolio'
 
 const DonaEstados = lazy(() =>
   import('../widgets/dashboard/GraficasResumen').then((m) => ({
@@ -61,74 +71,15 @@ const TendenciaSeisMeses = lazy(() =>
 
 const STATUS_COLORS = {
   APROBADO: '#10b981',
+  EN_PROCESO: '#0052a1',
+  FACTURADO: '#2f74c0',
+  DESEMBOLSADO: '#176b46',
+  FINALIZADO: '#64748b',
   RECHAZADO: '#ef4444',
   PENDIENTE: '#94a3b8',
-}
+} as const
 
 const REFRESCO_MS = 30_000
-
-const MARCAS_CATALOGO = Object.keys(SEDES_POR_MARCA)
-
-const SIN_MARCA = 'Sin marca asignada'
-
-/** Marca del concesionario que radicó: los nombres vienen como
-    "<Marca> <Sede>". Solo cuentan las 7 marcas del catálogo; sin sede o
-    con una sede fuera del catálogo se agrupa como "sin marca". */
-function marcaDe(nombre: string | null | undefined): string {
-  if (!nombre) return SIN_MARCA
-  return MARCAS_CATALOGO.find((m) => coincideMarcaSede(nombre, m)) ?? SIN_MARCA
-}
-
-type Rango = [label: string, test: (v: number) => boolean]
-
-// Rangos de la distribución monetaria y de plazo del resumen.
-const RANGOS_MONTO: Rango[] = [
-  ['< $5 M', (v) => v < 5e6],
-  ['$5–10 M', (v) => v >= 5e6 && v < 10e6],
-  ['$10–15 M', (v) => v >= 10e6 && v < 15e6],
-  ['$15–20 M', (v) => v >= 15e6 && v < 20e6],
-  ['≥ $20 M', (v) => v >= 20e6],
-]
-const RANGOS_PLAZO: Rango[] = [
-  ['< 12', (v) => v < 12],
-  ['12–24', (v) => v >= 12 && v < 24],
-  ['24–36', (v) => v >= 24 && v < 36],
-  ['36–48', (v) => v >= 36 && v < 48],
-  ['≥ 48', (v) => v >= 48],
-]
-const RANGOS_CUOTA: Rango[] = [
-  ['< $250 mil', (v) => v < 250e3],
-  ['$250–500 mil', (v) => v >= 250e3 && v < 500e3],
-  ['$500–750 mil', (v) => v >= 500e3 && v < 750e3],
-  ['$750 mil–$1 M', (v) => v >= 750e3 && v < 1e6],
-  ['≥ $1 M', (v) => v >= 1e6],
-]
-const RANGOS_CONTINUIDAD: Rango[] = [
-  ['0', (v) => v === 0],
-  ['1–5', (v) => v >= 1 && v <= 5],
-  ['6–11', (v) => v >= 6 && v <= 11],
-  ['≥ 12', (v) => v >= 12],
-]
-
-/** Reparte valores numéricos en los rangos dados, conservando el orden
-    del catálogo; `sinDato` agrega un último segmento para los nulos.
-    Los rangos vacíos se omiten (la lista queda solo con producción). */
-function distribuir(
-  valores: (number | null | undefined)[],
-  rangos: Rango[],
-  sinDato: string | null = null,
-): { label: string; valor: number }[] {
-  const conteo = new Map<string, number>(rangos.map(([l]) => [l, 0]))
-  if (sinDato) conteo.set(sinDato, 0)
-  for (const v of valores) {
-    const label =
-      v == null ? sinDato : (rangos.find(([, t]) => t(v))?.[0] ?? null)
-    if (label) conteo.set(label, (conteo.get(label) ?? 0) + 1)
-  }
-  return [...conteo.entries()]
-    .map(([label, valor]) => ({ label, valor }))
-    .filter((i) => i.valor > 0)
-}
 
 /** Saludo según la hora local (estilo portal del asesor). */
 function saludoDelDia(): string {
@@ -152,6 +103,13 @@ function coincideFiltro(s: SolicitudResumenApi, filtro: FiltroPanel): boolean {
     if (filtro.valor === 'evaluadas') return s.decision != null
     if (filtro.valor === 'formalizadas') return s.fecha_hora_firma != null
     return true
+  }
+  if (filtro.campo === 'dia') {
+    const [anio, mes, dia] = filtro.valor.split('-').map(Number)
+    const d = new Date(s.fecha_hora)
+    return (
+      d.getFullYear() === anio && d.getMonth() === mes && d.getDate() === dia
+    )
   }
   const d = new Date(s.fecha_hora)
   return `${d.getFullYear()}-${d.getMonth()}` === filtro.valor
@@ -222,8 +180,8 @@ export default function Resumen() {
     alternarFiltro(f)
   }
 
-  // El filtro de mes acota el embudo en el servidor (agregados reales,
-  // no derivados de las 200 filas del listado).
+  // El filtro de mes/día acota el embudo en el servidor (agregados
+  // reales, no derivados de las 200 filas del listado).
   const rangoEmbudo =
     filtro?.campo === 'mes'
       ? (() => {
@@ -233,12 +191,20 @@ export default function Resumen() {
             hasta: new Date(anio, mes + 1, 1).toISOString(),
           }
         })()
-      : null
+      : filtro?.campo === 'dia'
+        ? (() => {
+            const [anio, mes, dia] = filtro.valor.split('-').map(Number)
+            return {
+              desde: new Date(anio, mes, dia).toISOString(),
+              hasta: new Date(anio, mes, dia + 1).toISOString(),
+            }
+          })()
+        : null
 
-  // Con filtro de mes activo, KPIs y gráficas recalculan sobre ese mes;
-  // el gráfico "Últimos 6 meses" conserva todos los datos como selector.
+  // Con filtro de mes/día activo, KPIs y gráficas recalculan sobre ese
+  // periodo; la tendencia conserva todos los datos como selector.
   const base =
-    filtro?.campo === 'mes'
+    filtro?.campo === 'mes' || filtro?.campo === 'dia'
       ? solicitudes.filter((s) => coincideFiltro(s, filtro))
       : solicitudes
 
@@ -263,6 +229,8 @@ export default function Resumen() {
     : 0
   const sumaCupos = cupos.reduce((a, b) => a + b, 0)
 
+  // La dona resume la decisión: todo el pipeline positivo (en proceso,
+  // aprobada, facturada, desembolsada, finalizada) es "Aprobadas".
   const byStatus = [
     {
       estado: 'APROBADO',
@@ -309,6 +277,32 @@ export default function Resumen() {
       anterior: solicitudes.filter((s) =>
         enMes(s.fecha_hora, prev.getMonth(), prev.getFullYear()),
       ).length,
+    }
+  })
+
+  // Vista diaria de la tendencia: últimos 30 días contra los 30 días
+  // previos — misma semántica de comparación que la vista mensual.
+  const dayBuckets = [...Array(30)].map((_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (29 - i))
+    const ant = new Date(d)
+    ant.setDate(ant.getDate() - 30)
+    const mismoDia = (fecha: string, ref: Date) => {
+      const f = new Date(fecha)
+      return (
+        f.getFullYear() === ref.getFullYear() &&
+        f.getMonth() === ref.getMonth() &&
+        f.getDate() === ref.getDate()
+      )
+    }
+    return {
+      range: d.toLocaleDateString('es-CO', {
+        day: 'numeric',
+        month: 'short',
+      }),
+      clave: `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`,
+      count: solicitudes.filter((s) => mismoDia(s.fecha_hora, d)).length,
+      anterior: solicitudes.filter((s) => mismoDia(s.fecha_hora, ant)).length,
     }
   })
 
@@ -490,8 +484,6 @@ export default function Resumen() {
   const plazos = base
     .map((s) => s.plazo_deseado_meses)
     .filter((n): n is number => n != null)
-  const promedio = (vs: number[]) =>
-    vs.length ? vs.reduce((a, b) => a + b, 0) / vs.length : null
   const promMonto = promedio(montos)
   const promCuota = promedio(cuotas)
   const promPlazo = promedio(plazos)
@@ -599,14 +591,127 @@ export default function Resumen() {
           setFiltro={setFiltro}
         />
 
-        {vistaBinaria ? (
-          /* Vista operativa (asesor/aliado): embudo de su alcance +
-             tabla completa con pendientes primero. La analítica de
-             gestión (dona, tendencia, ocupación, rankings) queda para
-             el administrador. */
+        {rol === 'asesor' ? (
+          /* Vista del asesor: solo su propio rendimiento (el backend ya
+             acota las métricas a lo que radicó él). Solo los paneles
+             del boceto: sin comparativa con otros asesores, sin marca,
+             sin score/causales y sin la tabla de solicitudes. */
+          <>
+            <Suspense
+              fallback={
+                <Tarjeta>
+                  <Skeleton className="h-64 w-full rounded-xl" />
+                </Tarjeta>
+              }
+            >
+              <TendenciaSeisMeses
+                cargando={cargando}
+                monthBuckets={monthBuckets}
+                dayBuckets={dayBuckets}
+                filtro={filtro}
+                alternarFiltro={alternarFiltro}
+              />
+            </Suspense>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Suspense
+                fallback={
+                  <Tarjeta>
+                    <Skeleton className="h-56 w-full rounded-xl" />
+                  </Tarjeta>
+                }
+              >
+                <DonaEstados
+                  cargando={cargando}
+                  byStatus={byStatus}
+                  total={total}
+                  filtro={filtro}
+                  alternarFiltro={alternarFiltro}
+                />
+              </Suspense>
+              <EmbudoOriginacion
+                vistaBinaria
+                rango={rangoEmbudo}
+                concesionarioId={dimensiones.id_concesionario}
+                asesorId={dimensiones.id_asesor}
+                filtro={filtro}
+                onFiltrar={filtrarPorEtapa}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <PanelPerfilCliente
+                grupos={porOcupacion}
+                total={total}
+                cargando={cargando}
+                filtro={filtro}
+                alternarFiltro={alternarFiltro}
+              />
+              <PanelRanking
+                titulo="Tipo de contrato"
+                cargando={cargando}
+                items={porTipoContrato}
+                total={total}
+                vacio="Aún no hay solicitudes registradas."
+              />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <PanelRanking
+                titulo="Monto aprobado"
+                resumen={
+                  <ResumenPromedio
+                    etiqueta="Promedio"
+                    valor={
+                      promMonto != null ? currency(Math.round(promMonto)) : '—'
+                    }
+                  />
+                }
+                cargando={cargando}
+                items={porMonto}
+                total={montos.length}
+                vacio="Aún no hay cupos evaluados."
+              />
+              <PanelRanking
+                titulo="Plazo deseado (meses)"
+                resumen={
+                  <ResumenPromedio
+                    etiqueta="Promedio"
+                    valor={
+                      promPlazo != null ? `${Math.round(promPlazo)} meses` : '—'
+                    }
+                  />
+                }
+                cargando={cargando}
+                items={porPlazoRangos}
+                total={total}
+                vacio="Aún no hay solicitudes registradas."
+              />
+              <PanelRanking
+                titulo="Cuota total mensual"
+                resumen={
+                  <ResumenPromedio
+                    etiqueta="Promedio"
+                    valor={
+                      promCuota != null ? currency(Math.round(promCuota)) : '—'
+                    }
+                  />
+                }
+                cargando={cargando}
+                items={porCuota}
+                total={cuotas.length}
+                vacio="Aún no hay cuotas pactadas."
+              />
+            </div>
+          </>
+        ) : vistaBinaria ? (
+          /* Vista operativa (aliado/concesionario): embudo de su
+             alcance + tabla completa con pendientes primero. La
+             analítica de gestión (dona, tendencia, ocupación,
+             rankings) queda para el administrador. */
           <>
             <EmbudoOriginacion
-              vistaBinaria={rol === 'asesor'}
+              vistaBinaria={false}
               rango={rangoEmbudo}
               concesionarioId={dimensiones.id_concesionario}
               asesorId={dimensiones.id_asesor}
@@ -615,13 +720,11 @@ export default function Resumen() {
             />
             {/* El aliado liquida comisiones por radicador y el
               concesionario sigue a sus asesores: conservan el ranking. */}
-            {rol !== 'asesor' && (
-              <PanelTopAsesores
-                rango={rangoEmbudo}
-                concesionarioId={dimensiones.id_concesionario}
-                asesorId={dimensiones.id_asesor}
-              />
-            )}
+            <PanelTopAsesores
+              rango={rangoEmbudo}
+              concesionarioId={dimensiones.id_concesionario}
+              asesorId={dimensiones.id_asesor}
+            />
           </>
         ) : (
           <>
@@ -636,6 +739,7 @@ export default function Resumen() {
               <TendenciaSeisMeses
                 cargando={cargando}
                 monthBuckets={monthBuckets}
+                dayBuckets={dayBuckets}
                 filtro={filtro}
                 alternarFiltro={alternarFiltro}
               />
@@ -783,13 +887,17 @@ export default function Resumen() {
           </>
         )}
 
-        <TablaSolicitudesPanel
-          titulo={vistaBinaria ? 'Solicitudes' : 'Últimas solicitudes'}
-          solicitudes={solicitudesFiltradas}
-          cargando={cargando}
-          mostrarScore={!vistaBinaria}
-          mostrarAsesor={conDimensiones}
-        />
+        {/* La tabla no entra en la vista del asesor: su resumen es
+            solo los indicadores del boceto. */}
+        {rol !== 'asesor' && (
+          <TablaSolicitudesPanel
+            titulo={vistaBinaria ? 'Solicitudes' : 'Últimas solicitudes'}
+            solicitudes={solicitudesFiltradas}
+            cargando={cargando}
+            mostrarScore={!vistaBinaria}
+            mostrarAsesor={conDimensiones}
+          />
+        )}
       </div>
     </>
   )

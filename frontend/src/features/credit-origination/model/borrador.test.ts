@@ -69,15 +69,15 @@ describe('borrador de originación', () => {
 
   it('ignora contenido corrupto o de otra versión', () => {
     const datos = stubLocalStorage()
-    datos.set('inversiones-pacifico:borrador-originacion', '{no-json')
+    datos.set('sumoto:borrador-originacion', '{no-json')
     expect(cargarBorrador()).toBeNull()
     datos.set(
-      'inversiones-pacifico:borrador-originacion',
+      'sumoto:borrador-originacion',
       JSON.stringify({ version: 99, paso: 3, contexto: {} }),
     )
     expect(cargarBorrador()).toBeNull()
     datos.set(
-      'inversiones-pacifico:borrador-originacion',
+      'sumoto:borrador-originacion',
       JSON.stringify({
         version: 2,
         paso: 'siete',
@@ -92,7 +92,7 @@ describe('borrador de originación', () => {
   it('descarta borradores v1 (numeración de pasos anterior)', () => {
     const datos = stubLocalStorage()
     datos.set(
-      'inversiones-pacifico:borrador-originacion',
+      'sumoto:borrador-originacion',
       JSON.stringify({
         version: 1,
         paso: 3,

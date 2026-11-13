@@ -109,6 +109,14 @@ class UsuarioGestionResponse(BaseModel):
     # del correo corporativo permanente.
     cedula: str | None = None
     telefono: str | None = None
+    # Ficha general del usuario (cualquier rol). `marca` es la
+    # principal — la primera de `marcas`, que trae el conjunto
+    # completo (el usuario puede atender varias).
+    marca: str | None = None
+    marcas: list[str] = Field(default_factory=list)
+    sede: str | None = None
+    observaciones: str | None = None
+    fecha_creacion: datetime | None = None
     requiere_cambio_password: bool
     fecha_ultimo_acceso: datetime | None = None
     bloqueado_hasta: datetime | None = None
@@ -134,6 +142,8 @@ class OpcionesUsuarioResponse(BaseModel):
     concesionarios: list[ConcesionarioSesion]
     aliados: list[AliadoOpcion]
     asesores: list[AsesorOpcion] = Field(default_factory=list)
+    # Marcas de moto presentes en la BD (catálogo + radicadas).
+    marcas: list[str] = Field(default_factory=list)
 
 
 class CrearUsuarioRequest(BaseModel):
@@ -150,6 +160,12 @@ class CrearUsuarioRequest(BaseModel):
     # puede cambiar).
     cedula: str | None = Field(default=None, max_length=40)
     telefono: str | None = Field(default=None, max_length=40)
+    # Ficha general: marcas que atiende, su sede y notas del admin.
+    # `marca` (legado) es la principal; si llegan ambas gana `marcas`.
+    marca: str | None = Field(default=None, max_length=120)
+    marcas: list[str] | None = Field(default=None, max_length=20)
+    sede: str | None = Field(default=None, max_length=120)
+    observaciones: str | None = Field(default=None, max_length=2000)
 
 
 class ActualizarUsuarioRequest(BaseModel):
@@ -163,6 +179,10 @@ class ActualizarUsuarioRequest(BaseModel):
     id_aliado: int | None = None
     cedula: str | None = Field(default=None, max_length=40)
     telefono: str | None = Field(default=None, max_length=40)
+    marca: str | None = Field(default=None, max_length=120)
+    marcas: list[str] | None = Field(default=None, max_length=20)
+    sede: str | None = Field(default=None, max_length=120)
+    observaciones: str | None = Field(default=None, max_length=2000)
 
 
 class AsesorHistorialResponse(BaseModel):

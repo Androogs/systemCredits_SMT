@@ -13,6 +13,7 @@ import {
   calcularCupoSugerido,
   TASA_MENSUAL_REFERENCIA,
 } from './resultado-evaluacion'
+import { tasaEvaluacionLinea } from '../../../shared/lib/lineas-credito'
 
 /** Datos de identidad capturados en los pasos 1-6 del flujo. */
 export interface IdentidadSolicitante {
@@ -202,7 +203,7 @@ export function construirEvaluacionPayload(
   return {
     saldo_financiar: Math.max(monto, 1),
     plazo: solicitud.plazoMeses || 36,
-    tasa,
+    tasa: tasaEvaluacionLinea(solicitud.lineaCredito, tasa),
     primer_apellido: extras?.primerApellido,
     tiene_multas_runt: extras?.tieneMultasRunt ?? false,
     consultar_experian: origen.origen === 'experian',

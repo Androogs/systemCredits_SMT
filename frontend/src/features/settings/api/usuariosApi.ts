@@ -25,6 +25,13 @@ export interface UsuarioGestion {
   /** Ficha de la persona detrás del correo (solo rol asesor). */
   cedula?: string | null
   telefono?: string | null
+  /** Ficha general: marcas que atiende (la primera es la principal),
+   * su sede y notas del admin. */
+  marca?: string | null
+  marcas?: string[]
+  sede?: string | null
+  observaciones?: string | null
+  fecha_creacion?: string | null
   requiere_cambio_password: boolean
   fecha_ultimo_acceso: string | null
   bloqueado_hasta: string | null
@@ -47,6 +54,8 @@ export interface OpcionesUsuario {
     nombre: string
     id_concesionario: number | null
   }[]
+  /** Marcas de moto presentes en la BD (catálogo + radicadas). */
+  marcas: string[]
 }
 
 export interface CrearUsuarioPayload {
@@ -59,6 +68,10 @@ export interface CrearUsuarioPayload {
   /** Ficha del asesor (obligatoria cuando el rol es asesor). */
   cedula?: string | null
   telefono?: string | null
+  /** Marcas que atiende; la primera queda como principal. */
+  marcas?: string[]
+  sede?: string | null
+  observaciones?: string | null
 }
 
 export interface ActualizarUsuarioPayload {
@@ -69,6 +82,9 @@ export interface ActualizarUsuarioPayload {
   id_aliado?: number | null
   cedula?: string | null
   telefono?: string | null
+  marcas?: string[]
+  sede?: string | null
+  observaciones?: string | null
 }
 
 export class ErrorUsuariosApi extends Error {

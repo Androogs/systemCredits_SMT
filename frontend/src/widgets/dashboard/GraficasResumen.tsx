@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   PieChart,
   Pie,
@@ -28,7 +29,7 @@ const TOOLTIP_ESTILO = {
 const TICK_ESTILO = { fontSize: 12, fill: '#64748b' } as const
 
 export interface FiltroPanel {
-  campo: 'estado' | 'ocupacion' | 'mes' | 'etapa'
+  campo: 'estado' | 'ocupacion' | 'mes' | 'dia' | 'etapa'
   valor: string
   etiqueta: string
 }
@@ -58,6 +59,7 @@ interface DonaEstadosProps {
 interface TendenciaSeisMesesProps {
   cargando: boolean
   monthBuckets: PuntoMes[]
+  dayBuckets: PuntoMes[]
   filtro: FiltroPanel | null
   alternarFiltro: (f: FiltroPanel) => void
 }
@@ -217,18 +219,23 @@ export function DonaEstados({
 export function TendenciaSeisMeses({
   cargando,
   monthBuckets,
+  dayBuckets,
   filtro,
   alternarFiltro,
 }: TendenciaSeisMesesProps) {
   const esMovil = useEsMovil()
   const tickEje = esMovil ? { fontSize: 10, fill: '#64748b' } : TICK_ESTILO
+  // Granularidad de la tendencia: ventana mensual o diaria, misma
+  // semántica de comparación contra el periodo anterior.
+  const [vista, setVista] = useState<'meses' | 'dias'>('meses')
+  const esDias = vista === 'dias'
+  const datos = esDias ? dayBuckets : monthBuckets
+  const campoFiltro = esDias ? 'dia' : 'mes'
+  const ventana = esDias ? '30 días' : '6 meses'
 
   // Ticks redondos: 4 intervalos con paso "bonito" que cubra ambas
   // series (actual y periodo anterior) — el pico nunca queda cortado.
-  const maxSerie = Math.max(
-    4,
-    ...monthBuckets.flatMap((b) => [b.count, b.anterior]),
-  )
+  const maxSerie = Math.max(4, ...datos.flatMap((b) => [b.count, b.anterior]))
   const pasoY =
     [1, 2, 5, 10, 20, 25, 50, 100, 250, 500].find((t) => maxSerie <= t * 4) ??
     Math.ceil(maxSerie / 4)
@@ -236,34 +243,62 @@ export function TendenciaSeisMeses({
   const ticksY = [0, pasoY, pasoY * 2, pasoY * 3, pasoY * 4]
   return (
     <Tarjeta>
-      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-semibold text-slate-900">
-          Tendencia · últimos 6 meses
+          Últimos {ventana === '6 meses' ? '6 meses' : '30 días'}
         </h3>
-        {/* Leyenda honesta: las dos series comparten eje y ventana. */}
-        <div className="flex items-center gap-4 text-xs text-slate-500">
-          <span className="flex items-center gap-1.5">
-            <span className="h-0.5 w-4 rounded-full bg-brand-500" />
-            Este periodo
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-0.5 w-4 rounded-full bg-slate-300" />6 meses
-            anteriores
-          </span>
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+          {/* Leyenda honesta: las dos series comparten eje y ventana. */}
+          <div className="flex items-center gap-4 text-xs text-slate-500">
+            <span className="flex items-center gap-1.5">
+              <span className="h-0.5 w-4 rounded-full bg-brand-500" />
+              Este periodo
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-0.5 w-4 rounded-full bg-slate-300" />
+              Mes anterior
+            </span>
+          </div>
+          <div
+            role="group"
+            aria-label="Granularidad de la tendencia"
+            className="flex rounded-lg bg-slate-100 p-0.5 text-xs font-medium"
+          >
+            {(
+              [
+                ['meses', '6 meses'],
+                ['dias', '30 días'],
+              ] as const
+            ).map(([v, etiqueta]) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={vista === v}
+                onClick={() => setVista(v)}
+                className={`rounded-md px-2.5 py-1 transition ${
+                  vista === v
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {etiqueta}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       <div
         className="h-52 sm:h-64"
         aria-busy={cargando}
         role="img"
-        aria-label={`Solicitudes en los últimos seis meses: ${monthBuckets.map((item) => `${item.range}: ${item.count}`).join(', ')}`}
+        aria-label={`Solicitudes en los últimos ${ventana}: ${datos.map((item) => `${item.range}: ${item.count}`).join(', ')}`}
       >
         {cargando ? (
           <Skeleton className="h-full w-full rounded-xl" />
         ) : (
           <ResponsiveContainer>
             <AreaChart
-              data={monthBuckets}
+              data={datos}
               margin={{
                 top: 12,
                 right: esMovil ? 8 : 16,
@@ -275,9 +310,9 @@ export function TendenciaSeisMeses({
                   { clave?: string; range?: string } | undefined
                 if (p?.clave)
                   alternarFiltro({
-                    campo: 'mes',
+                    campo: campoFiltro,
                     valor: p.clave,
-                    etiqueta: `Mes ${p.range}`,
+                    etiqueta: `${esDias ? 'Día' : 'Mes'} ${p.range}`,
                   })
               }}
               className="cursor-pointer"
@@ -318,9 +353,9 @@ export function TendenciaSeisMeses({
                 contentStyle={TOOLTIP_ESTILO}
                 cursor={{ stroke: '#0052a1', strokeDasharray: '3 3' }}
               />
-              {filtro?.campo === 'mes' && (
+              {filtro?.campo === campoFiltro && (
                 <ReferenceLine
-                  x={monthBuckets.find((b) => b.clave === filtro.valor)?.range}
+                  x={datos.find((b) => b.clave === filtro.valor)?.range}
                   stroke="#00468a"
                   strokeWidth={2}
                   strokeDasharray="4 3"
@@ -329,7 +364,7 @@ export function TendenciaSeisMeses({
               <Area
                 type="monotone"
                 dataKey="anterior"
-                name="6 meses anteriores"
+                name="Mes anterior"
                 stroke="#94a3b8"
                 strokeWidth={1.5}
                 strokeDasharray="5 4"

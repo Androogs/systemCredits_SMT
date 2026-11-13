@@ -27,7 +27,9 @@ def _settings(**kw) -> Settings:
         smtp_desde="",
     )
     base.update(kw)
-    return Settings(**base)
+    # _env_file=None: el .env del proyecto (credenciales Twilio reales)
+    # no debe filtrarse a los tests — como en test_simit_precache.
+    return Settings(_env_file=None, **base)
 
 
 def _solicitud(telefono="3001234567"):

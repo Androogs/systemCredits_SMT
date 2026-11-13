@@ -1,4 +1,5 @@
 import { useId, useState, useRef, useCallback, useEffect } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ChangeEvent, ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { env } from '../env'
@@ -12,7 +13,11 @@ import type {
   ValorParametro,
 } from '../features/settings/api/parametrosApi'
 import { EditorParametros } from '../features/settings/ui/EditorParametros'
-import { SEDES_POR_MARCA } from '../features/credit-origination/model/concesionarios'
+import {
+  crearMarca,
+  useMarcasResumen,
+} from '../features/settings/api/concesionariosApi'
+import { currency } from '../shared/lib/formatters'
 
 // Logos de marca para las tarjetas de concesionarios (public/brand).
 const LOGOS_MARCA: Record<string, string> = {
@@ -23,20 +28,6 @@ const LOGOS_MARCA: Record<string, string> = {
   Hero: '/brand/hero.png',
   Honda: '/brand/honda.png',
   Suzuki: '/brand/suzuki.png',
-}
-
-// Datos comerciales de la tarjeta: deterministas por marca para que
-// no cambien entre renders (hash simple del nombre).
-const statsMarca = (marca: string) => {
-  const h = [...marca].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 997, 7)
-  const cupo = 90 + (h % 18) * 10 // $90M–$260M
-  const usadoPct = 25 + (h % 55) // 25%–80% del cupo
-  return {
-    cupo,
-    usado: Math.round((cupo * usadoPct) / 100),
-    usadoPct,
-    asesores: 2 + (h % 8),
-  }
 }
 import GestionUsuarios from '../features/settings/ui/GestionUsuarios'
 import FormularioCambioClave from '../features/auth/ui/FormularioCambioClave'
@@ -57,7 +48,6 @@ import {
   Palette,
   Upload,
   Download,
-  FileCheck,
   Clock,
   AlertTriangle,
   Key,
@@ -114,7 +104,7 @@ const SECCIONES: {
     label: 'Concesionarios',
     mobileLabel: 'Aliados',
     icon: Building2,
-    desc: 'Aliados y cupos',
+    desc: 'Marcas y financiación',
   },
   {
     id: 'documentos',
@@ -226,8 +216,15 @@ export default function Ajustes() {
   const [hasChanges, setHasChanges] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [avatar, setAvatar] = useState<string | null>(null)
-  const [concesionarios, setConcesionarios] =
-    useState<Record<string, string[]>>(SEDES_POR_MARCA)
+  const queryClient = useQueryClient()
+  const marcasResumen = useMarcasResumen()
+  const mutNuevaMarca = useMutation({
+    mutationFn: crearMarca,
+    onSuccess: (data) => {
+      queryClient.setQueryData(['marcas-resumen'], data)
+      setNuevoConcesionario('')
+    },
+  })
   const [nuevoConcesionario, setNuevoConcesionario] = useState('')
   const [parametros, setParametros] = useState<ParametrosMotor | null>(null)
   const [parametrosGuardados, setParametrosGuardados] =
@@ -240,79 +237,93 @@ export default function Ajustes() {
     null,
   )
 
-  const [documentosVisuales] = useState([
-    { id: 1, nombre: 'Cédula anverso', formato: 'PDF/JPG', tamano: '5MB' },
-    { id: 2, nombre: 'Cédula reverso', formato: 'PDF/JPG', tamano: '5MB' },
+  const [plantillas] = useState<
+    {
+      id: number
+      nombre: string
+      formato: string
+      tamano: string
+      nota?: string
+    }[]
+  >([
+    {
+      id: 1,
+      nombre: '1. AUTORIZACION CONSULTA CIFIN - DATA.doc',
+      formato: 'DOC',
+      tamano: '73 kB',
+    },
+    {
+      id: 2,
+      nombre: '2. CARTA DE APROBACION SUMOTO.docx',
+      formato: 'DOCX',
+      tamano: '58 kB',
+    },
     {
       id: 3,
-      nombre: 'Documento de valor ingreso',
-      formato: 'PDF',
-      tamano: '10MB',
+      nombre: '3. AUTORIZACION TRATAMIENTO DE DATOS PERSONALES.doc',
+      formato: 'DOC',
+      tamano: '70 kB',
     },
     {
       id: 4,
-      nombre: 'Documento de historial crediticio',
-      formato: 'PDF',
-      tamano: '10MB',
+      nombre: '4. CARTA DE INSTRUCCIONES SUMOTO.docx',
+      formato: 'DOCX',
+      tamano: '57 kB',
     },
-  ])
-
-  const [plantillas] = useState([
     {
       id: 5,
-      nombre: 'AUTORIZACION CONSULTA CENTRALES INVERSIONES PACIFICO.docx',
-      formato: 'DOCX',
-      tamano: '59 kB',
+      nombre: '5. CONTRATO DE COMPRA VENTA EN BLANCO.doc',
+      formato: 'DOC',
+      tamano: '69 kB',
     },
     {
       id: 6,
-      nombre: 'autorizacionDeCanalesDeContacto735.pdf',
-      formato: 'PDF',
-      tamano: '102 kB',
+      nombre: '6. DACION EN PAGO DPTO CREDITO.doc',
+      formato: 'DOC',
+      tamano: '74 kB',
     },
     {
       id: 7,
-      nombre: 'CARTA DE APROBACION INVERSIONES PACIFICO.docx',
+      nombre: '7. solicitudCredito735.docx',
       formato: 'DOCX',
-      tamano: '52 kB',
+      tamano: '29 kB',
     },
     {
       id: 8,
-      nombre: 'cartaAprobacion735.pdf',
-      formato: 'PDF',
-      tamano: '94 kB',
+      nombre: '8. FORMULARIOS RUNT.docx',
+      formato: 'DOCX',
+      tamano: '68 kB',
     },
     {
       id: 9,
-      nombre: 'PAGARE INVERSIONES PACIFICO.docx',
-      formato: 'DOCX',
-      tamano: '56 kB',
+      nombre: '9. POLITICAS DE CARTERA 2025.doc',
+      formato: 'DOC',
+      tamano: '120 kB',
     },
-    { id: 10, nombre: 'pagare735.pdf', formato: 'PDF', tamano: '103 kB' },
+    {
+      id: 10,
+      nombre: '10. SOLICITUD DE CREDITO SUMOTO.docx',
+      formato: 'DOCX',
+      tamano: '223 kB',
+    },
     {
       id: 11,
-      nombre: 'DECLARACION ASEGURABILIDAD INVERSIONES PACIFICO.docx',
+      nombre: '11. TRANSFERENCIA DE DOMINIO.docx',
       formato: 'DOCX',
-      tamano: '34 kB',
+      tamano: '28 kB',
     },
     {
       id: 12,
-      nombre: 'declaracionAsegurabilidad735.pdf',
-      formato: 'PDF',
-      tamano: '94 kB',
+      nombre: '12. PAGARE SUMOTO.doc',
+      formato: 'DOC',
+      tamano: '73 kB',
     },
     {
       id: 13,
-      nombre: 'solicitudCredito735.pdf',
-      formato: 'PDF',
-      tamano: '96 kB',
-    },
-    {
-      id: 14,
-      nombre: 'Tabla de amortización',
-      formato: 'PDF',
-      tamano: '—',
-      nota: 'Plantilla pendiente',
+      nombre:
+        '13. PRENDA ABIERTA SIN TENENCIA DEL ACREEDOR SOBRE VEHICULO.docx',
+      formato: 'DOCX',
+      tamano: '33 kB',
     },
   ])
 
@@ -592,18 +603,8 @@ export default function Ajustes() {
   }
   const addConcesionario = () => {
     const v = nuevoConcesionario.trim()
-    if (!v || v in concesionarios) return
-    setConcesionarios((p) => ({ ...p, [v]: [] }))
-    setNuevoConcesionario('')
-    setHasChanges(true)
-  }
-  const removeConcesionario = (marca: string) => {
-    setConcesionarios((p) => {
-      const copia = { ...p }
-      delete copia[marca]
-      return copia
-    })
-    setHasChanges(true)
+    if (!v || mutNuevaMarca.isPending) return
+    mutNuevaMarca.mutate(v)
   }
   return (
     <div className="min-h-screen overflow-x-clip bg-slate-50 text-slate-900">
@@ -625,7 +626,7 @@ export default function Ajustes() {
                 guardandoParametros || (!hasChanges && !parametrosModificados)
               }
               aria-label="Guardar cambios"
-              className="h-10 shrink-0 rounded-lg bg-[#19255b] px-3 text-xs font-medium text-white shadow-sm transition hover:bg-[#19255b] disabled:opacity-40 sm:px-4"
+              className="h-10 shrink-0 rounded-lg bg-[#0052a1] px-3 text-xs font-medium text-white shadow-sm transition hover:bg-[#0052a1] disabled:opacity-40 sm:px-4"
             >
               {guardandoParametros ? (
                 'Guardando…'
@@ -656,7 +657,7 @@ export default function Ajustes() {
                 aria-pressed={active}
                 className={`flex min-h-11 shrink-0 snap-start items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors lg:mb-1 lg:w-full lg:justify-start lg:gap-3 lg:rounded-md lg:px-3 lg:py-2.5 lg:text-left lg:text-sm ${
                   active
-                    ? 'border-[#19255b] bg-[#19255b] text-white shadow-sm'
+                    ? 'border-[#0052a1] bg-[#0052a1] text-white shadow-sm'
                     : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 lg:border-transparent lg:bg-transparent lg:shadow-none'
                 }`}
               >
@@ -935,198 +936,126 @@ export default function Ajustes() {
           )}
 
           {!vistaBinaria && seccion === 'concesionarios' && (
-            <Card title="Concesionarios" desc="Aliados y cupos de crédito">
+            <Card
+              title="Concesionarios"
+              desc="Marcas aliadas y monto financiado"
+            >
               <div className="flex flex-col sm:flex-row gap-2 mb-4">
                 <label className="sr-only" htmlFor="dealer-name">
-                  Nombre del concesionario
+                  Nombre de la marca
                 </label>
                 <input
                   id="dealer-name"
                   value={nuevoConcesionario}
                   onChange={(e) => setNuevoConcesionario(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addConcesionario()}
-                  placeholder="Ej: Suzuki Palmira"
+                  placeholder="Ej: Kawasaki"
                   className="h-11 w-full flex-1 rounded-lg border px-3 text-base sm:h-9 sm:rounded-md sm:text-sm"
                 />
                 <button
                   type="button"
                   onClick={addConcesionario}
-                  className="h-11 w-full rounded-lg bg-[#19255b] px-4 text-sm font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
+                  disabled={mutNuevaMarca.isPending}
+                  className="h-11 w-full rounded-lg bg-[#0052a1] px-4 text-sm font-medium text-white disabled:opacity-50 sm:h-9 sm:w-auto sm:rounded-md"
                 >
                   Agregar
                 </button>
               </div>
-              <div className="grid md:grid-cols-2 gap-3">
-                {Object.entries(concesionarios).map(([marca, sedes]) => {
-                  const stats = statsMarca(marca)
-                  return (
+              {mutNuevaMarca.isError && (
+                <p className="mb-3 text-xs text-red-600">
+                  {mutNuevaMarca.error instanceof Error
+                    ? mutNuevaMarca.error.message
+                    : 'No se pudo crear la marca.'}
+                </p>
+              )}
+              {marcasResumen.isPending ? (
+                <p className="py-6 text-center text-xs text-slate-500">
+                  Cargando marcas…
+                </p>
+              ) : marcasResumen.isError ? (
+                <p className="py-6 text-center text-xs text-red-600">
+                  No se pudieron cargar las marcas.{' '}
+                  {marcasResumen.error instanceof Error
+                    ? marcasResumen.error.message
+                    : ''}
+                </p>
+              ) : (marcasResumen.data?.length ?? 0) === 0 ? (
+                <p className="py-6 text-center text-xs text-slate-500">
+                  Aún no hay marcas registradas.
+                </p>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-3">
+                  {marcasResumen.data?.map((m) => (
                     <div
-                      key={marca}
-                      className="flex items-start justify-between p-4 rounded-lg border bg-white hover:border-slate-300 transition-colors"
+                      key={m.marca}
+                      className="p-4 rounded-lg border bg-white hover:border-slate-300 transition-colors"
                     >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2.5">
-                          {LOGOS_MARCA[marca] ? (
-                            <img
-                              src={LOGOS_MARCA[marca]}
-                              alt={`Logo ${marca}`}
-                              className="h-9 w-9 shrink-0 rounded-md object-contain"
-                            />
-                          ) : (
-                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-slate-100 text-xs font-bold text-slate-500">
-                              {marca.slice(0, 2)}
-                            </span>
-                          )}
-                          <div>
-                            <p className="text-sm font-medium">{marca}</p>
-                            <p className="text-xs text-slate-500">
-                              {sedes.length}{' '}
-                              {sedes.length === 1 ? 'sede' : 'sedes'} ·{' '}
-                              {stats.asesores} asesores
-                            </p>
-                          </div>
-                        </div>
-                        <div className="mt-3">
-                          <div className="flex items-baseline justify-between text-xs">
-                            <span className="text-slate-500">
-                              Cupo{' '}
-                              <strong className="font-semibold text-slate-700">
-                                ${stats.cupo}M
-                              </strong>{' '}
-                              · Usado{' '}
-                              <strong className="font-semibold text-slate-700">
-                                ${stats.usado}M
-                              </strong>
-                            </span>
-                            <span className="font-semibold text-slate-600">
-                              {stats.usadoPct}%
-                            </span>
-                          </div>
-                          <div className="mt-1 h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-[#19255b]"
-                              style={{ width: `${stats.usadoPct}%` }}
-                            />
-                          </div>
-                        </div>
-                        {sedes.length > 0 && (
-                          <div className="mt-2.5 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                            {sedes.map((sede) => (
-                              <span
-                                key={sede}
-                                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50/70 px-2 py-1 text-[11px] font-medium text-slate-600"
-                              >
-                                <MapPin
-                                  className="h-3 w-3 shrink-0 text-[#19255b]/60"
-                                  aria-hidden="true"
-                                />
-                                {sede}
-                              </span>
-                            ))}
-                          </div>
+                      <div className="flex items-center gap-2.5">
+                        {LOGOS_MARCA[m.marca] ? (
+                          <img
+                            src={LOGOS_MARCA[m.marca]}
+                            alt={`Logo ${m.marca}`}
+                            className="h-9 w-9 shrink-0 rounded-md object-contain"
+                          />
+                        ) : (
+                          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-slate-100 text-xs font-bold text-slate-500">
+                            {m.marca.slice(0, 2).toUpperCase()}
+                          </span>
                         )}
+                        <div>
+                          <p className="text-sm font-medium">{m.marca}</p>
+                          <p className="text-xs text-slate-500">
+                            {m.sedes.length}{' '}
+                            {m.sedes.length === 1 ? 'sede' : 'sedes'} ·{' '}
+                            {m.asesores}{' '}
+                            {m.asesores === 1 ? 'asesor' : 'asesores'}
+                          </p>
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removeConcesionario(marca)}
-                        aria-label={`Quitar marca ${marca}`}
-                        className="ml-3 grid h-11 w-11 shrink-0 place-items-center rounded-lg border text-slate-500 hover:bg-red-50 hover:text-red-600 sm:h-9 sm:w-9 sm:rounded-md"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <div className="mt-3 flex items-baseline justify-between text-xs">
+                        <span className="text-slate-500">
+                          Financiado{' '}
+                          <strong className="font-semibold text-slate-700">
+                            {currency(m.monto_usado)}
+                          </strong>
+                        </span>
+                        <span className="font-semibold text-slate-600">
+                          {m.creditos}{' '}
+                          {m.creditos === 1 ? 'crédito' : 'créditos'}
+                        </span>
+                      </div>
+                      {m.sedes.length > 0 && (
+                        <div className="mt-2.5 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                          {m.sedes.map((sede) => (
+                            <span
+                              key={sede}
+                              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50/70 px-2 py-1 text-[11px] font-medium text-slate-600"
+                            >
+                              <MapPin
+                                className="h-3 w-3 shrink-0 text-[#0052a1]/60"
+                                aria-hidden="true"
+                              />
+                              {sede}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )
-                })}
-              </div>
+                  ))}
+                </div>
+              )}
             </Card>
           )}
 
           {!vistaBinaria && seccion === 'documentos' && (
             <>
               <Card
-                title="Documentos"
-                desc="Documentos requeridos (solo visual)"
-              >
-                <div className="hidden overflow-auto rounded-md border sm:block">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
-                      <tr>
-                        <th scope="col" className="text-left p-3">
-                          Documento
-                        </th>
-                        <th scope="col" className="text-left p-3">
-                          Formato
-                        </th>
-                        <th scope="col" className="text-left p-3">
-                          Tamaño
-                        </th>
-                        <th scope="col" className="text-left p-3">
-                          Ver
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {documentosVisuales.map((d) => (
-                        <tr key={d.id} className="border-t hover:bg-slate-50">
-                          <td className="p-3">
-                            <div className="flex items-center gap-2">
-                              <FileCheck className="h-4 w-4 text-slate-400" />
-                              <span className="font-medium">{d.nombre}</span>
-                            </div>
-                          </td>
-                          <td className="p-3 text-xs">{d.formato}</td>
-                          <td className="p-3 text-xs">{d.tamano}</td>
-                          <td className="p-3">
-                            <button
-                              type="button"
-                              aria-label={`Ver ${d.nombre}`}
-                              className="h-7 w-7 grid place-items-center rounded border"
-                            >
-                              <Download className="h-3.5 w-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="space-y-3 sm:hidden">
-                  {documentosVisuales.map((d) => (
-                    <article
-                      key={d.id}
-                      className="rounded-xl border border-slate-200 bg-white p-4"
-                    >
-                      <div className="flex min-w-0 items-start gap-3">
-                        <div className="flex min-w-0 items-start gap-2">
-                          <FileCheck className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold">{d.nombre}</p>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {d.formato} · {d.tamano}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="shrink-0 flex gap-2">
-                          <button
-                            type="button"
-                            aria-label={`Ver ${d.nombre}`}
-                            className="flex h-11 items-center justify-center gap-2 rounded-lg border text-xs font-medium"
-                          >
-                            <Download className="h-4 w-4" /> Ver
-                          </button>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </Card>
-              <Card
                 title="Plantillas"
                 desc="Plantillas descargables y reemplazables"
                 action={
                   <button
                     type="button"
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#19255b] px-3 text-xs font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#0052a1] px-3 text-xs font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
                   >
                     <Upload className="h-4 w-4 sm:h-3 sm:w-3" /> Subir plantilla
                   </button>
@@ -1197,7 +1126,7 @@ export default function Ajustes() {
                               <button
                                 type="button"
                                 aria-label={`Reemplazar ${d.nombre}`}
-                                className="h-7 w-7 grid place-items-center rounded border bg-[#19255b] text-white"
+                                className="h-7 w-7 grid place-items-center rounded border bg-[#0052a1] text-white"
                               >
                                 <RefreshCw className="h-3.5 w-3.5" />
                               </button>
@@ -1249,7 +1178,7 @@ export default function Ajustes() {
                           <button
                             type="button"
                             aria-label={`Reemplazar ${d.nombre}`}
-                            className="flex h-11 items-center justify-center gap-2 rounded-lg border bg-[#19255b] text-white text-xs font-medium"
+                            className="flex h-11 items-center justify-center gap-2 rounded-lg border bg-[#0052a1] text-white text-xs font-medium"
                           >
                             <RefreshCw className="h-3.5 w-3.5" /> Reemplazar
                           </button>
@@ -1419,7 +1348,7 @@ export default function Ajustes() {
                         },
                       ])
                     }
-                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#19255b] px-3 text-xs font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#0052a1] px-3 text-xs font-medium text-white sm:h-9 sm:w-auto sm:rounded-md"
                   >
                     <Key className="h-4 w-4 sm:h-3 sm:w-3" /> Nueva Key
                   </button>
@@ -1591,7 +1520,7 @@ export default function Ajustes() {
                     <p className="text-xs text-slate-500 mt-1">
                       Incluye parametros.json, usuarios y plantillas
                     </p>
-                    <button className="mt-4 w-full h-9 rounded-md bg-[#19255b] text-white text-sm flex items-center justify-center gap-1.5">
+                    <button className="mt-4 w-full h-9 rounded-md bg-[#0052a1] text-white text-sm flex items-center justify-center gap-1.5">
                       <RefreshCw className="h-4 w-4" /> Crear backup ahora
                     </button>
                     <p className="text-[11px] text-slate-500 mt-2">
@@ -1617,7 +1546,7 @@ export default function Ajustes() {
                       onClick={() => onChange('backupAuto', !form.backupAuto)}
                       aria-label="Respaldo automático"
                       aria-pressed={form.backupAuto}
-                      className={`h-6 w-11 rounded-full flex items-center ${form.backupAuto ? 'bg-[#19255b] justify-end' : 'bg-slate-200 justify-start'}`}
+                      className={`h-6 w-11 rounded-full flex items-center ${form.backupAuto ? 'bg-[#0052a1] justify-end' : 'bg-slate-200 justify-start'}`}
                     >
                       <span className="h-4 w-4 rounded-full bg-white shadow mx-1" />
                     </button>

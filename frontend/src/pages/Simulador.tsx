@@ -120,20 +120,13 @@ export default function Simulador() {
   )
 
   // Modo Credicontado: el logo aplica sus condiciones fijas (tasa 0,
-  // plazo 4–12 y cuota inicial por tabla); editar la tasa o la cuota
-  // inicial —o un plazo por fuera del 4–12— devuelve el simulador al
-  // producto propio.
+  // plazo 1–12 y cuota inicial por tabla). Es adhesivo: solo se sale
+  // con el botón "Salir de Credicontado" — tasa y cuota inicial van
+  // bloqueadas porque la tabla las impone, y un plazo fuera del 1–12
+  // muestra la alerta sin abandonar la línea.
   const [modoCredicontado, setModoCredicontado] = useState(false)
 
   const actualizarValor = (key: keyof FormSimulador, n: number | null) => {
-    if (
-      key === 'tasaMensual' ||
-      key === 'cuotaInicial' ||
-      (key === 'plazoMeses' &&
-        n != null &&
-        (n < CREDICONTADO_PLAZO_MIN || n > CREDICONTADO_PLAZO_MAX))
-    )
-      setModoCredicontado(false)
     setForm((prev) => ({ ...prev, [key]: n }))
   }
 
@@ -276,12 +269,17 @@ export default function Simulador() {
         }`
       : null
 
-  const alertaPlazo = modoCredicontado
-    ? null
-    : form.plazoMeses != null &&
-        (form.plazoMeses < rangos.plazoMin || form.plazoMeses > rangos.plazoMax)
-      ? `El plazo del producto está entre ${rangos.plazoMin} y ${rangos.plazoMax} meses.`
-      : null
+  const alertaPlazo =
+    form.plazoMeses == null
+      ? null
+      : modoCredicontado
+        ? form.plazoMeses < CREDICONTADO_PLAZO_MIN ||
+          form.plazoMeses > CREDICONTADO_PLAZO_MAX
+          ? `El plazo Credicontado está entre ${CREDICONTADO_PLAZO_MIN} y ${CREDICONTADO_PLAZO_MAX} meses.`
+          : null
+        : form.plazoMeses < rangos.plazoMin || form.plazoMeses > rangos.plazoMax
+          ? `El plazo del producto está entre ${rangos.plazoMin} y ${rangos.plazoMax} meses.`
+          : null
 
   // Animación de conteo al cargar/cambiar las cifras del hero
   const cuotaAnim = useCuentaAscendente(resultado.cuota)
@@ -553,6 +551,26 @@ export default function Simulador() {
                   className="input-base"
                   label={
                     modoCredicontado
+                      ? `Plazo meses Credicontado (${CREDICONTADO_PLAZO_MIN}–${CREDICONTADO_PLAZO_MAX})`
+                      : `Plazo meses (${rangos.plazoMin}–${rangos.plazoMax})`
+                  }
+                  placeholder={
+                    modoCredicontado ? 'Ej: 12' : `Ej: ${rangos.plazoMax}`
+                  }
+                  minimo={
+                    modoCredicontado ? CREDICONTADO_PLAZO_MIN : rangos.plazoMin
+                  }
+                  maximo={
+                    modoCredicontado ? CREDICONTADO_PLAZO_MAX : rangos.plazoMax
+                  }
+                  value={form.plazoMeses}
+                  onValor={(n) => actualizarValor('plazoMeses', n)}
+                  aria-invalid={!!alertaPlazo}
+                />
+                <CampoNumerico
+                  className="input-base"
+                  label={
+                    modoCredicontado
                       ? `Cuota inicial Credicontado (${Math.round(
                           tramoCredicontado(plazoEfectivo).cuotaInicial * 100,
                         )}% del saldo)`
@@ -562,6 +580,7 @@ export default function Simulador() {
                   minimo={0}
                   maximo={500_000_000}
                   placeholder="Ej: 1.000.000"
+                  disabled={modoCredicontado}
                   value={
                     modoCredicontado ? cuotaInicialEfectiva : form.cuotaInicial
                   }
@@ -576,6 +595,7 @@ export default function Simulador() {
                   }
                   decimales
                   mostrarCero={modoCredicontado}
+                  disabled={modoCredicontado}
                   minimo={modoCredicontado ? undefined : rangos.tasaMin}
                   maximo={modoCredicontado ? undefined : tasaMaxEfectiva}
                   placeholder={
@@ -584,20 +604,6 @@ export default function Simulador() {
                   value={form.tasaMensual}
                   onValor={(n) => actualizarValor('tasaMensual', n)}
                   aria-invalid={!!alertaTasa}
-                />
-                <CampoNumerico
-                  className="input-base"
-                  label={
-                    modoCredicontado
-                      ? `Plazo meses Credicontado (${CREDICONTADO_PLAZO_MIN}–${CREDICONTADO_PLAZO_MAX})`
-                      : `Plazo meses (${rangos.plazoMin}–${rangos.plazoMax})`
-                  }
-                  placeholder={
-                    modoCredicontado ? 'Ej: 12' : `Ej: ${rangos.plazoMax}`
-                  }
-                  value={form.plazoMeses}
-                  onValor={(n) => actualizarValor('plazoMeses', n)}
-                  aria-invalid={!!alertaPlazo}
                 />
               </div>
               <div className="pt-5">
@@ -668,7 +674,7 @@ export default function Simulador() {
                 type="button"
                 aria-pressed={modoCredicontado}
                 aria-label="Aplicar condiciones de la línea Credicontado"
-                title="Aplicar condiciones Credicontado: tasa 0 %, plazo 4–12 meses y cuota inicial según tabla"
+                title="Aplicar condiciones Credicontado: tasa 0 %, plazo 1–12 meses y cuota inicial según tabla"
                 className={`btn-wobble flex w-fit items-center justify-start rounded-full border px-2 py-0.5 shadow-md backdrop-blur-md transition-all duration-200 hover:bg-white/40 ${
                   modoCredicontado
                     ? 'border-brand-600 bg-white/50 ring-2 ring-brand-600/30'

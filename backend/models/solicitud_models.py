@@ -99,6 +99,34 @@ class CrearSolicitudResponse(BaseModel):
     estado: str
 
 
+class SimitConsultaRequest(BaseModel):
+    """Paso 3 de originación ("puerta SIMIT"): consulta el estado de
+    cuenta de tránsito de la persona con el tipo+documento ya
+    confirmados por el OCR.
+
+    `autorizo_habeas` refleja el consentimiento del paso 1: el
+    servidor no consulta sin él (422). La solicitud todavía no existe
+    en este paso — la consulta es por documento y queda cacheada
+    (SIMIT_CACHE_DIAS), así que el precache del consentimiento y la
+    evaluación posterior la reusan.
+    """
+
+    tipo_documento: TipoIdentificacion
+    num_cedula: str = Field(min_length=4, max_length=40)
+    autorizo_habeas: bool = False
+
+
+class SimitConsultaResponse(BaseModel):
+    """`tiene_multas=None` → el proveedor no respondió: el asesor
+    verifica manual en el portal (fallback al popup anterior)."""
+
+    habilitado: bool
+    tiene_multas: bool | None = None
+    total_deuda: Decimal | None = None
+    total_items: int | None = None
+    origen: str | None = None
+
+
 class OfertaResponse(BaseModel):
     id_oferta: int
     id_aliado_producto: int
@@ -130,6 +158,30 @@ class VehiculoFinanciadoRequest(BaseModel):
     soat: Decimal | None = Field(default=None, ge=0)
     impuestos: Decimal | None = Field(default=None, ge=0)
     aval_pct: Decimal | None = Field(default=None, ge=0, le=100)
+
+
+class VentaContadoRequest(BaseModel):
+    """Cierre de una venta de contado: la hoja de negocio (vehículo +
+    liquidación) y a quién se expide la factura — puede ser distinto
+    del cliente (facturar a 1 / 2)."""
+
+    # Identificación de la venta
+    asesor_externo: str | None = Field(default=None, max_length=180)
+    facturar_a_documento: str | None = Field(default=None, max_length=30)
+    facturar_a_nombre: str | None = Field(default=None, max_length=180)
+    facturar_a2_documento: str | None = Field(default=None, max_length=30)
+    facturar_a2_nombre: str | None = Field(default=None, max_length=180)
+    observaciones: str | None = Field(default=None, max_length=2000)
+    # Vehículo (hoja de negocio) + identificación de la moto entregada
+    vehiculo: VehiculoFinanciadoRequest | None = None
+    numero_motor: str | None = Field(default=None, max_length=60)
+    numero_chasis: str | None = Field(default=None, max_length=60)
+    vin: str | None = Field(default=None, max_length=30)
+    ciudad_matricula: str | None = Field(default=None, max_length=120)
+    # Liquidación
+    anticipo: Decimal | None = Field(default=None, ge=0)
+    retoma: Decimal | None = Field(default=None, ge=0)
+    otros_gastos: Decimal | None = Field(default=None, ge=0)
 
 
 class DatosFormalizacionRequest(BaseModel):
@@ -227,6 +279,9 @@ class SolicitudResumenResponse(BaseModel):
     # Cuota TOTAL mensual (anualidad + seguro) de la oferta seleccionada;
     # None hasta que el cliente elige financiación.
     cuota_total: Decimal | None = None
+    # Monto aprobado de la oferta seleccionada: lo muestra la bandeja
+    # de desembolsos (lo que hay que girar al concesionario).
+    monto_aprobado: Decimal | None = None
     evaluacion: EvaluacionResumenSolicitud | None
 
 
@@ -251,6 +306,32 @@ class DesembolsoResponse(BaseModel):
     fecha_desembolso: datetime | None
 
 
+class ConteoSolicitudesResponse(BaseModel):
+    """Total de solicitudes bajo los filtros dados: alimenta la
+    paginación server-side sin traer la página entera."""
+
+    total: int
+
+
+class DesembolsoMasivoRequest(BaseModel):
+    """Lote de facturadas a marcar como desembolsadas desde la bandeja
+    de operaciones (el giro llega después por webhook/detalle)."""
+
+    id_solicitudes: list[UUID] = Field(min_length=1, max_length=200)
+
+
+class DesembolsoMasivoItemResponse(BaseModel):
+    id_solicitud: UUID
+    ok: bool
+    error: str | None = None
+
+
+class DesembolsoMasivoResponse(BaseModel):
+    procesadas: int
+    fallidas: int
+    resultados: list[DesembolsoMasivoItemResponse]
+
+
 class ConsentimientoResponse(BaseModel):
     """Registro de una aceptación Habeas Data (Ley 1581)."""
 
@@ -259,6 +340,99 @@ class ConsentimientoResponse(BaseModel):
     canal: str
     ip: str | None
     fecha_aceptacion: datetime
+
+
+class DatosFacturaResponse(BaseModel):
+    """Lo extraído del PDF de la factura por el parser (None si no se
+    pudo leer: el detalle muestra revisión manual)."""
+
+    formato: str | None = None
+    numero_factura: str | None = None
+    nit_comprador: str | None = None
+    nombre_comprador: str | None = None
+    marca: str | None = None
+    linea: str | None = None
+    referencia: str | None = None
+    anio: str | None = None
+    color: str | None = None
+    numero_motor: str | None = None
+    numero_chasis: str | None = None
+    vin: str | None = None
+    cilindraje: str | None = None
+    total: Decimal | None = None
+
+
+class VerificacionFacturaResponse(BaseModel):
+    """Resultado persistido del parseo + verificación de la factura
+    contra la solicitud. Las advertencias no bloquean; el NIT de otro
+    comprador sí (422 en la carga, aquí nunca llega)."""
+
+    parseada: bool
+    nit_coincide: bool | None = None
+    advertencias: list[str] = []
+    datos: DatosFacturaResponse | None = None
+
+
+class FacturaResponse(BaseModel):
+    nombre: str
+    mime: str
+    hash_sha256: str
+    cargada_en: datetime
+    cargada_por: str
+    verificacion: VerificacionFacturaResponse | None = None
+
+
+class EntregaDocumentosResponse(BaseModel):
+    """Resultado del envío del paquete legal definitivo (con la factura
+    la moto ya quedó prendada). `correo_estado` replica lo que reporta
+    NotificacionService: enviado | simulado | sin_destino | fallido."""
+    paquete_generado: bool
+    pdfs_adjuntos: int
+    correo_estado: str | None = None
+
+
+class FacturaRegistradaResponse(FacturaResponse):
+    """La carga devuelve también cómo salió el correo con el paquete
+    definitivo, para que operaciones vea el fallo y reenvíe recargando
+    la factura."""
+    entrega_documentos: EntregaDocumentosResponse | None = None
+
+
+class PrendaVehiculoRequest(BaseModel):
+    """Confirmación/corrección de la prenda tras la factura. La captura
+    de originación pudo no coincidir con lo facturado: también van
+    marca/referencia/modelo, no solo motor/chasis/VIN/color."""
+
+    marca: str | None = Field(default=None, max_length=100)
+    referencia: str | None = Field(default=None, max_length=120)
+    modelo: str | None = Field(default=None, max_length=30)
+    color: str | None = Field(default=None, max_length=60)
+    numero_motor: str | None = Field(default=None, max_length=60)
+    numero_chasis: str | None = Field(default=None, max_length=60)
+    vin: str | None = Field(default=None, max_length=30)
+
+
+class VehiculoPrendaResponse(BaseModel):
+    """La moto que queda en garantía: la pre-llena la factura y el
+    asesor la confirma antes del desembolso."""
+    marca: str | None = None
+    referencia: str | None = None
+    modelo: str | None = None
+    color: str | None = None
+    numero_motor: str | None = None
+    numero_chasis: str | None = None
+    vin: str | None = None
+    valor_moto_iva: Decimal | None = None
+    # Hoja de negocio / liquidación (venta de contado)
+    descuento_pesos: Decimal | None = None
+    accesorios: Decimal | None = None
+    matricula: Decimal | None = None
+    soat: Decimal | None = None
+    impuestos: Decimal | None = None
+    otros_gastos: Decimal | None = None
+    anticipo: Decimal | None = None
+    retoma_valor: Decimal | None = None
+    ciudad_matricula: str | None = None
 
 
 class SolicitudDetalleResponse(SolicitudResumenResponse):
@@ -272,6 +446,16 @@ class SolicitudDetalleResponse(SolicitudResumenResponse):
     ofertas: list[OfertaResponse]
     desembolso: DesembolsoResponse | None = None
     consentimientos: list[ConsentimientoResponse] = []
+    factura: FacturaResponse | None = None
+    vehiculo: VehiculoPrendaResponse | None = None
+    # Identificación de la venta de contado (a quién se factura, asesor
+    # externo, observaciones).
+    facturar_a_documento: str | None = None
+    facturar_a_nombre: str | None = None
+    facturar_a2_documento: str | None = None
+    facturar_a2_nombre: str | None = None
+    asesor_externo: str | None = None
+    observaciones_venta: str | None = None
 
 
 class VehiculoDesembolsoRequest(BaseModel):
@@ -337,6 +521,9 @@ class VerificarOtpRequest(BaseModel):
 class VerificarOtpResponse(BaseModel):
     verificado: bool
     uuid_firma: UUID | None = None
+    # Si la firma quedó sellada pero el paquete de legalización no se
+    # generó completo, aquí viaja el motivo para mostrarlo al asesor.
+    advertencia: str | None = None
 
 
 # ---------- Métricas del embudo originación → desembolso ----------

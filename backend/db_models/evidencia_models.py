@@ -51,7 +51,7 @@ class DocumentoEvidencia(Base):
         Uuid(as_uuid=True), ForeignKey("sesion_captura.id_sesion"), index=True
     )
     id_solicitud: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), index=True)
-    tipo: Mapped[str] = mapped_column(String(20))  # cedula_frontal | cedula_reverso | video_prueba_vida
+    tipo: Mapped[str] = mapped_column(String(40))  # cedula_frontal | cedula_reverso | video_prueba_vida | doc_*
     ruta: Mapped[str] = mapped_column(String(255))
     nombre_original: Mapped[str | None] = mapped_column(String(255))
     mime: Mapped[str] = mapped_column(String(120))

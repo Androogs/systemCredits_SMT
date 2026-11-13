@@ -130,7 +130,14 @@ class MotorParametros(BaseModel):
 
     # --- Capacidad de pago (PPT v4 pág. 11) ---
     capacidad_pago_pct: Decimal = Decimal("70")
-    
+
+    # Canal asesor digital: capacidad reducida frente al canal presencial.
+    capacidad_pago_pct_asesor_digital: Decimal = Decimal("50")
+    # Piso de ingreso (en SMMLV) bajo el cual se aplica la capacidad
+    # reducida `capacidad_pago_pct_ingreso_minimo`.
+    capacidad_pago_umbral_ingreso_minimo: Decimal = Field(Decimal("1.0"), ge=0)
+    capacidad_pago_pct_ingreso_minimo: Decimal = Decimal("40")
+
     # Nuevo en v5: Capacidad de pago diferenciada por tipo de ocupación
     # Esto permite calcular diferentes porcentajes de capacidad de pago según la ocupación del cliente
     # Valores por defecto: Empleado 70%, Pensionado/Fuerzas Militares 65%, Independiente 60%
@@ -264,6 +271,8 @@ class MotorParametros(BaseModel):
             "gastos_personales_pct_alto",
             "gastos_personales_pct_quanto",
             "capacidad_pago_pct",
+            "capacidad_pago_pct_asesor_digital",
+            "capacidad_pago_pct_ingreso_minimo",
             "cupo_sugerido_tasa_pct",
             "tasa_gasto_financiero_pct",
             "endeu_1",

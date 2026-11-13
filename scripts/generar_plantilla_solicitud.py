@@ -19,7 +19,9 @@ from pathlib import Path
 
 from docx import Document
 
-ORIGEN = Path("Informes Pacifico/Plantillas/7. solicitudCredito.docx")
+ORIGEN = Path(
+    "backend/documentos/plantillas_sumoto/7. solicitudCredito735.docx"
+)
 DESTINO = Path("backend/documentos/plantillas/solicitud_credito.docx")
 
 # Huellas SHA-256 de los artefactos de la firma electrónica de la
@@ -36,6 +38,8 @@ HUELLAS_FIRMA_MUESTRA = {
 HUELLAS_CONSERVAR = {
     "effb59786809aa24ebd2d9f68d4911ad733ae509f78a99a1e0856ab5ed63fcd3",
     "f2627590be7e5dd7b888144089cbd1bff3e9616f94bf5958fb6273acb6e97ba0",
+    # logo SUMOTO S.A. (variante de la solicitud 735 re-guardada)
+    "e84defc8e621ce02c44df20548314a2630d15914866d63763ca7d56b8ac969a3",
 }
 
 # Párrafos sueltos del cuerpo (fuera de la tabla).

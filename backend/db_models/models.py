@@ -73,8 +73,8 @@ DECISION_DB = Enum(
     name="decision_credito", create_type=False,
 )
 ESTADO_SOLICITUD_DB = Enum(
-    "creada", "en_evaluacion", "aprobada", "rechazada", "en_revision",
-    "desembolsada", "cancelada",
+    "creada", "en_evaluacion", "aprobada", "facturada", "rechazada",
+    "en_revision", "desembolsada", "cancelada",
     name="estado_solicitud", create_type=False,
 )
 TIPO_CONTRATO_DB = Enum(
@@ -170,6 +170,36 @@ class SolicitudCredito(Base):
     fecha_hora_firma: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     uuid_firma: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     autenticacion: Mapped[str | None] = mapped_column(String(100))
+    # Factura del vehículo emitida por el concesionario tras la firma
+    # del pagaré: su carga mueve el ciclo aprobada → facturada. El PDF
+    # se parsea y verifica contra la solicitud; el resultado queda en
+    # factura_verificacion como evidencia de auditoría (no se relee el
+    # archivo para re-renderizar el detalle).
+    factura_ruta: Mapped[str | None] = mapped_column(String(512))
+    factura_nombre: Mapped[str | None] = mapped_column(String(255))
+    factura_mime: Mapped[str | None] = mapped_column(String(120))
+    factura_hash: Mapped[str | None] = mapped_column(String(64))
+    factura_cargada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    factura_cargada_por: Mapped[str | None] = mapped_column(String(180))
+    factura_verificacion: Mapped[dict | None] = mapped_column(JSONPortable)
+    # Trazabilidad del cargue de garantías al SGM (RUNT Pro): cuándo y
+    # en qué lote salió la prenda en un Excel de cargue masivo.
+    garantia_runt_exportada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    garantia_runt_lote: Mapped[str | None] = mapped_column(String(30))
+    # Procedencia de la fila: 'flujo' (radicada en la app) o
+    # 'cargue_historico' (importada del log de transacciones — ver
+    # backend/database/cargue_log_historico.py). La usa la analítica
+    # de campañas para separar el comportamiento del canal digital
+    # del arranque histórico.
+    # A quién se expide la factura en la venta de contado (puede ser
+    # distinto del cliente), asesor externo y observaciones de la venta.
+    facturar_a_documento: Mapped[str | None] = mapped_column(String(30))
+    facturar_a_nombre: Mapped[str | None] = mapped_column(String(180))
+    facturar_a2_documento: Mapped[str | None] = mapped_column(String(30))
+    facturar_a2_nombre: Mapped[str | None] = mapped_column(String(180))
+    asesor_externo: Mapped[str | None] = mapped_column(String(180))
+    observaciones_venta: Mapped[str | None] = mapped_column(Text)
+    origen: Mapped[str] = mapped_column(String(30), default="flujo", server_default="flujo")
 
     cliente: Mapped["Cliente"] = relationship(back_populates="solicitudes")
     # Radicador y sede: los usa el alcance por asesor y el reporte de
@@ -323,7 +353,7 @@ class EvaluacionCredito(Base):
     id_solicitud: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("solicitud_credito.id_solicitud"))
     version: Mapped[int] = mapped_column(SmallInteger, default=1)
     vigente: Mapped[bool] = mapped_column(Boolean, default=True)
-    origen_evaluacion: Mapped[str] = mapped_column(String(40), default="motor_pacifico")
+    origen_evaluacion: Mapped[str] = mapped_column(String(40), default="motor_sumoto")
     score: Mapped[float | None] = mapped_column(Numeric(8, 2))
     valor_ingreso: Mapped[float | None] = mapped_column(Numeric(18, 2))
     ingreso_final: Mapped[float | None] = mapped_column(Numeric(18, 2))
@@ -579,6 +609,12 @@ class ProductoVehiculo(Base):
     referencia: Mapped[str | None] = mapped_column(String(120))
     modelo: Mapped[str | None] = mapped_column(String(30))
     color: Mapped[str | None] = mapped_column(String(60))
+    # Identificación de la moto prendada: la captura de originación no
+    # la pide; llega con la factura del concesionario (o se confirma a
+    # mano en la tarjeta "Datos de la prenda" del detalle).
+    numero_motor: Mapped[str | None] = mapped_column(String(60))
+    numero_chasis: Mapped[str | None] = mapped_column(String(60))
+    vin: Mapped[str | None] = mapped_column(String(30))
     valor_moto_iva: Mapped[float | None] = mapped_column(Numeric(18, 2))
     # Desglose de la hoja de negocio capturado al elegir la oferta
     # (migración 0010): alimenta el documento "Solicitud de crédito".
@@ -589,6 +625,46 @@ class ProductoVehiculo(Base):
     soat: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
     impuestos: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
     aval_pct: Mapped[float | None] = mapped_column(Numeric(8, 4))
+    # Liquidación de la venta de contado (se captura al cerrar la venta).
+    otros_gastos: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    anticipo: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    retoma_valor: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    ciudad_matricula: Mapped[str | None] = mapped_column(String(120))
+
+
+class VehiculoCatalogo(Base):
+    """Listado de precios vigente por marca/referencia: al elegir la
+    moto en la etapa de oferta se precargan valor, bono en pesos,
+    SOAT, matrícula e impuesto de rodamiento (hoja de negocio)."""
+
+    __tablename__ = "vehiculo_catalogo"
+    __table_args__ = (
+        UniqueConstraint("marca", "referencia", name="uq_vehiculo_catalogo"),
+    )
+
+    id_vehiculo_catalogo: Mapped[int] = mapped_column(primary_key=True)
+    marca: Mapped[str] = mapped_column(String(60))
+    referencia: Mapped[str] = mapped_column(String(120))
+    precio_lista: Mapped[float] = mapped_column(Numeric(18, 2))
+    bono_pesos: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    soat: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    matricula: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    impuesto: Mapped[float | None] = mapped_column(Numeric(18, 2))
+    vigencia: Mapped[str | None] = mapped_column(String(30))
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class MarcaVehiculo(Base):
+    """Catálogo de marcas aliadas (Ajustes → Concesionarios). Las marcas
+    también emergen de ``vehiculo_catalogo`` y ``producto_vehiculo``; esta
+    tabla registra las que el admin da de alta antes de tener catálogo
+    de precios o radicaciones."""
+
+    __tablename__ = "marca_vehiculo"
+
+    id_marca: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(100), unique=True)
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class CreditoFinanciacion(Base):
@@ -641,3 +717,30 @@ class Desembolso(Base):
     valor_seguro: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
     moneda: Mapped[str] = mapped_column(String(3), default="COP")
     estado: Mapped[str] = mapped_column(ESTADO_DESEMBOLSO_DB, default="pendiente")
+
+
+class RngmArchivoLote(Base):
+    """Archivos planos RNGM generados para el cargue masivo en RUNTPRO.
+
+    El nombre del archivo exige un consecutivo de 3 dígitos que reinicia
+    cada fecha (``<NIT>RGM<consecutivo><AAAAMMDD>.txt``); esta tabla es
+    la fuente del consecutivo y deja trazado qué archivo salió, cuántas
+    prendas llevaba y quién lo generó — insumo de la "Consulta de
+    solicitudes de cargue" que operaciones hace luego en RUNTPRO.
+    """
+
+    __tablename__ = "rngm_archivo_lote"
+    __table_args__ = (
+        UniqueConstraint("fecha_corte", "consecutivo", name="uq_rngm_fecha_consecutivo"),
+    )
+
+    id_lote: Mapped[int] = mapped_column(primary_key=True)
+    fecha_corte: Mapped[date] = mapped_column(Date)
+    consecutivo: Mapped[int] = mapped_column(SmallInteger)
+    nombre_archivo: Mapped[str] = mapped_column(String(40), unique=True)
+    tipo_novedad: Mapped[str] = mapped_column(String(1), default="R")
+    n_garantias: Mapped[int] = mapped_column(Integer)
+    n_registros: Mapped[int] = mapped_column(Integer)
+    n_advertencias: Mapped[int] = mapped_column(Integer, default=0)
+    generado_por: Mapped[str | None] = mapped_column(String(180))
+    creado_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora_utc)

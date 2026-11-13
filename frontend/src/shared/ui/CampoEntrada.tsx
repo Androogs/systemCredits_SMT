@@ -1,7 +1,7 @@
-import { useId, type InputHTMLAttributes } from 'react'
+import { useId, type InputHTMLAttributes, type ReactNode } from 'react'
 
 interface CampoEntradaProps extends InputHTMLAttributes<HTMLInputElement> {
-  label?: string
+  label?: ReactNode
   error?: string
   className?: string
 }

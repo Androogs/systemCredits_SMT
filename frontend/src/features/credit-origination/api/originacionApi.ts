@@ -312,6 +312,9 @@ export interface VehiculoFinanciado {
   impuestos?: number | null
   aval_pct?: number | null
   gastos_administrativos?: number | null
+  /** Valor pactado de la moto usada que el cliente entrega en retoma;
+   * abona la cuota inicial y el excedente reduce el saldo financiado. */
+  valor_retoma?: number | null
 }
 
 export function seleccionarOferta(
@@ -382,6 +385,40 @@ export function guardarDatosFormalizacion(
   })
 }
 
+// ---------- Venta de contado ----------
+
+/** Hoja de negocio de la venta de contado: vehículo + liquidación
+ * (anticipo, retoma, otros gastos, ciudad de matrícula) y a quién se
+ * expide la factura — puede ser un tercero ('facturar a'). Al guardarla
+ * el backend regenera el paquete de documentos físicos de la entrega
+ * (autorizaciones + transferencia de dominio + acta de entrega). */
+export interface VentaContadoPayload {
+  asesor_externo?: string | null
+  facturar_a_documento?: string | null
+  facturar_a_nombre?: string | null
+  facturar_a2_documento?: string | null
+  facturar_a2_nombre?: string | null
+  observaciones?: string | null
+  vehiculo?: VehiculoFinanciado | null
+  numero_motor?: string | null
+  numero_chasis?: string | null
+  vin?: string | null
+  ciudad_matricula?: string | null
+  anticipo?: number | null
+  retoma?: number | null
+  otros_gastos?: number | null
+}
+
+export function guardarVentaContado(
+  idSolicitud: string,
+  payload: VentaContadoPayload,
+) {
+  return request<void>(`/api/solicitudes/${idSolicitud}/venta-contado`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
 // ---------- OTP (firma del pagaré) ----------
 
 export interface GenerarOtpResponse {
@@ -408,13 +445,14 @@ export function verificarOtp(
   codigo: string,
   accion = 'firma_pagare',
 ) {
-  return request<{ verificado: boolean; uuid_firma: string | null }>(
-    `/api/solicitudes/${idSolicitud}/otp/verificar`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ accion, codigo }),
-    },
-  )
+  return request<{
+    verificado: boolean
+    uuid_firma: string | null
+    advertencia?: string | null
+  }>(`/api/solicitudes/${idSolicitud}/otp/verificar`, {
+    method: 'POST',
+    body: JSON.stringify({ accion, codigo }),
+  })
 }
 
 export function listarEscenariosMock() {
@@ -494,6 +532,9 @@ export interface SolicitudResumenApi {
   /** Cuota TOTAL mensual (anualidad + seguro) de la oferta seleccionada;
       null hasta que el cliente elige financiación. */
   cuota_total?: string | null
+  /** Monto aprobado de la oferta seleccionada: lo que se gira al
+      concesionario (bandeja de desembolsos). */
+  monto_aprobado?: string | null
   evaluacion: EvaluacionResumenApi | null
 }
 
@@ -544,6 +585,16 @@ export interface SolicitudDetalleApi extends SolicitudResumenApi {
   ofertas: OfertaApi[]
   desembolso: DesembolsoApi | null
   consentimientos?: ConsentimientoApi[]
+  factura?: FacturaApi | null
+  vehiculo?: VehiculoPrendaApi | null
+  /** A quién se expide la factura en la venta de contado (puede ser un
+   * tercero); 1 precargado con el cliente, 2 opcional. */
+  facturar_a_documento?: string | null
+  facturar_a_nombre?: string | null
+  facturar_a2_documento?: string | null
+  facturar_a2_nombre?: string | null
+  asesor_externo?: string | null
+  observaciones_venta?: string | null
 }
 
 /** Registro de una aceptación Habeas Data (Ley 1581). */
@@ -671,6 +722,82 @@ export function obtenerMetricasEmbudo(filtros?: {
   )
 }
 
+// ---------- Analítica (efectividad y perfil para campañas) ----------
+
+export interface FilaEfectividadApi {
+  nombre: string
+  radicadas: number
+  aprobadas: number
+  efectividad: number
+  creditos: number
+  rechazadas: number
+  saldo_aprobado: string
+}
+
+export interface FilaAsesorApi {
+  asesor: string
+  cedula: string | null
+  radicadas: number
+  creditos: number
+  efectividad: number
+  aprobadas: number
+  formalizadas: number
+  saldo_aprobado: string
+}
+
+export interface PerfilSedeApi {
+  nombre: string
+  radicadas: number
+  edad_promedio: number | null
+  score: Record<string, number>
+  ingreso: Record<string, number>
+  ocupacion: Record<string, number>
+}
+
+export interface CausalSedeApi {
+  nombre: string
+  rechazadas: number
+  causales: { codigo: string; descripcion: string; total: number }[]
+}
+
+export interface DimensionSegmentosApi {
+  dimension: string
+  segmentos: {
+    segmento: string
+    radicadas: number
+    aprobadas: number
+    creditos: number
+  }[]
+}
+
+export interface AnaliticaApi {
+  generado_en: string
+  desde: string | null
+  hasta: string | null
+  historico_completo: boolean
+  total_radicadas: number
+  por_sede: FilaEfectividadApi[]
+  por_marca: FilaEfectividadApi[]
+  por_asesor: FilaAsesorApi[]
+  perfil_por_sede: PerfilSedeApi[]
+  causales_por_sede: CausalSedeApi[]
+  segmentos: DimensionSegmentosApi[]
+}
+
+/** Analítica del portafolio (solo admin): efectividad por sede/
+    marca/asesor, perfil de score e ingreso, causales y segmentos
+    de campaña. `desde`/`hasta` (YYYY-MM-DD) acotan por radicación;
+    vacíos = histórico completo. */
+export function obtenerAnalitica(filtros?: { desde?: string; hasta?: string }) {
+  const params = new URLSearchParams()
+  if (filtros?.desde) params.set('desde', filtros.desde)
+  if (filtros?.hasta) params.set('hasta', filtros.hasta)
+  const qs = params.toString()
+  return request<AnaliticaApi>(
+    `/api/solicitudes/metricas/analitica${qs ? `?${qs}` : ''}`,
+  )
+}
+
 /** Anula la solicitud con motivo; 409 si ya está desembolsada/cancelada. */
 export function cancelarSolicitud(idSolicitud: string, motivo: string) {
   return request<SolicitudResumenApi>(
@@ -696,6 +823,24 @@ export interface ProductoApi {
 
 export function listarProductos() {
   return request<ProductoApi[]>('/api/productos')
+}
+
+// ---------- Catálogo de vehículos (listado de precios vigente) ----------
+
+export interface VehiculoCatalogoApi {
+  id_vehiculo_catalogo: number
+  marca: string
+  referencia: string
+  precio_lista: string
+  bono_pesos: string | null
+  soat: string | null
+  matricula: string | null
+  impuesto: string | null
+}
+
+export function listarVehiculos(marca?: string) {
+  const q = marca ? `?marca=${encodeURIComponent(marca)}` : ''
+  return request<VehiculoCatalogoApi[]>(`/api/catalogos/vehiculos${q}`)
 }
 
 // ---------- Tasa de mercado (TIBC SFC) ----------
@@ -894,4 +1039,142 @@ export function subirEvidencia(
     body: form,
     timeoutMs: 90_000,
   })
+}
+
+export interface SimitConsultaPayload {
+  tipo_documento: string
+  num_cedula: string
+  /** Consentimiento del paso 1: el servidor no consulta sin él (422). */
+  autorizo_habeas: boolean
+}
+
+export interface SimitConsultaResultado {
+  habilitado: boolean
+  /** null/undefined → el proveedor no respondió: fallback al popup. */
+  tiene_multas?: boolean | null
+  total_deuda?: number | null
+  total_items?: number | null
+  origen?: string | null
+}
+
+/** Paso 3: el backend consulta el SIMIT por la persona (reemplaza la
+ * visita manual al portal del popup). */
+export function consultarSimit(payload: SimitConsultaPayload) {
+  return request<SimitConsultaResultado>('/api/solicitudes/simit', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+// ---------- Factura del vehículo (aprobada → facturada) ----------
+
+/** Lo extraído del PDF de la factura por el parser (null si no se pudo
+ * leer: el detalle pide revisión manual). */
+export interface DatosFacturaApi {
+  formato?: string | null
+  numero_factura?: string | null
+  nit_comprador?: string | null
+  nombre_comprador?: string | null
+  marca?: string | null
+  linea?: string | null
+  referencia?: string | null
+  anio?: string | null
+  color?: string | null
+  numero_motor?: string | null
+  numero_chasis?: string | null
+  vin?: string | null
+  cilindraje?: string | null
+  total?: string | null
+}
+
+export interface VerificacionFacturaApi {
+  parseada: boolean
+  /** null → la factura no muestra el documento del comprador. */
+  nit_coincide?: boolean | null
+  advertencias: string[]
+  datos?: DatosFacturaApi | null
+}
+
+export interface FacturaApi {
+  nombre: string
+  mime: string
+  hash_sha256: string
+  cargada_en: string
+  cargada_por: string
+  verificacion?: VerificacionFacturaApi | null
+}
+
+/** Cómo salió el correo con el paquete legal definitivo tras la carga. */
+export interface EntregaDocumentosApi {
+  paquete_generado: boolean
+  pdfs_adjuntos: number
+  /** enviado | simulado | sin_destino | fallido | error | null */
+  correo_estado?: string | null
+}
+
+export interface FacturaRegistradaApi extends FacturaApi {
+  entrega_documentos?: EntregaDocumentosApi | null
+}
+
+/** La moto que queda en garantía: la pre-llena la factura y el asesor
+ * la confirma antes del desembolso. */
+export interface VehiculoPrendaApi {
+  marca?: string | null
+  referencia?: string | null
+  modelo?: string | null
+  color?: string | null
+  numero_motor?: string | null
+  numero_chasis?: string | null
+  vin?: string | null
+  valor_moto_iva?: string | null
+  /** Hoja de negocio / liquidación de la venta (contado). */
+  descuento_pesos?: string | null
+  accesorios?: string | null
+  matricula?: string | null
+  soat?: string | null
+  impuestos?: string | null
+  otros_gastos?: string | null
+  anticipo?: string | null
+  retoma_valor?: string | null
+  ciudad_matricula?: string | null
+}
+
+export type PrendaPayload = Pick<
+  VehiculoPrendaApi,
+  | 'marca'
+  | 'referencia'
+  | 'modelo'
+  | 'color'
+  | 'numero_motor'
+  | 'numero_chasis'
+  | 'vin'
+>
+
+/** Factura emitida por el concesionario tras la firma del pagaré: el
+ * backend la lee, verifica el documento del comprador contra la
+ * solicitud y pre-llena la prenda (motor/chasis/VIN/color). Re-subirla
+ * reemplaza el archivo vigente (antes del desembolso). */
+export function subirFactura(idSolicitud: string, archivo: File) {
+  const form = new FormData()
+  form.append('archivo', archivo, archivo.name)
+  // multipart: el boundary lo pone el navegador; no fijar Content-Type.
+  // El backend parsea el PDF en la subida: timeout holgado.
+  return request<FacturaRegistradaApi>(
+    `/api/solicitudes/${idSolicitud}/factura`,
+    { method: 'POST', headers: {}, body: form, timeoutMs: 90_000 },
+  )
+}
+
+/** URL del archivo vigente de la factura (descarga autenticada). */
+export function urlFactura(idSolicitud: string) {
+  return `${API}/api/solicitudes/${idSolicitud}/factura`
+}
+
+/** Confirma/corrige la identificación de la moto prendada; solo con la
+ * solicitud 'facturada'. Regenera los documentos legales. */
+export function actualizarPrenda(idSolicitud: string, payload: PrendaPayload) {
+  return request<VehiculoPrendaApi>(
+    `/api/solicitudes/${idSolicitud}/vehiculo`,
+    { method: 'PATCH', body: JSON.stringify(payload) },
+  )
 }

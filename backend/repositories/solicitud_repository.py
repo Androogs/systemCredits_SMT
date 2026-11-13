@@ -152,21 +152,69 @@ class SolicitudRepository:
         `orden="prioridad"` pone las pendientes de evaluación primero
         — el ORDER BY corre antes del LIMIT, así la ventana siempre
         contiene la cola de trabajo."""
-        query = (
-            self.db.query(SolicitudCredito)
-            .join(SolicitudCredito.cliente)
-            .options(
-                joinedload(SolicitudCredito.cliente),
-                joinedload(SolicitudCredito.asesor),
-                joinedload(SolicitudCredito.concesionario),
-                # Perfil laboral y oferta seleccionada: los consume el
-                # resumen del panel (tipo de contrato, continuidad, cuota).
-                joinedload(SolicitudCredito.datos_laborales),
-                selectinload(SolicitudCredito.evaluaciones),
-                selectinload(SolicitudCredito.capacidades_pago),
-                selectinload(SolicitudCredito.ofertas),
-            )
+        query = self._query_filtrada(
+            estado=estado,
+            decision=decision,
+            busqueda=busqueda,
+            concesionario_ids=concesionario_ids,
+            asesor_ids=asesor_ids,
+            asesor_cedula=asesor_cedula,
+            persona_desde=persona_desde,
+            filtro_id_concesionario=filtro_id_concesionario,
+            filtro_id_asesor=filtro_id_asesor,
+        ).options(
+            joinedload(SolicitudCredito.cliente),
+            joinedload(SolicitudCredito.asesor),
+            joinedload(SolicitudCredito.concesionario),
+            # Perfil laboral y oferta seleccionada: los consume el
+            # resumen del panel (tipo de contrato, continuidad, cuota).
+            joinedload(SolicitudCredito.datos_laborales),
+            selectinload(SolicitudCredito.evaluaciones),
+            selectinload(SolicitudCredito.capacidades_pago),
+            selectinload(SolicitudCredito.ofertas),
         )
+        ordenamiento = (
+            [
+                case(
+                    (
+                        and_(
+                            SolicitudCredito.decision.is_(None),
+                            SolicitudCredito.estado.in_(
+                                ["creada", "en_evaluacion"]
+                            ),
+                        ),
+                        0,
+                    ),
+                    else_=1,
+                ),
+                SolicitudCredito.fecha_hora.desc(),
+            ]
+            if orden == "prioridad"
+            else [SolicitudCredito.fecha_hora.desc()]
+        )
+        return (
+            query.order_by(*ordenamiento)
+            .offset(offset)
+            .limit(limite)
+            .all()
+        )
+
+    def _query_filtrada(
+        self,
+        *,
+        estado: str | None = None,
+        decision: str | None = None,
+        busqueda: str | None = None,
+        concesionario_ids: set[int] | None = None,
+        asesor_ids: set[int] | None = None,
+        asesor_cedula: str | None = None,
+        persona_desde: datetime | None = None,
+        filtro_id_concesionario: int | None = None,
+        filtro_id_asesor: int | None = None,
+    ):
+        """Base común de `listar` y `contar`: los mismos filtros de
+        alcance y de panel, sin eager loads ni paginación."""
+        query = self.db.query(SolicitudCredito).join(SolicitudCredito.cliente)
         if concesionario_ids is not None:
             query = query.filter(
                 SolicitudCredito.id_concesionario.in_(concesionario_ids)
@@ -196,31 +244,34 @@ class SolicitudRepository:
                     cast(SolicitudCredito.num_solicitud, String).ilike(like),
                 )
             )
-        ordenamiento = (
-            [
-                case(
-                    (
-                        and_(
-                            SolicitudCredito.decision.is_(None),
-                            SolicitudCredito.estado.in_(
-                                ["creada", "en_evaluacion"]
-                            ),
-                        ),
-                        0,
-                    ),
-                    else_=1,
-                ),
-                SolicitudCredito.fecha_hora.desc(),
-            ]
-            if orden == "prioridad"
-            else [SolicitudCredito.fecha_hora.desc()]
-        )
-        return (
-            query.order_by(*ordenamiento)
-            .offset(offset)
-            .limit(limite)
-            .all()
-        )
+        return query
+
+    def contar(
+        self,
+        *,
+        estado: str | None = None,
+        decision: str | None = None,
+        busqueda: str | None = None,
+        concesionario_ids: set[int] | None = None,
+        asesor_ids: set[int] | None = None,
+        asesor_cedula: str | None = None,
+        persona_desde: datetime | None = None,
+        filtro_id_concesionario: int | None = None,
+        filtro_id_asesor: int | None = None,
+    ) -> int:
+        """Total bajo los mismos filtros de `listar`: alimenta la
+        paginación server-side (bandeja de desembolsos)."""
+        return self._query_filtrada(
+            estado=estado,
+            decision=decision,
+            busqueda=busqueda,
+            concesionario_ids=concesionario_ids,
+            asesor_ids=asesor_ids,
+            asesor_cedula=asesor_cedula,
+            persona_desde=persona_desde,
+            filtro_id_concesionario=filtro_id_concesionario,
+            filtro_id_asesor=filtro_id_asesor,
+        ).count()
 
     def obtener_detalle(self, id_solicitud: uuid.UUID) -> SolicitudCredito | None:
         return (

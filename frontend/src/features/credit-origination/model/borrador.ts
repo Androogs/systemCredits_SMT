@@ -54,7 +54,7 @@ export interface BorradorOriginacion {
   guardadoEn: string
 }
 
-const CLAVE = 'inversiones-pacifico:borrador-originacion'
+const CLAVE = 'sumoto:borrador-originacion'
 
 // Valida el sobre del borrador; el contexto interno queda passthrough:
 // cada paso valida su propia forma al consumirla.

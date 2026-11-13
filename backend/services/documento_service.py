@@ -25,6 +25,7 @@ electrónica (OTP) como trazabilidad del acto de firma.
 
 import hashlib
 import io
+import re
 import secrets
 import shutil
 import uuid
@@ -103,6 +104,76 @@ _TIPO_CONTRATO_LABEL = {
 
 _IVA = Decimal("0.19")
 
+# Fuentes caligráficas para la rúbrica del titular: la empaquetada
+# (Great Vibes, OFL) primero; la caligrafía del sistema como respaldo.
+_FUENTES_FIRMA = [
+    Path(__file__).resolve().parents[1]
+    / "documentos" / "fonts" / "GreatVibes-Regular.ttf",
+    Path(r"C:\Windows\Fonts\segoesc.ttf"),
+    Path("/usr/share/fonts/truetype/script/URW Chancery L.ttf"),
+]
+
+# Tinta azul oscuro típica de una firma autógrafa.
+_TINTA_FIRMA = (18, 35, 107, 255)
+
+# Banda del logo Sumoto para los documentos construidos en código
+# (asegurabilidad y amortización): misma banda visible que recortan
+# las plantillas (44% arriba/abajo sobre el PNG de 2250 px).
+_LOGO_BANNER = (
+    Path(__file__).resolve().parents[1] / "documentos" / "logo_sumoto_banner.png"
+)
+
+
+def _bajar_run(r_el, val: int) -> None:
+    """Baja un run `val` medios puntos (w:position): la rúbrica se
+    asienta unos píxeles por debajo de la línea base."""
+    rpr = r_el.find(qn("w:rPr"))
+    if rpr is None:
+        rpr = OxmlElement("w:rPr")
+        r_el.insert(0, rpr)
+    pos = OxmlElement("w:position")
+    pos.set(qn("w:val"), str(val))
+    rpr.append(pos)
+
+# Ajustes de la rúbrica por tipo de documento: ancho de la imagen y
+# si debe bajar a su propia línea (debajo del rótulo «Firma:»).
+_FIRMA_CFG: dict[str, dict] = {
+    "doc_autorizacion": {"ancho": Cm(4.8), "linea_propia": True},
+    "doc_transferencia": {"ancho": Cm(4.8), "linea_propia": True},
+    "doc_compromiso": {"ancho": Cm(4.8), "linea_propia": True},
+}
+
+
+def _render_firma(nombre: str) -> io.BytesIO | None:
+    """Rúbrica del titular: el nombre en caligrafía sobre fondo
+    transparente, listo para insertarlo sobre la línea de firma.
+    Devuelve None si no hay fuente caligráfica disponible."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    fuente = None
+    for ruta in _FUENTES_FIRMA:
+        try:
+            fuente = ImageFont.truetype(str(ruta), 110)
+            break
+        except OSError:
+            continue
+    if fuente is None:
+        return None
+    # La rúbrica se ve natural en versalitas; el dato legal sigue en
+    # mayúsculas en el campo Nombre del bloque de firma.
+    rubrica = " ".join(p.capitalize() for p in nombre.split())
+    probe = ImageDraw.Draw(Image.new("RGBA", (8, 8)))
+    box = probe.textbbox((0, 0), rubrica, font=fuente)
+    w, h = box[2] - box[0], box[3] - box[1]
+    img = Image.new("RGBA", (w + 60, h + 40), (0, 0, 0, 0))
+    ImageDraw.Draw(img).text(
+        (30 - box[0], 20 - box[1]), rubrica, font=fuente, fill=_TINTA_FIRMA
+    )
+    buffer = io.BytesIO()
+    img.save(buffer, "PNG")
+    buffer.seek(0)
+    return buffer
+
 
 def _si_no(valor: bool | None) -> str:
     if valor is None:
@@ -124,25 +195,46 @@ def _fmt_fecha(valor: date | datetime | None) -> str:
     return valor.strftime("%Y/%m/%d")
 
 # tipo evidencia → (plantilla | generador | copia, nombre de salida)
+# La numeración de salida sigue el orden del paquete legal Sumoto
+# (1-13); los documentos generados programáticamente van al final.
 _DOCS: list[tuple[str, str, str]] = [
     ("doc_autorizacion", "autorizacion_centrales.docx", "1. Autorizacion consulta centrales - {cedula}.docx"),
     ("doc_carta_aprobacion", "carta_aprobacion.docx", "2. Carta de aprobacion - {cedula}.docx"),
-    ("doc_pagare", "pagare.docx", "3. Pagare - {cedula}.docx"),
+    ("doc_autorizacion_datos", "autorizacion_datos.docx", "3. Autorizacion datos personales - {cedula}.docx"),
     ("doc_instrucciones", "carta_instrucciones.docx", "4. Carta de instrucciones - {cedula}.docx"),
-    ("doc_prenda", "prenda.docx", "5. Prenda sin tenencia - {cedula}.docx"),
-    ("doc_asegurabilidad", "__asegurabilidad__", "6. Declaracion asegurabilidad - {cedula}.docx"),
+    ("doc_compra_venta", "compra_venta.docx", "5. Compraventa - {cedula}.docx"),
+    ("doc_dacion", "dacion_pago.docx", "6. Dacion en pago - {cedula}.docx"),
     ("doc_solicitud", "solicitud_credito.docx", "7. Solicitud de credito - {cedula}.docx"),
-    ("doc_compromiso", "compromiso_cartera.docx", "8. Compromiso de pago - {cedula}.docx"),
-    ("doc_amortizacion", "__amortizacion__", "9. Tabla de amortizacion - {cedula}.docx"),
+    ("doc_compromiso", "compromiso_cartera.docx", "9. Politicas de cartera - {cedula}.docx"),
+    ("doc_transferencia", "transferencia_dominio.docx", "11. Transferencia de dominio - {cedula}.docx"),
+    ("doc_pagare", "pagare.docx", "12. Pagare - {cedula}.docx"),
+    ("doc_prenda", "prenda.docx", "13. Prenda sin tenencia - {cedula}.docx"),
+    ("doc_asegurabilidad", "__asegurabilidad__", "14. Declaracion asegurabilidad - {cedula}.docx"),
+    ("doc_amortizacion", "__amortizacion__", "15. Tabla de amortizacion - {cedula}.docx"),
 ]
 
 # Soporte documental de la radicación: la autorización de consulta a
-# centrales (evidencia del consentimiento Habeas Data) y la solicitud
-# de crédito diligenciada. Se generan al evaluar — haya o no
-# aprobación — porque la consulta al buró ya se hizo con el aval del
-# cliente. Si luego firma, el paquete de legalización regenera estos
-# mismos tipos ya estampados con el uuid_firma.
-_DOCS_RADICACION = [d for d in _DOCS if d[0] in {"doc_autorizacion", "doc_solicitud"}]
+# centrales, la de tratamiento de datos personales (consentimiento
+# Habeas Data del paso 2) y la solicitud de crédito diligenciada. Se
+# generan al evaluar — haya o no aprobación — porque la consulta al
+# buró ya se hizo con el aval del cliente. Si luego firma, el paquete
+# de legalización regenera estos mismos tipos con el uuid_firma.
+_DOCS_RADICACION = [
+    d
+    for d in _DOCS
+    if d[0] in {"doc_autorizacion", "doc_autorizacion_datos", "doc_solicitud"}
+]
+
+# Paquete de legalización de la venta de contado: las autorizaciones,
+# la transferencia de dominio y el acta de entrega. Se genera al cerrar
+# la venta y se firma físicamente en la entrega (firma + huella en
+# papel), por eso no lleva sello OTP.
+_DOCS_CONTADO: list[tuple[str, str, str]] = [
+    ("doc_autorizacion", "autorizacion_centrales.docx", "1. Autorizacion consulta centrales - {cedula}.docx"),
+    ("doc_autorizacion_datos", "autorizacion_datos.docx", "2. Autorizacion datos personales - {cedula}.docx"),
+    ("doc_transferencia", "transferencia_dominio.docx", "3. Transferencia de dominio - {cedula}.docx"),
+    ("doc_acta_entrega", "__acta_entrega__", "4. Acta de entrega - {cedula}.docx"),
+]
 
 
 def _fmt(valor: Decimal | int | float | None) -> str:
@@ -159,7 +251,7 @@ def _sumar_meses(fecha: date, meses: int) -> date:
     return date(anio, mes % 12 + 1, min(fecha.day, 28))
 
 
-# Paleta de marca usada en los documentos generados (azul Pacífico).
+# Paleta de marca usada en los documentos generados (azul Sumoto).
 _AZUL = "005787"
 _AZUL_SUAVE = "E8F0F5"
 _CEBRA = "F3F7FA"
@@ -272,10 +364,20 @@ class DocumentoService:
             raise SolicitudNoEncontradaError(f"No existe la solicitud {id_solicitud}")
         return self._generar_docs(solicitud, _DOCS_RADICACION)
 
+    def generar_paquete_contado(self, id_solicitud: uuid.UUID) -> list[DocumentoEvidencia]:
+        """Paquete de la venta de contado: autorizaciones, transferencia
+        de dominio y acta de entrega. Se imprime y firma físicamente en
+        la entrega de la moto — no lleva sello de firma OTP."""
+        solicitud = self.repo.obtener_detalle(id_solicitud)
+        if solicitud is None:
+            raise SolicitudNoEncontradaError(f"No existe la solicitud {id_solicitud}")
+        return self._generar_docs(solicitud, _DOCS_CONTADO, estampar=False)
+
     def _generar_docs(
         self,
         solicitud: SolicitudCredito,
         docs: list[tuple[str, str, str]],
+        estampar: bool = True,
     ) -> list[DocumentoEvidencia]:
         campos = self._campos(solicitud)
         plantillas = Path(self.settings.documentos_plantillas_dir)
@@ -293,6 +395,8 @@ class DocumentoService:
                 self._generar_asegurabilidad(salida, solicitud, campos)
             elif plantilla == "__amortizacion__":
                 self._generar_amortizacion(salida, solicitud, campos)
+            elif plantilla == "__acta_entrega__":
+                self._generar_acta_entrega(salida, solicitud, campos)
             elif plantilla in ("compromiso_cartera.docx", "solicitud_credito.docx"):
                 # Sin MERGEFIELDs: se llenan por reemplazo literal.
                 shutil.copyfile(plantillas / plantilla, salida)
@@ -303,11 +407,14 @@ class DocumentoService:
             reemplazos = self._reemplazos_literal(plantilla, campos)
             if reemplazos:
                 _reemplazar_en_docx(salida, reemplazos)
-            self._estampar_firma(salida, campos)
+            if estampar:
+                self._estampar_firma(salida, campos, tipo)
             generadas.append(self._registrar(sesion, solicitud, tipo, salida))
         return generadas
 
-    def _estampar_firma(self, salida: Path, campos: dict[str, str]) -> None:
+    def _estampar_firma(
+        self, salida: Path, campos: dict[str, str], tipo: str | None = None
+    ) -> None:
         """Estampa el uuid_firma en TODOS los documentos del paquete:
         QR + texto. Es el identificador del acto de firma electrónica
         (OTP) y debe quedar visible —y verificable— en cada pieza legal.
@@ -332,29 +439,162 @@ class DocumentoService:
             "Identificador único de firma electrónica (OTP): "
             f"{uuid_firma}"
         )
-        if not self._estampar_en_cuadro_firma(doc, buffer, texto):
+        firma_img = _render_firma(campos.get("NOMBRE_COMPLETO", ""))
+        cfg = _FIRMA_CFG.get(tipo or "", {})
+        firmadas = self._firmar_lineas(doc, firma_img, cfg) if firma_img else 0
+        if not self._estampar_en_cuadro_firma(doc, buffer, texto, firma_img):
+            # Sin cuadro ni línea propia, la rúbrica también va con el
+            # sello al final del flujo (p. ej. la tabla de amortización).
+            if firma_img and not firmadas:
+                firma_img.seek(0)
+                run_f = doc.add_paragraph().add_run()
+                run_f.add_picture(
+                    firma_img, width=cfg.get("ancho", Cm(4.4))
+                )
+                _bajar_run(run_f._r, -8)
             doc.add_paragraph().add_run().add_picture(buffer, width=Cm(2.4))
             run = doc.add_paragraph().add_run(texto)
             run.font.size = Pt(8)
         doc.save(str(salida))
 
     @staticmethod
-    def _run_imagen(doc, origen, ancho: Cm):
+    def _iter_parrafos(doc):
+        """Párrafos del cuerpo y de las tablas (celdas anidadas), en
+        orden de documento."""
+        yield from doc.paragraphs
+        for tabla in doc.tables:
+            yield from DocumentoService._parrafos_tabla(tabla)
+
+    @staticmethod
+    def _parrafos_tabla(tabla):
+        for row in tabla.rows:
+            for cell in row.cells:
+                yield from cell.paragraphs
+                for t in cell.tables:
+                    yield from DocumentoService._parrafos_tabla(t)
+
+    def _firmar_lineas(
+        self, doc, firma_img: io.BytesIO, cfg: dict | None = None
+    ) -> int:
+        """Dibuja la rúbrica sobre las líneas de firma del documento.
+
+        - «Firma: ___…» (explícita): firma el primer blanco — en los
+          bloques DEUDOR | ACREEDOR el deudor es la columna izquierda.
+        - «FIRMA» sola (transferencia de dominio): la rúbrica sigue a la
+          etiqueta.
+        - Última línea de blancos desnuda (compraventa con dos columnas
+          vendedor|comprador, dación en pago): firma el último blanco —
+          el comprador/deudor.
+        """
+        cfg = cfg or {}
+        ancho = cfg.get("ancho", Cm(4.4))
+        firmadas = 0
+        paras = list(self._iter_parrafos(doc))
+        vistos: set[int] = set()
+        for p in paras:
+            # Las celdas combinadas repiten el mismo <w:p> en la
+            # iteración: sin dedupe la rúbrica quedaría insertada dos
+            # veces en la misma línea.
+            if id(p._p) in vistos:
+                continue
+            vistos.add(id(p._p))
+            t = p.text
+            if re.search(r"firma\s*:", t, re.IGNORECASE):
+                if self._insertar_firma_en(
+                    p, doc, firma_img, grupo=0, ancho=ancho, cfg=cfg
+                ):
+                    firmadas += 1
+            elif t.strip() == "FIRMA":
+                self._insertar_firma_en(
+                    p, doc, firma_img, grupo=0, ancho=ancho, cfg=cfg
+                )
+                firmadas += 1
+        # La línea desnuda de firma está en el flujo del cuerpo (no en
+        # una tabla): compraventa/dación la cierran así.
+        blancas = [
+            p for p in doc.paragraphs
+            if p.text.strip() and re.fullmatch(r"[_\s]+", p.text)
+        ]
+        if blancas:
+            ultima = blancas[-1]
+            grupos = len(re.findall(r"_{2,}", ultima.text))
+            if self._insertar_firma_en(
+                ultima, doc, firma_img, grupo=grupos - 1,
+                ancho=ancho, cfg=cfg,
+            ):
+                firmadas += 1
+        return firmadas
+
+    def _insertar_firma_en(
+        self, p, doc, firma_img: io.BytesIO, grupo: int,
+        ancho: Cm, cfg: dict | None = None,
+    ) -> bool:
+        """Reemplaza el blanco N.º `grupo` del párrafo por la rúbrica;
+        sin blancos, la añade al final del párrafo («FIRMA», «Firma:»).
+
+        Con ``linea_propia`` la rúbrica baja a su propia línea justo
+        debajo del rótulo — el formato queda «Firma:» / rúbrica / nombre.
+        """
+        from copy import deepcopy
+
+        cfg = cfg or {}
+        texto = "".join(r.text for r in p.runs)
+        grupos = list(re.finditer(r"_{2,}", texto))
+        firma_img.seek(0)
+        run_img = deepcopy(self._run_imagen(doc, firma_img, ancho, bajar=-8))
+        if not grupos:
+            if cfg.get("linea_propia"):
+                # «FIRMA» sin blancos: la rúbrica baja a su propia línea.
+                p_nuevo = OxmlElement("w:p")
+                p_nuevo.append(run_img)
+                p._p.addnext(p_nuevo)
+            else:
+                p._p.append(run_img)
+            return True
+        m = grupos[min(grupo, len(grupos) - 1)]
+        a, b = m.span()
+        pos = 0
+        ultimo_run_tocado = None
+        for r in p.runs:
+            ini, fin = pos, pos + len(r.text)
+            pos = fin
+            if fin <= a or ini >= b:
+                continue
+            s = max(a - ini, 0)
+            e = min(b - ini, len(r.text))
+            r.text = r.text[:s] + r.text[e:]
+            ultimo_run_tocado = r._r
+        if cfg.get("linea_propia") and re.match(r"(?i)\s*firma\s*:", texto):
+            p_nuevo = OxmlElement("w:p")
+            p_nuevo.append(run_img)
+            p._p.addnext(p_nuevo)
+        elif ultimo_run_tocado is not None:
+            ultimo_run_tocado.addnext(run_img)
+        else:
+            p._p.append(run_img)
+        return True
+
+    @staticmethod
+    def _run_imagen(doc, origen, ancho: Cm, bajar: int = 0):
         """Compone la imagen en un párrafo temporal del cuerpo
         (python-docx crea la relación) y devuelve el <w:r> reutilizable
         dentro de cuadros de texto."""
         tmp = doc.add_paragraph()
         tmp.add_run().add_picture(origen, width=ancho)
         run = tmp._p.find(qn("w:r"))
+        if bajar:
+            _bajar_run(run, bajar)
         tmp._p.getparent().remove(tmp._p)
         return run
 
     def _estampar_en_cuadro_firma(
-        self, doc, buffer: io.BytesIO, texto: str
+        self, doc, buffer: io.BytesIO, texto: str,
+        firma_img: io.BytesIO | None = None,
     ) -> bool:
-        """Inyecta QR + uuid dentro del cuadro de firma (w:txbxContent
-        con 'DEUDOR'). Devuelve True si había cuadro; False si el doc no
-        lo tiene y el sello debe ir al final del flujo normal."""
+        """Inyecta rúbrica + QR + uuid dentro del cuadro de firma
+        (w:txbxContent con 'DEUDOR'). Devuelve True si había cuadro;
+        False si el doc no lo tiene y el sello debe ir al final del
+        flujo normal."""
         from copy import deepcopy
 
         cajas = [
@@ -365,7 +605,15 @@ class DocumentoService:
         if not cajas:
             return False
         run_qr = self._run_imagen(doc, buffer, Cm(2.0))
+        run_firma = None
+        if firma_img is not None:
+            firma_img.seek(0)
+            run_firma = self._run_imagen(doc, firma_img, Cm(4.2), bajar=-8)
         for caja in cajas:
+            if run_firma is not None:
+                p_firma = OxmlElement("w:p")
+                p_firma.append(deepcopy(run_firma))
+                caja.append(p_firma)
             p_qr = OxmlElement("w:p")
             p_qr.append(deepcopy(run_qr))
             caja.append(p_qr)
@@ -389,49 +637,59 @@ class DocumentoService:
         """Literales fijos de cada plantilla que no son MERGEFIELD y se
         sustituyen como texto plano sobre el XML del DOCX generado."""
         consecutivo = campos.get("CONSECUTIVO", "")
-        if plantilla == "pagare.docx":
-            reemplazos = {}
-            if consecutivo:
-                reemplazos["“Consecutivo”"] = consecutivo
-            if campos.get("TASA"):
-                # La tasa es un blanco manuscrito (________%) en la
-                # plantilla, partido en tres runs del DOCX.
-                reemplazos.update(
-                    {
-                        "<w:t>(__</w:t>": "<w:t>(</w:t>",
-                        "<w:t>___</w:t>": f"<w:t>{campos['TASA']}</w:t>",
-                        "<w:t>__%)</w:t>": "<w:t>%)</w:t>",
-                    }
-                )
-            return reemplazos
-        if plantilla == "carta_instrucciones.docx" and consecutivo:
-            return {"No 001": f"No {consecutivo}"}
-        if plantilla == "carta_aprobacion.docx":
-            reemplazos = {}
-            if consecutivo:
-                reemplazos["XXXX"] = f"No. {consecutivo}"
-            # La solicitud no guarda el asesor: nombre y celular quedan
-            # en blanco para diligenciar a mano como en el formato real.
-            reemplazos["NOMBRE ASESOR"] = "____________________________"
-            reemplazos["NÚMERO CELULAR"] = "____________________"
-            return reemplazos
-        if plantilla == "compromiso_cartera.docx":
-            # La plantilla venía diligenciada con datos de muestra.
-            return {
-                "DIANA SOFIA AYA CASTELLANOS": campos["NOMBRE_COMPLETO"],
-                "28549365": campos["CÉDULA"],
+        # Marcadores «CAMPO» de las plantillas Sumoto originales: son
+        # texto plano en el DOCX y se sustituyen como los tokens {{}}.
+        base: dict[str, str] = {
+            f"«{nombre}»": _xml_escape(valor)
+            for nombre, valor in campos.items()
+        }
+        # Alias de los originales (variantes sin guion bajo).
+        base.update(
+            {
+                "«TIPO ID»": _xml_escape(campos.get("TIPO_ID", "")),
+                "«NÚMERO»": _xml_escape(campos.get("CÉDULA", "")),
+                "«SALDOAFINANCIAR»": _xml_escape(
+                    campos.get("SALDO_A_FINANCIAR", "")
+                ),
+                "«SALDOLETRAS»": _xml_escape(
+                    campos.get("SALDO_LETRAS", "")
+                ),
             }
+        )
+        if plantilla == "pagare.docx":
+            if consecutivo:
+                base["“Consecutivo”"] = consecutivo
+            return base
+        if plantilla == "prenda.docx":
+            # Motor/chasis son labels literales "No. MOTOR"/"No. CHASIS"
+            # en la tabla del vehículo: sin factura quedan vacíos; al
+            # cargarla se regenera el paquete con los valores.
+            if campos.get("MOTOR"):
+                base["No. MOTOR"] = f"No. MOTOR   {campos['MOTOR']}"
+            if campos.get("CHASIS"):
+                base["No. CHASIS"] = f"No. CHASIS   {campos['CHASIS']}"
+            return base
+        if plantilla == "carta_instrucciones.docx" and consecutivo:
+            base["No. 001"] = f"No. {consecutivo}"
+            return base
+        if plantilla == "carta_aprobacion.docx":
+            if consecutivo:
+                base["XXXX"] = f"No. {consecutivo}"
+            base["NOMBRE ASESOR"] = campos["ASESOR_NOMBRE"]
+            # El celular del asesor no se guarda: blanco para
+            # diligenciar a mano como en el formato real.
+            base["NÚMERO CELULAR"] = "____________________"
+            return base
         if plantilla == "autorizacion_centrales.docx":
-            reemplazos = {}
             if campos.get("CORREO"):
-                reemplazos["Correo Electrónico Autorizado:"] = (
+                base["Correo Electrónico Autorizado:"] = (
                     f"Correo Electrónico Autorizado: {campos['CORREO']}"
                 )
             if campos.get("TELEFONO"):
-                reemplazos["Teléfono Celular Autorizado:"] = (
+                base["Teléfono Celular Autorizado:"] = (
                     f"Teléfono Celular Autorizado: {campos['TELEFONO']}"
                 )
-            return reemplazos
+            return base
         if plantilla == "solicitud_credito.docx":
             # Tokens {{CAMPO}} insertados por scripts/generar_plantilla_solicitud.
             # Los valores van a un <w:t>: se escapan como XML.
@@ -439,7 +697,7 @@ class DocumentoService:
                 "{{%s}}" % nombre: _xml_escape(valor)
                 for nombre, valor in campos.items()
             }
-        return {}
+        return base
 
     # ------------------------------------------------------------------
     def _campos(self, solicitud: SolicitudCredito) -> dict[str, str]:
@@ -490,17 +748,34 @@ class DocumentoService:
             "SALDO_A_FINANCIAR": _fmt(monto),
             "SALDO_LETRAS": numero_a_letras(monto) if monto is not None else "",
             "PLAZO": str(plazo or ""),
+            "DIA_PAGO": str(dia_pago),
             "CUOTA": _fmt(cuota),
             "CUOTA_LETRAS": numero_a_letras(cuota) if cuota is not None else "",
             "FECHA_INICIO": fecha_inicio.strftime("%d/%m/%Y"),
             "FECHA_FIN": fecha_fin.strftime("%d/%m/%Y"),
+            # La del encabezado/pie de firma: "12 de NOVIEMBRE de 2026".
+            "FECHA_FIRMA": (
+                f"{firma.day} de {_MESES[firma.month - 1]} "
+                f"de {firma.year}"
+            ),
             "MARCA": vehiculo.marca or "" if vehiculo else "",
             "MODELO": vehiculo.modelo or "" if vehiculo else "",
             "LINEA": vehiculo.referencia or "" if vehiculo else "",
             "COLOR": vehiculo.color or "" if vehiculo else "",
+            # La identificación de la moto prendada llega con la factura
+            # (o se confirma en Gestión): "No MOTOR"/"No CHASIS" son
+            # literales de la plantilla, no MERGEFIELD.
+            "MOTOR": vehiculo.numero_motor or "" if vehiculo else "",
+            "CHASIS": (vehiculo.numero_chasis or vehiculo.vin or "") if vehiculo else "",
+            "VIN": vehiculo.vin or "" if vehiculo else "",
             # Formato del documento real: (1.88%) — punto decimal.
             "TASA": f"{Decimal(str(tasa)).normalize():f}" if tasa is not None else "",
             "CONSECUTIVO": str(solicitud.num_solicitud or solicitud.id_solicitud)[:12],
+            # El vendedor del contrato es el usuario que radicó la
+            # solicitud; si no quedó registrado queda el blanco para
+            # diligenciar a mano.
+            "ASESOR_NOMBRE": solicitud.asesor_nombre or "____________________________",
+            "ASESOR_CEDULA": solicitud.asesor_cedula or "________________",
             "CORREO": (contacto.correo or "") if contacto else "",
             "TELEFONO": (contacto.telefono or "") if contacto else "",
             "FIRMA_UUID": str(solicitud.uuid_firma or ""),
@@ -674,6 +949,9 @@ class DocumentoService:
             "REFERENCIA": campos["LINEA"],
             # Hoja de negocio
             "VALOR_MOTO_IVA": _fmt(valor_moto),
+            # Precio de venta en la compraventa (neto de descuento).
+            "PRECIO_MOTO": _fmt(total_moto),
+            "PRECIO_MOTO_LETRAS": numero_a_letras(total_moto),
             "VALOR_MOTO_SIN_IVA": _fmt(valor_moto / (1 + _IVA)),
             "DESCUENTO_PCT": _fmt_pct(desc_pct),
             "DESCUENTO_VALOR": _fmt(desc_valor),
@@ -752,6 +1030,16 @@ class DocumentoService:
         return evidencia
 
     # ------------------------------------------------------------------
+    @staticmethod
+    def _logo_encabezado(doc) -> None:
+        """Logo Sumoto al inicio, centrado y del mismo tamaño que el
+        de las plantillas (12 cm de ancho, banda recortada 8.33:1)."""
+        if not _LOGO_BANNER.exists():
+            return
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.add_run().add_picture(str(_LOGO_BANNER), width=Cm(12))
+
     def _generar_asegurabilidad(
         self, salida: Path, solicitud: SolicitudCredito, campos: dict[str, str]
     ) -> None:
@@ -761,6 +1049,7 @@ class DocumentoService:
         nac = cliente.fecha_nacimiento
         firma = (solicitud.fecha_hora_firma or datetime.now(UTC)).date()
         doc = Document()
+        self._logo_encabezado(doc)
         doc.add_heading("DECLARACION DE ASEGURABILIDAD", level=2)
         p = doc.add_paragraph()
         p.add_run("SEGURO DE VIDA PARA DEUDORES").bold = True
@@ -816,6 +1105,125 @@ class DocumentoService:
         doc.add_paragraph(f"{campos['TIPO_ID']} {campos['CÉDULA']}")
         doc.save(str(salida))
 
+    def _generar_acta_entrega(
+        self, salida: Path, solicitud: SolicitudCredito, campos: dict[str, str]
+    ) -> None:
+        """Acta de entrega de motos y accesorios (venta de contado):
+        datos del cliente/vehículo diligenciados y la lista de chequeo
+        de la entrega en blanco — se marca a mano el día de la entrega,
+        igual que el formato físico de Sumoto."""
+        vehiculo = (
+            self.db.query(ProductoVehiculo)
+            .filter(ProductoVehiculo.id_solicitud == solicitud.id_solicitud)
+            .order_by(ProductoVehiculo.id_vehiculo.desc())
+            .first()
+        )
+        cliente = solicitud.cliente
+        contacto = solicitud.contacto_vivienda
+        entrega = date.today()
+
+        doc = Document()
+        self._logo_encabezado(doc)
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run("ACTA DE ENTREGA DE MOTOS Y ACCESORIOS")
+        run.bold = True
+        run.font.size = Pt(13)
+
+        asesor = solicitud.asesor_nombre or ""
+        encabezado = doc.add_paragraph()
+        encabezado.paragraph_format.space_after = Pt(10)
+        encabezado.add_run(
+            "Sumoto S.A\nNIT 800235505\nCl 30 # 33 - 80\n"
+            "Tel. 7212843 — Palmira\nsumoto@uniweb.net.co"
+        ).font.size = Pt(9)
+        if asesor:
+            encabezado.add_run(f"\t\tVENDEDOR: {asesor}").font.size = Pt(9)
+
+        def bloque(titulo: str | None, filas: list[tuple[str, str]]):
+            if titulo:
+                t = doc.add_paragraph()
+                t.add_run(titulo).bold = True
+                t.paragraph_format.space_before = Pt(8)
+            tabla = doc.add_table(rows=len(filas), cols=2)
+            tabla.style = "Table Grid"
+            for i, (etiqueta, valor) in enumerate(filas):
+                c0, c1 = tabla.rows[i].cells
+                c0.width, c1.width = Cm(4.5), Cm(12)
+                _celda(c0, etiqueta, negrita=True, tamano=9)
+                _celda(c1, valor, tamano=9)
+
+        bloque(
+            None,
+            [
+                ("FECHA:", entrega.strftime("%d-%b-%Y").upper()),
+                ("CLIENTE:", cliente.nombre_completo),
+                ("NIT/C.C.:", campos["CÉDULA"]),
+                ("DIRECCION:", campos.get("DIRECCION", "")),
+                ("TELEFONO:", campos.get("TELEFONO", "")),
+                ("CIUDAD:", campos.get("CIUDAD_RESIDENCIA", "")),
+            ],
+        )
+        bloque(
+            None,
+            [
+                ("CLASE:", "MOTOCICLETA"),
+                ("CILINDRAJE:", ""),
+                ("MARCA:", vehiculo.marca or "" if vehiculo else ""),
+                ("MODELO:", vehiculo.referencia or "" if vehiculo else ""),
+                ("MOTOR:", vehiculo.numero_motor or "" if vehiculo else ""),
+                ("CHASIS:", vehiculo.numero_chasis or "" if vehiculo else ""),
+                ("COLOR:", vehiculo.color or "" if vehiculo else ""),
+            ],
+        )
+
+        doc.add_paragraph(
+            "MANUAL PROPIETARIO ______   MANUAL GARANTIA ______   "
+            "HERRAMIENTA ______   BATERIA ______   LLAVES ____   ESPEJOS ____"
+        )
+        doc.add_paragraph(
+            "CASCO ( )   CHALECO ( )   OBSEQUIO ( )   INCLUIDO ( )     "
+            "SOAT ( )   OBSEQUIO ( )   INCLUIDO ( )"
+        )
+        doc.add_paragraph(
+            "VIGENCIA ____________   CERTIFICADO DE GASES ____________"
+        )
+
+        t = doc.add_paragraph()
+        t.add_run("ACCESORIOS Y SERVICIOS ADICIONALES").bold = True
+        doc.add_paragraph(
+            "SEGURO CONTRAROBO ( ) C.I $__________   MARCACION PROFUNDA "
+            "( ) $__________   EDICION DE LUJO ( ) $__________"
+        )
+        doc.add_paragraph(
+            "ALARMA ( ) __________   LICENCIA DE CONDUCCION ( ) __________   "
+            "MATRICULA ( ) __________   IMPUESTO RODAMIENTO ( ) __________"
+        )
+
+        doc.add_paragraph(
+            "Declaro que he recibido la motocicleta en perfecto estado de "
+            "funcionamiento y presentación, al igual que los accesorios y "
+            "servicios adicionales que adquirí, por lo tanto renuncio a "
+            "cualquier tipo de reclamación presente o futura en contra de "
+            "SUMOTO S.A. Después de retirado el vehículo del concesionario "
+            "no se admite ningún tipo de reclamación o queja."
+        )
+
+        doc.add_paragraph("")
+        doc.add_paragraph(
+            "RECIBI ________________________"
+            "\tENTREGO ________________________"
+        )
+        doc.add_paragraph(
+            f"NOMBRE  {cliente.nombre_completo}"
+            f"\tNOMBRE  {asesor}"
+        )
+        doc.add_paragraph(
+            f"CÉDULA  {campos['CÉDULA']}"
+            "\tFECHA DE ENTREGA ______________"
+        )
+        doc.save(str(salida))
+
     def _generar_amortizacion(
         self, salida: Path, solicitud: SolicitudCredito, campos: dict[str, str]
     ) -> None:
@@ -863,6 +1271,7 @@ class DocumentoService:
         cuota_total = cuota_fin + cuota_vida
 
         doc = Document()
+        self._logo_encabezado(doc)
         seccion = doc.sections[0]
         seccion.orientation = WD_ORIENT.LANDSCAPE
         seccion.page_width, seccion.page_height = (
@@ -884,7 +1293,7 @@ class DocumentoService:
         run.font.size = Pt(13)
         run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
         run = banda.add_run(
-            f"   INVERSIONES PACIFICO S.A. — {firma.strftime('%d/%m/%Y')}"
+            f"   SUMOTO S.A. — {firma.strftime('%d/%m/%Y')}"
         )
         run.font.size = Pt(9)
         run.font.color.rgb = RGBColor(0xD5, 0xE5, 0xEF)

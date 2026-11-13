@@ -72,19 +72,21 @@ DESTINOS = [
     "La oportunidad de construir historial crediticio",
     "Un medio de transporte amigable con el medio ambiente",
 ]
-LINEAS = ["Inversiones Pacífico", "Credicontado", "Motocicleta"]
+LINEAS = ["Crédito Directo", "Sumoto Preferencial", "Credicontado", "Motocicleta"]
 PLAZOS = [12, 24, 36, 48]
 TIPOS_CONTRATO_EMPLEADO = ["indefinido", "fijo", "obra_labor"]
 
-# Asesores demo por sede (correo, nombre, cédula). Los de SUMOTO
-# PALMIRA conviven con el asesor de prueba ya sembrado.
+# Asesores demo de SUMOTO S.A (correo, nombre, cédula). Conviven con
+# el asesor de prueba ya sembrado.
 ASESORES_DEMO = [
-    (2, "diana.rios@sumoto.com.co", "Diana Marcela Ríos", "32333444"),
-    (1, "laura.cifuentes@sumoto.com.co", "Laura Cifuentes", "30111222"),
-    (1, "carlos.mena@sumoto.com.co", "Carlos Andrés Mena", "31222333"),
-    (3, "julian.ortiz@sumoto.com.co", "Julián Ortiz Vargas", "33444555"),
-    (3, "maria.gil@sumoto.com.co", "María Fernanda Gil", "34555666"),
+    ("diana.rios@sumoto.com.co", "Diana Marcela Ríos", "32333444"),
+    ("laura.cifuentes@sumoto.com.co", "Laura Cifuentes", "30111222"),
+    ("carlos.mena@sumoto.com.co", "Carlos Andrés Mena", "31222333"),
 ]
+
+# Único punto de venta: todos los asesores demo radican por SUMOTO S.A
+# (se resuelve por nombre, no por id serial).
+CONCESIONARIO_DEMO = "SUMOTO S.A"
 
 NOMBRES = [
     "Juan Camilo", "Andrés Felipe", "Luisa Fernanda", "Camila Andrea",
@@ -203,7 +205,11 @@ def _asegurar_asesores(db: Session) -> dict[int, list[Asesor]]:
     las radicaciones nuevas también repartan sobre los de prueba.
     """
     rol_asesor = db.scalar(select(Rol).where(Rol.nombre == "asesor"))
-    for id_concesionario, correo, nombre, cedula in ASESORES_DEMO:
+    concesionario = db.scalar(
+        select(Concesionario).where(Concesionario.nombre == CONCESIONARIO_DEMO)
+    )
+    id_concesionario = concesionario.id_concesionario if concesionario else None
+    for correo, nombre, cedula in ASESORES_DEMO:
         usuario = db.scalar(select(Usuario).where(Usuario.correo == correo))
         if usuario is None:
             usuario = Usuario(
@@ -469,7 +475,7 @@ def _solicitud_demo(
         id_solicitud=solicitud.id_solicitud,
         version=1,
         vigente=True,
-        origen_evaluacion="motor_pacifico",
+        origen_evaluacion="motor_sumoto",
         score=score,
         valor_ingreso=ingreso,
         ingreso_final=ingreso_final,

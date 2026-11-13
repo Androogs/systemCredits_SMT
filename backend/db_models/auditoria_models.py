@@ -65,3 +65,26 @@ class ConsultaBuro(Base):
         hdc = RespuestaHDC.model_validate_json(self.hdc_json)
         vi = RespuestaValorIngreso.model_validate_json(self.valor_ingreso_json) if self.valor_ingreso_json else None
         return hdc, vi
+
+
+class ConsultaSimit(Base):
+    """Resultado del estado de cuenta de tránsito SIMIT por persona.
+
+    El proveedor "portal" (API interna del portal ciudadano FCM) es
+    gratis pero frágil (PoW captcha, cambios del portal, límites por
+    IP): guardar el resultado por documento durante SIMIT_CACHE_DIAS
+    acota la carga sobre el portal y deja trazado qué respondió el
+    SIMIT en cada evaluación. La consulta en background al aceptar el
+    Habeas Data también escribe aquí: la evaluación posterior reusa la
+    fila vigente en vez de pegarle al portal en caliente.
+    """
+
+    __tablename__ = "consulta_simit"
+
+    id_consulta: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tipo_id: Mapped[str] = mapped_column(String(2))
+    numero_id: Mapped[str] = mapped_column(String(20), index=True)
+    id_solicitud: Mapped[str | None] = mapped_column(String(36), index=True)
+    fecha_consulta: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_ahora_utc, index=True)
+    origen: Mapped[str] = mapped_column(String(30))  # portal | placapi | mock:<esc> | declarado en la solicitud
+    resultado_json: Mapped[str] = mapped_column(Text)

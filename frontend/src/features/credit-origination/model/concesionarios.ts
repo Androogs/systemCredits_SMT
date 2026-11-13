@@ -6,10 +6,17 @@
  * puede cambiarla si el cliente elige otra referencia.
  */
 
+/** Marcas aliadas que operan como concesionarios (una fila por marca en
+ *  la tabla `concesionario` por cada sede: '<MARCA> <SEDE>'). SUMOTO S.A
+ *  es la empresa que opera la plataforma, no un concesionario. */
 export const CONCESIONARIOS: string[] = [
-  'Sumoto Palmira',
-  'Pijaos Motos',
-  'Tuluá Motos',
+  'AKT',
+  'Auteco',
+  'Bajaj',
+  'Fratelli',
+  'Hero',
+  'Honda',
+  'Suzuki',
 ]
 
 /** Catálogo comercial vigente: sedes disponibles por marca (usado en

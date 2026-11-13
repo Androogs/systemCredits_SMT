@@ -17,11 +17,17 @@ import {
  * legados (ya no se emite).
  */
 export type EstadoSolicitud =
-  'APROBADO' | 'RECHAZADO' | 'REQUIERE_REVISION' | 'PENDIENTE'
+  | 'APROBADO'
+  | 'EN_PROCESO'
+  | 'FACTURADO'
+  | 'DESEMBOLSADO'
+  | 'FINALIZADO'
+  | 'RECHAZADO'
+  | 'REQUIERE_REVISION'
+  | 'PENDIENTE'
 
 export type EstadoVisual = EstadoSolicitud
 
-const ESTADOS_POSITIVOS = new Set(['aprobada', 'desembolsada'])
 const ESTADOS_NEGATIVOS = new Set(['rechazada', 'cancelada'])
 
 /** Visual positivo (decisión aprobada): incluye todo el ciclo
@@ -33,6 +39,7 @@ export const ESTADOS_POSITIVOS_VISTA: ReadonlySet<string> = new Set([
   'APROBADO',
   'FACTURADO',
   'DESEMBOLSADO',
+  'FINALIZADO',
 ])
 
 /**
@@ -40,10 +47,18 @@ export const ESTADOS_POSITIVOS_VISTA: ReadonlySet<string> = new Set([
  * estado del ciclo de vida de la solicitud. `creada`/`en_evaluacion`
  * sin decisión son pendientes de evaluación.
  */
+/**
+ * Ciclo comercial del crédito:
+ *   aprobado sin firma OTP   -> EN_PROCESO   (sin documentos generados)
+ *   aprobado firmado         -> APROBADO     (pagaré + paquete legal)
+ *   facturada                -> FACTURADO    (factura del vehículo cargada)
+ *   desembolsada             -> DESEMBOLSADO (prenda + pago al concesionario)
+ *   en proceso sin cerrar al
+ *   último día hábil del mes -> FINALIZADO   (ciclo vencido)
+ * La decisión rechazada / cancelada manda sobre cualquier estado
+ * positivo; `creada`/`en_evaluacion` sin decisión son pendientes.
+ */
 export function estadoVisual(s: SolicitudResumenApi): EstadoVisual {
-  if (s.decision === 'aprobado' || ESTADOS_POSITIVOS.has(s.estado)) {
-    return 'APROBADO'
-  }
   if (
     s.decision === 'rechazado' ||
     ESTADOS_NEGATIVOS.has(s.estado) ||
@@ -52,6 +67,12 @@ export function estadoVisual(s: SolicitudResumenApi): EstadoVisual {
     s.estado === 'en_revision'
   ) {
     return 'RECHAZADO'
+  }
+  if (s.estado === 'desembolsada') return 'DESEMBOLSADO'
+  if (s.estado === 'facturada') return 'FACTURADO'
+  if (s.decision === 'aprobado' || s.estado === 'aprobada') {
+    if (s.fecha_hora_firma) return 'APROBADO'
+    return cicloEnProcesoVencido(s) ? 'FINALIZADO' : 'EN_PROCESO'
   }
   if (
     s.decision == null &&
@@ -62,6 +83,21 @@ export function estadoVisual(s: SolicitudResumenApi): EstadoVisual {
   return 'RECHAZADO'
 }
 
+/** Último día hábil (lunes–viernes) del mes indicado. */
+function ultimoDiaHabil(anio: number, mes: number): Date {
+  const d = new Date(anio, mes + 1, 0)
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1)
+  return d
+}
+
+/** El crédito quedó "en proceso" más allá del último día hábil del mes
+    de su radicación sin cerrar el ciclo. */
+function cicloEnProcesoVencido(s: SolicitudResumenApi): boolean {
+  const radicada = new Date(s.fecha_hora)
+  const limite = ultimoDiaHabil(radicada.getFullYear(), radicada.getMonth())
+  return new Date() > limite
+}
+
 /**
  * Vista del estado para la UI. La decisión visible es binaria para
  * todos los roles; los detalles sensibles (score, causales) se ocultan
@@ -69,6 +105,17 @@ export function estadoVisual(s: SolicitudResumenApi): EstadoVisual {
  */
 export function estadoParaVista(s: SolicitudResumenApi): EstadoVisual {
   return estadoVisual(s)
+}
+
+/** Marca "Retomado" (columna aparte del estado): la solicitud pasó por
+    un análisis manual — evaluación versión > 1 — y terminó aprobada.
+    Debe transitar el pipeline normal: Aprobado → Facturado →
+    Desembolsado. */
+export function esRetomado(s: SolicitudResumenApi): boolean {
+  return (
+    (s.evaluacion?.version ?? 0) > 1 &&
+    ESTADOS_POSITIVOS_VISTA.has(estadoParaVista(s))
+  )
 }
 
 // Solicitudes retomables desde la lista o el detalle: aún no están
@@ -105,6 +152,7 @@ export const ESTADO_LABELS: Record<string, string> = {
   creada: 'Creada',
   en_evaluacion: 'En evaluación',
   aprobada: 'Aprobada',
+  facturada: 'Facturada',
   rechazada: 'Rechazada',
   en_revision: 'En revisión',
   desembolsada: 'Desembolsada',

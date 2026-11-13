@@ -89,6 +89,9 @@ interface DatosYPoliticasProps {
   biometria: ResultadoBiometrico
   revisionPrevia?: DatosRevisados
   validacionPrevia?: DatosValidacion
+  /** Consentimiento Habeas Data del paso 1: con él «Consultar» pega al
+   * backend; sin él queda la verificación manual en el portal SIMIT. */
+  autorizoHabeas?: boolean
   onContinue: (resultado: ResultadoDatosYPoliticas) => void
   onBack?: () => void
 }
@@ -102,6 +105,7 @@ export function DatosYPoliticas({
   biometria,
   revisionPrevia,
   validacionPrevia,
+  autorizoHabeas = false,
   onContinue,
   onBack,
 }: DatosYPoliticasProps) {
@@ -118,6 +122,7 @@ export function DatosYPoliticas({
         // lo leído por el OCR.
         inicial={revisionPrevia}
         inicialPoliticas={validacionPrevia}
+        autorizoHabeas={autorizoHabeas}
         ocr={biometria.ocr ?? null}
         onContinue={(revision, validacion) =>
           onContinue({

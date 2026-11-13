@@ -11,6 +11,7 @@ import logging
 import mimetypes
 import smtplib
 from email.message import EmailMessage
+from html import escape
 from pathlib import Path
 
 from backend.config import get_settings
@@ -27,6 +28,94 @@ from backend.integrations.wati.client import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Logo institucional embebido en los correos HTML (CID, no adjunto
+# descargable): es la banda ya recortada que también usan las
+# plantillas de documentos.
+_LOGO_SUMOTO = (
+    Path(__file__).resolve().parent.parent
+    / "documentos"
+    / "logo_sumoto_banner.png"
+)
+_CID_LOGO = "sumoto_logo"
+
+
+def _stats_html(contexto: dict) -> str:
+    """Tarjetas destacadas (monto, plazo, cuota) cuando el evento las
+    trae — la oferta y la aprobación quedan más legibles que un
+    párrafo de texto plano."""
+    stats: list[tuple[str, str]] = []
+    if contexto.get("monto"):
+        stats.append(("Monto aprobado", f"${contexto['monto']}"))
+    if contexto.get("plazo"):
+        stats.append(("Plazo", f"{contexto['plazo']} meses"))
+    if contexto.get("cuota"):
+        stats.append(("Cuota mensual aprox.", f"${contexto['cuota']}"))
+    if not stats:
+        return ""
+    celdas = "".join(
+        '<td align="center" style="padding:14px 8px;">'
+        '<div style="font-size:11px;letter-spacing:.06em;'
+        "text-transform:uppercase;color:#667085;\">"
+        f"{escape(label)}</div>"
+        '<div style="font-size:17px;font-weight:700;color:#0b3d78;'
+        f'margin-top:4px;">{escape(str(valor))}</div></td>'
+        for label, valor in stats
+    )
+    return (
+        '<tr><td style="padding:0 32px 26px;">'
+        '<table role="presentation" width="100%" cellpadding="0" '
+        'cellspacing="0" style="background:#f4f7fb;border:1px solid '
+        '#dbe4f3;border-radius:10px;">'
+        f"<tr>{celdas}</tr></table></td></tr>"
+    )
+
+
+def _html_notificacion(titulo: str, cuerpo: str, contexto: dict) -> str:
+    """Envoltorio de marca para el correo: logo Sumoto, barra de acento,
+    cuerpo y pie institucional. Solo tablas + estilos en línea — lo
+    que los clientes de correo renderizan de forma consistente."""
+    cuerpo_html = escape(cuerpo).replace("\n", "<br>")
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<body style="margin:0;padding:0;background:#eef1f6;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+       style="background:#eef1f6;padding:28px 12px;">
+<tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0"
+       style="width:100%;max-width:600px;background:#ffffff;
+              border:1px solid #d5dde5;border-radius:12px;
+              overflow:hidden;">
+  <tr><td style="padding:26px 32px 18px;text-align:center;">
+    <img src="cid:{_CID_LOGO}" width="240" alt="SUMOTO"
+         style="display:inline-block;max-width:240px;height:auto;">
+  </td></tr>
+  <tr><td style="height:4px;background:#0052a1;font-size:0;
+         line-height:0;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px;">
+    <div style="font-family:Arial,Helvetica,sans-serif;font-size:20px;
+                font-weight:700;color:#0b3d78;">{escape(titulo)}</div>
+  </td></tr>
+  <tr><td style="padding:6px 32px 24px;font-family:Arial,Helvetica,
+         sans-serif;font-size:15px;line-height:1.65;color:#344054;">
+    {cuerpo_html}
+  </td></tr>
+  {_stats_html(contexto)}
+  <tr><td style="padding:18px 32px;background:#f8fafc;
+         border-top:1px solid #eef1f6;font-family:Arial,Helvetica,
+         sans-serif;font-size:12px;line-height:1.6;color:#667085;
+         text-align:center;">
+    <strong>SUMOTO S.A.</strong> · NIT 800.235.505<br>
+    Cl 30 # 33 - 80, Palmira · Tel. 721 2843 · sumoto@uniweb.net.co<br>
+    <span style="color:#98a2b3;">Este es un mensaje automático;
+    por favor no responder a este correo.</span>
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>"""
+
 
 PLANTILLAS = {
     "otp": (
@@ -65,6 +154,11 @@ PLANTILLAS = {
         "contraseña. Ingresa a {enlace} para definir una nueva. "
         "El enlace vence en {minutos} minutos y solo se puede usar una "
         "vez. Si no fuiste tú, ignora este correo.",
+    ),
+    "factura": (
+        "Factura de tu vehículo registrada - SUMOTO",
+        "{nombre}, la factura del vehículo de tu crédito {numero} ya fue "
+        "registrada por el concesionario. Tu solicitud avanza al desembolso.",
     ),
     "legalizacion": (
         "Documentos de tu crédito - SUMOTO",
@@ -204,8 +298,14 @@ class NotificacionService:
         asunto: str,
         cuerpo: str,
         adjuntos: list[Path] | None = None,
+        html: str | None = None,
     ) -> str:
-        """Envía por SMTP; sin configuración, simula con log."""
+        """Envía por SMTP; sin configuración, simula con log.
+
+        Con `html` el mensaje sale multipart/alternative: texto plano
+        para clientes sencillos y la versión de marca para el resto; el
+        logo viaja como parte related del HTML (CID), no como adjunto
+        descargable."""
         if not self._smtp_configurado:
             logger.info(
                 "[notificación simulada] a=%s asunto=%s adjuntos=%d",
@@ -219,6 +319,16 @@ class NotificacionService:
         mensaje["To"] = destino
         mensaje["Subject"] = asunto
         mensaje.set_content(cuerpo)
+        if html:
+            mensaje.add_alternative(html, subtype="html")
+            if _LOGO_SUMOTO.is_file():
+                parte_html = mensaje.get_payload()[-1]
+                parte_html.add_related(
+                    _LOGO_SUMOTO.read_bytes(),
+                    maintype="image",
+                    subtype="png",
+                    cid=f"<{_CID_LOGO}>",
+                )
         for adjunto in adjuntos or []:
             mime = mimetypes.guess_type(adjunto.name)[0]
             maintype, subtype = (mime or "application/octet-stream").split("/", 1)
@@ -286,5 +396,12 @@ class NotificacionService:
             cuerpo = plantilla.format(**contexto)
         except KeyError:
             cuerpo = plantilla
-        estado = self._enviar_email(destino, asunto, cuerpo, adjuntos)
+        titulo = asunto.split(" - SUMOTO")[0]
+        estado = self._enviar_email(
+            destino,
+            asunto,
+            cuerpo,
+            adjuntos,
+            html=_html_notificacion(titulo, cuerpo, contexto),
+        )
         return {"canal": "email", "estado": estado, "destino": destino}

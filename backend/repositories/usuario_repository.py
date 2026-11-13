@@ -20,6 +20,7 @@ from backend.db_models.auth_models import (
     Rol,
     TokenRecuperacion,
     Usuario,
+    UsuarioMarca,
     UsuarioRol,
 )
 
@@ -264,6 +265,33 @@ class UsuarioRepository:
             .all()
         )
 
+    def marcas(self) -> list[str]:
+        """Marcas presentes en la BD: catálogo vigente de vehículos más
+        las que ya registran las solicitudes (cargue histórico)."""
+        from sqlalchemy.exc import OperationalError
+
+        from backend.db_models.models import (
+            ProductoVehiculo,
+            VehiculoCatalogo,
+        )
+
+        try:
+            catalogo = self.db.execute(
+                select(VehiculoCatalogo.marca)
+                .distinct()
+                .where(VehiculoCatalogo.activo.is_(True))
+            ).scalars()
+        except OperationalError:
+            # BD local sin la tabla del catálogo: solo marcas radicadas.
+            self.db.rollback()
+            catalogo = []
+        usadas = self.db.execute(
+            select(ProductoVehiculo.marca)
+            .distinct()
+            .where(ProductoVehiculo.marca.is_not(None))
+        ).scalars()
+        return sorted({m for m in (*catalogo, *usadas) if m})
+
     def asesores(self) -> list[Asesor]:
         """Todos los asesores registrados — las radicaciones históricas
         de asesores sin usuario activo siguen siendo filtrables."""
@@ -285,6 +313,42 @@ class UsuarioRepository:
                 self.db.add(
                     UsuarioRol(id_usuario=usuario.id_usuario, id_rol=rol.id_rol)
                 )
+
+    def marcas_de(self, id_usuario) -> list[str]:
+        """Marcas de la ficha del usuario, en orden alfabético."""
+        return [
+            m
+            for (m,) in self.db.execute(
+                select(UsuarioMarca.marca)
+                .where(UsuarioMarca.id_usuario == id_usuario)
+                .order_by(UsuarioMarca.marca)
+            )
+        ]
+
+    def marcas_por_usuarios(self, ids) -> dict:
+        """id_usuario → marcas, en una sola consulta (listado admin)."""
+        if not ids:
+            return {}
+        filas = self.db.execute(
+            select(UsuarioMarca.id_usuario, UsuarioMarca.marca)
+            .where(UsuarioMarca.id_usuario.in_(ids))
+            .order_by(UsuarioMarca.marca)
+        )
+        out: dict = {}
+        for id_u, marca in filas:
+            out.setdefault(id_u, []).append(marca)
+        return out
+
+    def asignar_marcas(self, usuario: Usuario, marcas: list[str]) -> None:
+        """Reemplaza el conjunto de marcas de la ficha (ya normalizado
+        por el servicio: sin vacíos ni repetidas)."""
+        self.db.query(UsuarioMarca).filter(
+            UsuarioMarca.id_usuario == usuario.id_usuario
+        ).delete()
+        for nombre in marcas:
+            self.db.add(
+                UsuarioMarca(id_usuario=usuario.id_usuario, marca=nombre)
+            )
         self.db.flush()
 
     def vincular_sede_asesor(

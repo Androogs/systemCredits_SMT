@@ -15,6 +15,7 @@ import { CapturaEvidencia, DatosYPoliticas } from './EvidenciaYDatos'
 import RechazoPoliticas from './RechazoPoliticas'
 import CrearSolicitud, { type ResultadoCrearSolicitud } from './CrearSolicitud'
 import EvaluacionYResultado from './EvaluacionYResultado'
+import VentaContado from './VentaContado'
 import {
   type BorradorOriginacion,
   type ContextoOriginacion,
@@ -42,6 +43,7 @@ import {
   OCUPACION_LABELS,
 } from '../../../entities/credit/model/solicitudesPanel'
 import type { DatosSolicitud } from './CrearSolicitud'
+import { LINEA_CONTADO } from '../../../shared/lib/lineas-credito'
 import { tituloPagina } from '../../../shared/lib/marca'
 import './FlujoOriginacion.css'
 
@@ -89,7 +91,7 @@ function contextoDesdeSolicitud(
   const mitad = Math.ceil(partes.length / 2)
   const laborales = datos.datos_laborales
   const solicitud: DatosSolicitud = {
-    lineaCredito: datos.linea_credito ?? 'Inversiones Pacífico',
+    lineaCredito: datos.linea_credito ?? 'Crédito Directo',
     destinoCredito: datos.destino_credito ?? 'Financiamiento de Vehículos',
     plazoMeses: datos.plazo_deseado_meses ?? 24,
     ocupacion: OCUPACION_LABELS[datos.ocupacion ?? ''] ?? datos.ocupacion ?? '',
@@ -101,9 +103,24 @@ function contextoDesdeSolicitud(
     ingresosMensuales: numero(laborales?.ingreso_mensual) ?? null,
     entidadPagadora: '',
   }
+  // Consentimiento ya persistido: la puerta SIMIT del paso 3 reusa la
+  // fila del precache cuando el asesor marca «Consultar», y la
+  // re-radicación conserva teléfono/correo en vez de pisarlos con null.
+  const consentimiento = datos.consentimientos?.[0]
   return {
     idSolicitud: datos.id_solicitud,
     solicitud,
+    ...(consentimiento
+      ? {
+          autorizacion: {
+            autorizaTratamiento: true,
+            telefono: datos.contacto_vivienda?.telefono ?? '',
+            correo: datos.contacto_vivienda?.correo ?? '',
+            fechaRegistro: consentimiento.fecha_aceptacion,
+            ipAsesor: consentimiento.ip ?? '',
+          },
+        }
+      : {}),
     validacion: {
       tipoDocumento: tipoDocumentoUi(datos.tipo_documento),
       numeroDocumento: datos.num_cedula,
@@ -520,6 +537,7 @@ function FlujoOriginacion() {
           biometria={contexto.biometria}
           revisionPrevia={contexto.revision}
           validacionPrevia={contexto.validacion}
+          autorizoHabeas={contexto.autorizacion?.autorizaTratamiento === true}
           onBack={() => setPasoActual(2)}
           onContinue={({ ocr, revision, validacion }) => {
             setContexto((actual) => ({ ...actual, ocr, revision, validacion }))
@@ -555,6 +573,19 @@ function FlujoOriginacion() {
     }
 
     if (pasoActual === 5) {
+      // Venta de contado: no se consulta el buró ni se evalúa; el paso
+      // final es la facturación inmediata de la moto.
+      if (contexto.solicitud?.lineaCredito === LINEA_CONTADO) {
+        return (
+          <VentaContado
+            idSolicitud={contexto.idSolicitud}
+            solicitud={contexto.solicitud}
+            identidad={identidadDesdeContexto(contexto) ?? undefined}
+            onBack={() => setPasoActual(4)}
+            onFinalizar={finalizarProceso}
+          />
+        )
+      }
       return (
         <EvaluacionYResultado
           idSolicitud={contexto.idSolicitud}
@@ -568,11 +599,12 @@ function FlujoOriginacion() {
           onResultado={(resultadoEvaluacion) =>
             setContexto((actual) => ({ ...actual, resultadoEvaluacion }))
           }
-          onFormalizar={(ofertaSeleccionada) => {
-            setContexto((actual) => ({ ...actual, ofertaSeleccionada }))
-            // Proceso cerrado: el autoguardado borra el borrador y la
-            // consulta ya no se puede reabrir para modificarla.
-            setFormalizacionIniciada(true)
+          onFormalizar={() => {
+            // Firma OTP completada: el proceso quedó cerrado — se
+            // limpia el borrador (sin esto la pestaña volvería a
+            // ofrecer "retomar") y se vuelve al listado.
+            reiniciar()
+            navigate('/solicitudes')
           }}
           onFinalizar={finalizarProceso}
         />

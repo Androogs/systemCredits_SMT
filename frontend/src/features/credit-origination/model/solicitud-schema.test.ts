@@ -9,7 +9,7 @@ import { erroresSolicitud } from './solicitud-schema'
 import type { DatosSolicitud } from '../ui/CrearSolicitud'
 
 const datosValidos: DatosSolicitud = {
-  lineaCredito: 'Inversiones Pacífico',
+  lineaCredito: 'Crédito Directo',
   destinoCredito: 'Financiamiento de Vehículos',
   plazoMeses: 24,
   ocupacion: 'Empleado',
@@ -155,6 +155,17 @@ describe('erroresSolicitud', () => {
     expect(erroresFuerzas.entidadPagadora).toBe(
       'Selecciona la entidad pagadora o institución.',
     )
+  })
+
+  it('una venta de contado también exige el perfil económico', () => {
+    const errores = erroresSolicitud({
+      ...datosValidos,
+      lineaCredito: 'Contado',
+      ocupacion: '',
+      ingresosMensuales: null,
+    })
+    expect(errores.ocupacion).toBe('Selecciona la ocupación principal.')
+    expect(errores.ingresosMensuales).toBe('Ingresa los ingresos mensuales.')
   })
 
   it('exige subtipo de independiente', () => {

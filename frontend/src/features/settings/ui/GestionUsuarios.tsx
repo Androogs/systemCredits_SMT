@@ -6,11 +6,13 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
+  Dices,
   History,
   KeyRound,
   Pencil,
   Plus,
   UserCheck,
+  UserPlus,
   UserX,
   X,
 } from 'lucide-react'
@@ -27,6 +29,10 @@ import {
 import type { UsuarioGestion } from '../api/usuariosApi'
 import { emitirToast } from '../../../shared/lib/toastBus'
 import CampoEntrada from '../../../shared/ui/CampoEntrada'
+import {
+  MARCAS_VEHICULO,
+  SEDES_POR_MARCA,
+} from '../../credit-origination/model/concesionarios'
 
 const ROTULO_ROL: Record<string, string> = {
   admin: 'Administrador',
@@ -48,11 +54,15 @@ interface Formulario {
   correo: string
   contrasena: string
   roles: string[]
-  idConcesionario: string
   idAliado: string
-  /** Ficha de la persona detrás del correo (solo rol asesor). */
+  /** Ficha de la persona (cédula general; celular solo asesor). */
   cedula: string
   telefono: string
+  /** Marcas que atiende; la primera elegida queda como principal. */
+  marcas: string[]
+  /** Sede del catálogo de la marca (texto, dato de la ficha). */
+  sede: string
+  observaciones: string
   estado: string
 }
 
@@ -61,11 +71,34 @@ const FORM_VACIO: Formulario = {
   correo: '',
   contrasena: '',
   roles: ['asesor'],
-  idConcesionario: '',
   idAliado: '',
   cedula: '',
   telefono: '',
+  marcas: [],
+  sede: '',
+  observaciones: '',
   estado: 'activo',
+}
+
+/** Etiqueta con el asterisco de obligatorio en azul marca. */
+const req = (texto: string) => (
+  <>
+    {texto} <span className="text-brand-500">*</span>
+  </>
+)
+
+/** Clave temporal aleatoria (botón del dado): letras y dígitos sin
+ * ambiguos (sin 0/O, 1/l/I) para leerla dictada por teléfono. */
+const ALFABETO_CLAVE =
+  'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#*?'
+
+function generarClave(longitud = 12): string {
+  const bytes = new Uint32Array(longitud)
+  crypto.getRandomValues(bytes)
+  return Array.from(
+    bytes,
+    (b) => ALFABETO_CLAVE[b % ALFABETO_CLAVE.length],
+  ).join('')
 }
 
 /** Rótulos de los campos que registra el historial de la ficha. */
@@ -112,6 +145,38 @@ export default function GestionUsuarios() {
     enabled: historialDe != null,
   })
   const usuarios = consultaUsuarios.data ?? []
+  /** Marcas del select: las de la BD más el catálogo comercial
+   * (solo marcas puras — las submarcas de Auteco no aplican). */
+  const marcasOpciones = [
+    ...new Set([...(opciones?.marcas ?? []), ...MARCAS_VEHICULO]),
+  ].sort((a, b) => a.localeCompare(b))
+  /** Sedes del select: unión de las de las marcas elegidas; si no hay
+   * ninguna (o ninguna tiene sedes), todas las del catálogo. */
+  const sedesDeMarcas = [
+    ...new Set(form.marcas.flatMap((m) => SEDES_POR_MARCA[m] ?? [])),
+  ]
+  const sedesOpciones = (
+    sedesDeMarcas.length
+      ? sedesDeMarcas
+      : [...new Set(Object.values(SEDES_POR_MARCA).flat())]
+  ).slice()
+
+  /** Marca de la ficha: quita/agrega en el conjunto y limpia la sede
+   * si ya no pertenece a ninguna de las elegidas. */
+  const alternarMarca = (m: string) =>
+    setForm((f) => {
+      const marcas = f.marcas.includes(m)
+        ? f.marcas.filter((x) => x !== m)
+        : [...f.marcas, m]
+      const sedes = [
+        ...new Set(marcas.flatMap((x) => SEDES_POR_MARCA[x] ?? [])),
+      ]
+      return {
+        ...f,
+        marcas,
+        sede: sedes.length && !sedes.includes(f.sede) ? '' : f.sede,
+      }
+    })
 
   const refrescar = () => {
     qc.invalidateQueries({ queryKey: ['usuarios'] })
@@ -120,24 +185,37 @@ export default function GestionUsuarios() {
   const mutGuardar = useMutation({
     mutationFn: async () => {
       const roles = form.roles
-      // La sede aplica a asesor (asesor.id_concesionario) y a
-      // concesionario (concesionario_usuario): el backend la reparte.
+      // El concesionario se deriva de la sede elegida por coincidencia
+      // de ciudad (mejor esfuerzo); el backend valida si hace falta.
       const pideSede =
         roles.includes('asesor') || roles.includes('concesionario')
-      const idConcesionario = pideSede
-        ? Number(form.idConcesionario) || null
-        : null
+      const sedeNorm = form.sede.trim().toLowerCase()
+      const conc = sedeNorm
+        ? (opciones?.concesionarios ?? []).find(
+            (c) =>
+              c.ciudad &&
+              c.ciudad
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[̀-ͯ]/g, '')
+                .includes(sedeNorm.normalize('NFD').replace(/[̀-ͯ]/g, '')),
+          )
+        : undefined
+      const idConcesionario = pideSede ? (conc?.id_concesionario ?? null) : null
       const idAliado = roles.includes('aliado')
         ? Number(form.idAliado) || null
         : null
-      // La ficha (persona detrás del correo) solo aplica al rol asesor.
-      const esAsesor = roles.includes('asesor')
-      const ficha = esAsesor
-        ? {
-            cedula: form.cedula.trim() || null,
-            telefono: form.telefono.trim() || null,
-          }
-        : {}
+      // La cédula y las marcas son de la ficha general del usuario; el
+      // celular solo aplica al rol asesor.
+      const ficha = {
+        cedula: form.cedula.trim() || null,
+        marcas: form.marcas,
+        sede: form.sede.trim() || null,
+        observaciones: form.observaciones.trim() || null,
+        ...(roles.includes('asesor')
+          ? { telefono: form.telefono.trim() || null }
+          : {}),
+      }
       if (editando) {
         return actualizarUsuario(editando.id_usuario, {
           nombre: form.nombre,
@@ -215,7 +293,7 @@ export default function GestionUsuarios() {
 
   const abrirCrear = () => {
     setEditando(null)
-    setForm(FORM_VACIO)
+    setForm({ ...FORM_VACIO, contrasena: generarClave() })
     setErrorForm('')
     setModalAbierto(true)
   }
@@ -227,25 +305,26 @@ export default function GestionUsuarios() {
       correo: u.correo,
       contrasena: '',
       roles: u.roles.length > 0 ? u.roles : ['asesor'],
-      idConcesionario: u.concesionario
-        ? String(u.concesionario.id_concesionario)
-        : '',
       idAliado: u.aliados[0] ? String(u.aliados[0].id_aliado) : '',
       cedula: u.cedula ?? '',
       telefono: u.telefono ?? '',
+      // La principal (`u.marca`) va primero para que guardar sin tocar
+      // el campo no la cambie.
+      marcas:
+        u.marcas && u.marcas.length > 0
+          ? [
+              ...(u.marca && u.marcas.includes(u.marca) ? [u.marca] : []),
+              ...u.marcas.filter((m) => m !== u.marca),
+            ]
+          : u.marca
+            ? [u.marca]
+            : [],
+      sede: u.sede ?? '',
+      observaciones: u.observaciones ?? '',
       estado: u.estado,
     })
     setErrorForm('')
     setModalAbierto(true)
-  }
-
-  const alternarRol = (rol: string) => {
-    setForm((f) => ({
-      ...f,
-      roles: f.roles.includes(rol)
-        ? f.roles.filter((r) => r !== rol)
-        : [...f.roles, rol],
-    }))
   }
 
   const guardar = (event: FormEvent<HTMLFormElement>) => {
@@ -257,23 +336,22 @@ export default function GestionUsuarios() {
     }
     if (
       (form.roles.includes('asesor') || form.roles.includes('concesionario')) &&
-      !form.idConcesionario
+      !form.sede.trim()
     ) {
-      setErrorForm(
-        'El usuario necesita un concesionario: sin sede no puede operar.',
-      )
+      setErrorForm('El usuario necesita una sede para operar.')
       return
     }
     if (!editando && form.contrasena.length < 8) {
       setErrorForm('La clave temporal debe tener al menos 8 caracteres.')
       return
     }
-    if (
-      form.roles.includes('asesor') &&
-      (!form.cedula.trim() || !form.telefono.trim())
-    ) {
+    if (!form.cedula.trim()) {
+      setErrorForm('La cédula es obligatoria.')
+      return
+    }
+    if (form.roles.includes('asesor') && !form.telefono.trim()) {
       setErrorForm(
-        'El asesor necesita cédula y celular de la persona que usará el correo.',
+        'El asesor necesita el celular de la persona que usará el correo.',
       )
       return
     }
@@ -534,7 +612,7 @@ export default function GestionUsuarios() {
 
       {/* Modal crear/editar */}
       {modalAbierto && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-start sm:p-4 sm:pt-[6vh]">
           <div
             ref={modalRef}
             role="dialog"
@@ -543,18 +621,30 @@ export default function GestionUsuarios() {
             onKeyDown={(event) => {
               if (event.key === 'Escape') setModalAbierto(false)
             }}
-            className="flex max-h-[92dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-2xl border bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-xl"
+            className="modal-sheet-enter flex max-h-[92vh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-2xl border bg-white shadow-2xl supports-[height:92dvh]:max-h-[92dvh] sm:max-h-[calc(94vh-2rem)] sm:rounded-xl sm:supports-[height:92dvh]:max-h-[calc(94dvh-2rem)]"
           >
-            <div className="flex shrink-0 items-center justify-between border-b p-4 sm:p-5">
-              <div>
-                <h3 id="usuario-modal-titulo" className="font-semibold text-sm">
-                  {editando ? 'Editar usuario' : 'Nuevo usuario'}
-                </h3>
-                <p className="text-xs text-slate-500">
-                  {editando
-                    ? `Editando a ${editando.correo}`
-                    : 'Acceso con clave temporal'}
-                </p>
+            <div className="flex shrink-0 items-center justify-between border-b bg-gradient-to-r from-brand-50 to-white p-4 sm:p-5">
+              <div className="flex items-center gap-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-600 text-white shadow-sm">
+                  {editando ? (
+                    <Pencil className="h-5 w-5" />
+                  ) : (
+                    <UserPlus className="h-5 w-5" />
+                  )}
+                </span>
+                <div>
+                  <h3
+                    id="usuario-modal-titulo"
+                    className="text-lg font-bold leading-tight text-slate-800"
+                  >
+                    {editando ? 'Editar usuario' : 'Nuevo usuario'}
+                  </h3>
+                  <p className="text-xs font-medium text-brand-600">
+                    {editando
+                      ? `Editando a ${editando.correo}`
+                      : 'Acceso con clave temporal'}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
@@ -565,11 +655,11 @@ export default function GestionUsuarios() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <form onSubmit={guardar}>
-              <div className="grid gap-4 overflow-y-auto p-4 sm:p-5">
+            <form onSubmit={guardar} className="flex min-h-0 flex-1 flex-col">
+              <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 sm:p-5">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <CampoEntrada
-                    label="Nombre completo *"
+                    label={req('Nombre completo')}
                     value={form.nombre}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, nombre: e.target.value }))
@@ -578,7 +668,7 @@ export default function GestionUsuarios() {
                     minLength={3}
                   />
                   <CampoEntrada
-                    label="Correo *"
+                    label={req('Correo')}
                     type="email"
                     value={form.correo}
                     onChange={(e) =>
@@ -587,83 +677,164 @@ export default function GestionUsuarios() {
                     disabled={editando != null}
                     required
                   />
+                  <CampoEntrada
+                    label={
+                      form.roles.includes('asesor')
+                        ? req('Celular del asesor')
+                        : 'Celular'
+                    }
+                    type="tel"
+                    value={form.telefono}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        telefono: e.target.value,
+                      }))
+                    }
+                    required={form.roles.includes('asesor')}
+                  />
+                  <CampoEntrada
+                    label={req('Cédula')}
+                    value={form.cedula}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, cedula: e.target.value }))
+                    }
+                    inputMode="numeric"
+                    required
+                  />
+                  <div className="sm:col-span-2">
+                    <span className="label-base">Marcas</span>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {[...new Set([...marcasOpciones, ...form.marcas])].map(
+                        (m) => {
+                          const activa = form.marcas.includes(m)
+                          return (
+                            <label
+                              key={m}
+                              className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition ${
+                                activa
+                                  ? 'border-brand-500 bg-brand-50 text-brand-700'
+                                  : 'border-slate-200 text-slate-500 hover:border-brand-300 hover:text-brand-600'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                className="sr-only"
+                                checked={activa}
+                                onChange={() => alternarMarca(m)}
+                              />
+                              {m}
+                            </label>
+                          )
+                        },
+                      )}
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Puede atender varias: la primera elegida queda como marca
+                      principal.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="label-base" htmlFor="usuario-sede">
+                      Sede
+                    </label>
+                    <select
+                      id="usuario-sede"
+                      className="input-base"
+                      value={form.sede}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, sede: e.target.value }))
+                      }
+                    >
+                      <option value="">
+                        {form.marcas.length
+                          ? 'Sedes de tus marcas…'
+                          : 'Seleccionar…'}
+                      </option>
+                      {sedesOpciones.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                      {form.sede && !sedesOpciones.includes(form.sede) && (
+                        <option value={form.sede}>{form.sede}</option>
+                      )}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label-base" htmlFor="usuario-rol">
+                      {req('Rol')}
+                    </label>
+                    <select
+                      id="usuario-rol"
+                      className="input-base"
+                      value={form.roles[0] ?? ''}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          roles: e.target.value ? [e.target.value] : [],
+                        }))
+                      }
+                      required
+                    >
+                      <option value="">Seleccionar…</option>
+                      {(opciones?.roles ?? []).map((rol) => (
+                        <option key={rol.id_rol} value={rol.nombre}>
+                          {rotuloRol(rol.nombre)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 {!editando && (
-                  <CampoEntrada
-                    label="Clave temporal *"
-                    type="text"
-                    value={form.contrasena}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, contrasena: e.target.value }))
-                    }
-                    minLength={8}
-                    required
-                    autoComplete="off"
-                  />
-                )}
-
-                <fieldset>
-                  <legend className="label-base">Roles *</legend>
-                  <div className="flex flex-wrap gap-2">
-                    {(opciones?.roles ?? []).map((rol) => (
-                      <label
-                        key={rol.id_rol}
-                        className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs ${
-                          form.roles.includes(rol.nombre)
-                            ? 'border-brand-500 bg-brand-50'
-                            : ''
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={form.roles.includes(rol.nombre)}
-                          onChange={() => alternarRol(rol.nombre)}
-                        />
-                        {rotuloRol(rol.nombre)}
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {(form.roles.includes('asesor') ||
-                    form.roles.includes('concesionario')) && (
-                    <div>
-                      <label className="label-base" htmlFor="usuario-sede">
-                        {form.roles.includes('concesionario') &&
-                        !form.roles.includes('asesor')
-                          ? 'Concesionario que administra *'
-                          : 'Concesionario del asesor *'}
-                      </label>
-                      <select
-                        id="usuario-sede"
-                        className="input-base"
-                        value={form.idConcesionario}
+                  <div>
+                    <label className="label-base" htmlFor="usuario-clave">
+                      {req('Clave temporal')}
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        id="usuario-clave"
+                        type="text"
+                        className="input-base min-w-0 flex-1 font-mono"
+                        value={form.contrasena}
                         onChange={(e) =>
                           setForm((f) => ({
                             ...f,
-                            idConcesionario: e.target.value,
+                            contrasena: e.target.value,
                           }))
                         }
+                        minLength={8}
                         required
+                        autoComplete="off"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => ({
+                            ...f,
+                            contrasena: generarClave(),
+                          }))
+                        }
+                        aria-label="Generar clave aleatoria"
+                        title="Generar clave aleatoria"
+                        className="grid w-11 shrink-0 place-items-center rounded-lg border border-slate-300 text-slate-600 transition hover:bg-slate-100 hover:text-brand-600 sm:w-10"
                       >
-                        <option value="">Seleccionar…</option>
-                        {(opciones?.concesionarios ?? []).map((c) => (
-                          <option
-                            key={c.id_concesionario}
-                            value={c.id_concesionario}
-                          >
-                            {c.nombre}
-                          </option>
-                        ))}
-                      </select>
+                        <Dices className="h-5 w-5" />
+                      </button>
                     </div>
-                  )}
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Se la pasas al usuario una sola vez: la cambia
+                      obligatoriamente en su primer ingreso.
+                    </p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   {form.roles.includes('aliado') && (
                     <div>
                       <label className="label-base" htmlFor="usuario-aliado">
-                        Aliado financiero *
+                        {req('Aliado financiero')}
                       </label>
                       <select
                         id="usuario-aliado"
@@ -686,74 +857,71 @@ export default function GestionUsuarios() {
                       </select>
                     </div>
                   )}
-                  {form.roles.includes('asesor') && (
+                  {editando && (
                     <>
-                      <CampoEntrada
-                        label="Cédula del asesor *"
-                        value={form.cedula}
-                        onChange={(e) =>
-                          setForm((f) => ({ ...f, cedula: e.target.value }))
-                        }
-                        inputMode="numeric"
-                        required
-                      />
-                      <CampoEntrada
-                        label="Celular del asesor *"
-                        type="tel"
-                        value={form.telefono}
-                        onChange={(e) =>
-                          setForm((f) => ({
-                            ...f,
-                            telefono: e.target.value,
-                          }))
-                        }
-                        required
-                      />
                       <div>
-                        <label className="label-base" htmlFor="usuario-ciudad">
-                          Ciudad
+                        <label className="label-base" htmlFor="usuario-estado">
+                          Estado
+                        </label>
+                        <select
+                          id="usuario-estado"
+                          className="input-base"
+                          value={form.estado}
+                          onChange={(e) =>
+                            setForm((f) => ({ ...f, estado: e.target.value }))
+                          }
+                        >
+                          {ESTADOS.map((e) => (
+                            <option key={e.valor} value={e.valor}>
+                              {e.rotulo}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label-base" htmlFor="usuario-creado">
+                          Fecha de creación
                         </label>
                         <input
-                          id="usuario-ciudad"
+                          id="usuario-creado"
                           className="input-base bg-slate-50 text-slate-500"
                           value={
-                            opciones?.concesionarios.find(
-                              (c) =>
-                                String(c.id_concesionario) ===
-                                form.idConcesionario,
-                            )?.ciudad ?? ''
+                            editando.fecha_creacion
+                              ? new Date(
+                                  editando.fecha_creacion,
+                                ).toLocaleDateString('es-CO', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                })
+                              : '—'
                           }
                           readOnly
                           disabled
-                          aria-label="Ciudad de la sede (automática)"
                         />
-                        <p className="mt-1 text-[11px] text-slate-400">
-                          La ciudad es la del concesionario elegido.
-                        </p>
                       </div>
                     </>
                   )}
-                  {editando && (
-                    <div>
-                      <label className="label-base" htmlFor="usuario-estado">
-                        Estado
-                      </label>
-                      <select
-                        id="usuario-estado"
-                        className="input-base"
-                        value={form.estado}
-                        onChange={(e) =>
-                          setForm((f) => ({ ...f, estado: e.target.value }))
-                        }
-                      >
-                        {ESTADOS.map((e) => (
-                          <option key={e.valor} value={e.valor}>
-                            {e.rotulo}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
+                </div>
+
+                <div>
+                  <label className="label-base" htmlFor="usuario-obs">
+                    Observaciones
+                  </label>
+                  <textarea
+                    id="usuario-obs"
+                    className="input-base min-h-20 resize-y"
+                    rows={3}
+                    maxLength={2000}
+                    value={form.observaciones}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        observaciones: e.target.value,
+                      }))
+                    }
+                    placeholder="Notas internas: relevo de personal, contacto, etc."
+                  />
                 </div>
 
                 {errorForm && (

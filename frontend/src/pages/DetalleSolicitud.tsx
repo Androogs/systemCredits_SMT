@@ -1,5 +1,5 @@
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Encabezado from '../widgets/app-shell/Encabezado'
 import Tarjeta from '../shared/ui/Tarjeta'
@@ -20,9 +20,16 @@ import {
   tasaMercado,
   urlEvidenciaContenido,
   urlPaqueteLegalizacion,
+  subirFactura,
+  urlFactura,
+  actualizarPrenda,
   type EvaluarSolicitudPayload,
   type EvidenciaApi,
+  type FacturaApi,
+  type FacturaRegistradaApi,
+  type PrendaPayload,
   type SolicitudDetalleApi,
+  type VehiculoPrendaApi,
 } from '../features/credit-origination/api/originacionApi'
 import {
   calcularCupoSugerido,
@@ -34,11 +41,13 @@ import {
   estadoParaVista,
   etiquetaSolicitud,
   numero,
+  ESTADOS_POSITIVOS_VISTA,
   ESTADOS_RETOMABLES,
   OCUPACION_LABELS,
 } from '../entities/credit/model/solicitudesPanel'
 import { currency, dateShort, dateTime } from '../shared/lib/formatters'
 import { cuotaAnualidad, tasaProductoMv } from '../shared/lib/finanzas'
+import { tasaEvaluacionLinea } from '../shared/lib/lineas-credito'
 import { puedeOperar, useRol } from '../shared/lib/sesion'
 import {
   descargarArchivoAutenticado,
@@ -64,9 +73,13 @@ import {
   Eye,
   Download,
   History,
+  FileText,
+  Upload,
+  Bike,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { MARCA } from '../shared/lib/marca'
+import { emitirToast } from '../shared/lib/toastBus'
 
 const CONTRATO_LABELS: Record<string, string> = {
   indefinido: 'Término indefinido',
@@ -238,6 +251,40 @@ export default function DetalleSolicitud() {
       cancelarSolicitud(datos!.id_solicitud, motivo),
     onSuccess: invalidar,
   })
+  const mutFactura = useMutation({
+    mutationFn: (archivo: File) => subirFactura(datos!.id_solicitud, archivo),
+    onSuccess: (resp) => {
+      // Los doc_* se regeneran con motor/chasis de la factura.
+      invalidar()
+      qc.invalidateQueries({ queryKey: ['evidencias-solicitud', id] })
+      avisarResultadoFactura(resp)
+    },
+    onError: (err) =>
+      emitirToast({
+        tipo: 'error',
+        mensaje: mensajeError(err, 'No se pudo subir la factura'),
+      }),
+  })
+  const mutPrenda = useMutation({
+    mutationFn: (payload: PrendaPayload) =>
+      actualizarPrenda(datos!.id_solicitud, payload),
+    onSuccess: () => {
+      invalidar()
+      qc.invalidateQueries({ queryKey: ['evidencias-solicitud', id] })
+      emitirToast({
+        tipo: 'exito',
+        mensaje: 'Datos de la prenda guardados — documentos regenerados.',
+      })
+    },
+    onError: (err) =>
+      emitirToast({
+        tipo: 'error',
+        mensaje: mensajeError(
+          err,
+          'No se pudieron guardar los datos de la prenda',
+        ),
+      }),
+  })
 
   if (cargando) {
     return (
@@ -373,7 +420,7 @@ export default function DetalleSolicitud() {
     mutEvaluar.mutate({
       saldo_financiar: Math.max(monto, 1),
       plazo,
-      tasa: tasaOperativa,
+      tasa: tasaEvaluacionLinea(datos.linea_credito, tasaOperativa),
       consultar_experian: true,
     })
   }
@@ -395,7 +442,7 @@ export default function DetalleSolicitud() {
     )
     return Number.isFinite(tasaRequest) && tasaRequest > 0
       ? tasaRequest
-      : tasaOperativa
+      : tasaEvaluacionLinea(datos.linea_credito, tasaOperativa)
   })()
 
   /* Vista previa de la retoma: con los valores vigentes (o los que el
@@ -494,7 +541,7 @@ export default function DetalleSolicitud() {
         {/* Resumen único: estado + métricas en una sola tarjeta, sin
             apilar tarjetas pequeñas que saturan la vista. */}
         <Tarjeta className="space-y-5 relative overflow-hidden">
-          {visual === 'APROBADO' && <ConfettiCelebracion />}
+          {ESTADOS_POSITIVOS_VISTA.has(visual) && <ConfettiCelebracion />}
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <InsigniaEstado status={visual} />
@@ -502,7 +549,7 @@ export default function DetalleSolicitud() {
                 <p className="text-xs uppercase text-slate-500">Resultado</p>
                 <p className="font-semibold text-slate-900 capitalize">
                   {vistaBinaria
-                    ? visual === 'APROBADO'
+                    ? ESTADOS_POSITIVOS_VISTA.has(visual)
                       ? 'Aprobado'
                       : visual === 'RECHAZADO'
                         ? 'Rechazado'
@@ -531,7 +578,11 @@ export default function DetalleSolicitud() {
             )}
             <Campo
               k="Cupo sugerido"
-              v={cupo != null && visual === 'APROBADO' ? currency(cupo) : '—'}
+              v={
+                cupo != null && ESTADOS_POSITIVOS_VISTA.has(visual)
+                  ? currency(cupo)
+                  : '—'
+              }
             />
             <Campo
               k="Capacidad de pago"
@@ -594,7 +645,7 @@ export default function DetalleSolicitud() {
                         : '—'
                     }
                   />
-                  <Campo k="Línea de crédito" v={datos.linea_credito ?? '—'} />
+                  <Campo k="Forma de pago" v={datos.linea_credito ?? '—'} />
                   <Campo k="Destino" v={datos.destino_credito ?? '—'} />
                   <Campo
                     k="Plazo deseado"
@@ -848,7 +899,7 @@ export default function DetalleSolicitud() {
               <TarjetaColapsable
                 titulo={
                   <>
-                    <Download size={18} /> Documentos firmados (legalización)
+                    <Download size={18} /> Documentos firmados
                   </>
                 }
                 resumen={`${documentosFirmados.length} documentos`}
@@ -950,7 +1001,7 @@ export default function DetalleSolicitud() {
                     k="Decisión interna"
                     v={evaluacion.decision_interna ?? '—'}
                     tono={
-                      visual === 'APROBADO'
+                      ESTADOS_POSITIVOS_VISTA.has(visual)
                         ? 'emerald'
                         : visual === 'RECHAZADO'
                           ? 'red'
@@ -1622,6 +1673,48 @@ export default function DetalleSolicitud() {
                 </ul>
               </TarjetaColapsable>
             )}
+
+            {/* Factura del vehículo: la emite el concesionario tras la
+                firma del pagaré y la sube el asesor; su carga mueve el
+                ciclo aprobada → facturada (paso previo al desembolso).
+                Visible una vez firmado el pagaré — o siempre que ya
+                exista una factura registrada. Una venta de contado la
+                ofrece recién radicada (estado 'creada'). */}
+            {(datos.factura != null ||
+              (!!datos.fecha_hora_firma &&
+                (datos.estado === 'aprobada' ||
+                  datos.estado === 'facturada')) ||
+              (datos.linea_credito === 'Contado' &&
+                datos.estado === 'creada')) && (
+              <TarjetaFactura
+                esContado={datos.linea_credito === 'Contado'}
+                factura={datos.factura ?? null}
+                puedeReemplazar={datos.estado !== 'desembolsada'}
+                subiendo={mutFactura.isPending}
+                onSubir={(f) => mutFactura.mutate(f)}
+                onVer={() =>
+                  descargarArchivoAutenticado(
+                    urlFactura(datos.id_solicitud),
+                    datos.factura?.nombre,
+                  )
+                }
+              />
+            )}
+
+            {/* Datos de la prenda: la factura los pre-llena; el asesor
+                los confirma/corrige solo con la solicitud 'facturada'
+                (PATCH /vehiculo regenera los documentos legales). Una
+                venta de contado no tiene prenda: se omite la tarjeta. */}
+            {datos.linea_credito !== 'Contado' &&
+              (datos.factura != null || datos.estado === 'facturada') && (
+                <TarjetaPrenda
+                  key={JSON.stringify(datos.vehiculo ?? null)}
+                  vehiculo={datos.vehiculo ?? null}
+                  editable={datos.estado === 'facturada'}
+                  guardando={mutPrenda.isPending}
+                  onGuardar={(payload) => mutPrenda.mutate(payload)}
+                />
+              )}
 
             {datos.desembolso && (
               <Tarjeta className="border-emerald-200 bg-emerald-50/40">
@@ -2390,4 +2483,315 @@ function enmascararIdentificacion(value: unknown) {
   return identification.length > 4
     ? `${'•'.repeat(Math.min(identification.length - 4, 8))}${identification.slice(-4)}`
     : '•'.repeat(identification.length)
+}
+
+/** Tras la carga de la factura avisa cómo salió la verificación y el
+ * correo con el paquete definitivo (la factura ya quedó registrada aun
+ * si el correo falla — por eso el aviso es explícito y dice cómo
+ * reintentar: volver a subirla). */
+function avisarResultadoFactura(resp: FacturaRegistradaApi) {
+  const verif = resp.verificacion
+  if (!verif?.parseada) {
+    emitirToast({
+      tipo: 'info',
+      mensaje:
+        'Factura registrada — el documento no se pudo leer: verifica ' +
+        'manualmente que corresponda al cliente.',
+    })
+  } else if ((verif.advertencias?.length ?? 0) > 0) {
+    emitirToast({
+      tipo: 'info',
+      mensaje:
+        'Factura registrada con advertencias — revísalas en ' +
+        '"Verificación del documento".',
+    })
+  } else {
+    emitirToast({
+      tipo: 'exito',
+      mensaje:
+        'Factura verificada y registrada — la solicitud pasó a Facturada.',
+    })
+  }
+  const entrega = resp.entrega_documentos
+  if (!entrega) return
+  const salio =
+    entrega.correo_estado === 'enviado' || entrega.correo_estado === 'simulado'
+  if (salio && entrega.pdfs_adjuntos > 0) {
+    emitirToast({
+      tipo: 'exito',
+      mensaje: 'Paquete de legalización enviado al cliente.',
+    })
+  } else if (!salio || entrega.pdfs_adjuntos === 0) {
+    emitirToast({
+      tipo: 'error',
+      mensaje:
+        'La factura quedó registrada, pero el correo con los documentos ' +
+        'NO salió. Vuelve a subirla para reintentar el envío.',
+    })
+  }
+}
+
+const PRENDA_CAMPOS: { campo: keyof PrendaPayload; titulo: string }[] = [
+  { campo: 'marca', titulo: 'Marca' },
+  { campo: 'referencia', titulo: 'Referencia' },
+  { campo: 'modelo', titulo: 'Modelo (año)' },
+  { campo: 'numero_motor', titulo: 'Número de motor' },
+  { campo: 'numero_chasis', titulo: 'Número de chasis' },
+  { campo: 'vin', titulo: 'VIN' },
+  { campo: 'color', titulo: 'Color definitivo (factura)' },
+]
+
+/** Factura del vehículo: sin factura invita a subirla (el pagaré ya está
+ * firmado); con factura muestra metadatos + la verificación persistida
+ * del documento (comprador, vehículo, total y advertencias). */
+function TarjetaFactura({
+  esContado = false,
+  factura,
+  puedeReemplazar,
+  subiendo,
+  onSubir,
+  onVer,
+}: {
+  esContado?: boolean
+  factura: FacturaApi | null
+  puedeReemplazar: boolean
+  subiendo: boolean
+  onSubir: (archivo: File) => void
+  onVer: () => void
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const verif = factura?.verificacion ?? null
+  const datosFactura = verif?.datos ?? null
+  const advertencias = verif?.advertencias ?? []
+
+  function elegirArchivo(e: React.ChangeEvent<HTMLInputElement>) {
+    const archivo = e.target.files?.[0]
+    e.target.value = '' // permite re-elegir el mismo archivo
+    if (archivo) onSubir(archivo)
+  }
+
+  return (
+    <Tarjeta>
+      <h3 className="font-semibold mb-4 flex items-center gap-2">
+        <FileText size={18} /> Factura del vehículo
+      </h3>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="application/pdf,image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={elegirArchivo}
+      />
+      {factura == null ? (
+        <div className="text-sm">
+          <p className="text-slate-600">
+            {esContado
+              ? 'Venta de contado: sube la factura emitida por el concesionario para cerrar la venta.'
+              : 'El pagaré ya está firmado. Sube la factura emitida por el concesionario para pasar a Facturada, paso previo al desembolso.'}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            PDF o imagen (JPEG, PNG, WEBP). El documento se lee y se verifica
+            contra el cliente antes de aceptarse.
+          </p>
+          <button
+            className="btn-primary mt-4"
+            disabled={subiendo}
+            onClick={() => inputRef.current?.click()}
+          >
+            <Upload size={16} />
+            {subiendo ? 'Subiendo y verificando…' : 'Subir factura'}
+          </button>
+        </div>
+      ) : (
+        <div className="text-sm">
+          <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
+            <Campo k="Archivo" v={factura.nombre} />
+            <Campo k="Cargada por" v={factura.cargada_por} />
+            <Campo k="Fecha de carga" v={dateTime(factura.cargada_en)} />
+            <Campo
+              k="Hash de integridad"
+              v={
+                <span className="font-mono" title={factura.hash_sha256}>
+                  {factura.hash_sha256.slice(0, 20)}…
+                </span>
+              }
+            />
+          </dl>
+
+          <h4 className="mt-5 mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Verificación del documento
+          </h4>
+          {verif == null || !verif.parseada ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3 text-amber-900">
+              <p className="flex items-start gap-2">
+                <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                <span>
+                  {advertencias[0] ??
+                    'No se pudo leer el texto de la factura; verifica ' +
+                      'manualmente que corresponda al cliente.'}
+                </span>
+              </p>
+            </div>
+          ) : (
+            <>
+              <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
+                <Campo k="Factura N°" v={datosFactura?.numero_factura ?? '—'} />
+                <Campo
+                  k="Comprador"
+                  v={datosFactura?.nombre_comprador ?? '—'}
+                />
+                <Campo
+                  k="Documento del comprador"
+                  v={
+                    <span className="inline-flex items-center gap-1.5">
+                      {datosFactura?.nit_comprador ?? '—'}
+                      {verif.nit_coincide === true && (
+                        <CheckCircle2
+                          size={15}
+                          className="text-emerald-600"
+                          aria-label="Coincide con el cliente"
+                        />
+                      )}
+                      {verif.nit_coincide === false && (
+                        <AlertTriangle
+                          size={15}
+                          className="text-amber-600"
+                          aria-label="No coincide con el cliente"
+                        />
+                      )}
+                    </span>
+                  }
+                />
+                <Campo
+                  k="Vehículo"
+                  v={
+                    datosFactura
+                      ? [
+                          datosFactura.marca,
+                          datosFactura.referencia ?? datosFactura.linea,
+                          datosFactura.anio,
+                        ]
+                          .filter(Boolean)
+                          .join(' ') || '—'
+                      : '—'
+                  }
+                />
+                <Campo
+                  k="Total factura"
+                  v={
+                    datosFactura?.total != null
+                      ? currency(Number(datosFactura.total))
+                      : '—'
+                  }
+                />
+              </dl>
+              {advertencias.length > 0 && (
+                <ul className="mt-4 space-y-1 rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3 text-amber-900">
+                  {advertencias.map((a, i) => (
+                    <li key={i} className="text-sm leading-snug">
+                      - {a}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button className="btn-ghost" onClick={onVer}>
+              <Eye size={16} /> Ver factura
+            </button>
+            {puedeReemplazar && (
+              <button
+                className="btn-ghost"
+                disabled={subiendo}
+                onClick={() => inputRef.current?.click()}
+              >
+                <Upload size={16} />
+                {subiendo ? 'Subiendo…' : 'Reemplazar factura'}
+              </button>
+            )}
+          </div>
+          {puedeReemplazar && (
+            <p className="mt-2 text-xs text-slate-400">
+              Re-subirla reemplaza el archivo vigente (antes del desembolso).
+            </p>
+          )}
+        </div>
+      )}
+    </Tarjeta>
+  )
+}
+
+/** Identificación de la moto que queda en garantía: la factura la
+ * pre-llena; editable solo con la solicitud 'facturada'. El `key` del
+ * padre reinicia el formulario cuando cambia el vehículo persistido. */
+function TarjetaPrenda({
+  vehiculo,
+  editable,
+  guardando,
+  onGuardar,
+}: {
+  vehiculo: VehiculoPrendaApi | null
+  editable: boolean
+  guardando: boolean
+  onGuardar: (payload: PrendaPayload) => void
+}) {
+  const [form, setForm] = useState<Record<keyof PrendaPayload, string>>({
+    marca: vehiculo?.marca ?? '',
+    referencia: vehiculo?.referencia ?? '',
+    modelo: vehiculo?.modelo ?? '',
+    color: vehiculo?.color ?? '',
+    numero_motor: vehiculo?.numero_motor ?? '',
+    numero_chasis: vehiculo?.numero_chasis ?? '',
+    vin: vehiculo?.vin ?? '',
+  })
+
+  function guardar() {
+    const payload: PrendaPayload = {}
+    for (const { campo } of PRENDA_CAMPOS) {
+      payload[campo] = form[campo].trim() || null
+    }
+    onGuardar(payload)
+  }
+
+  return (
+    <Tarjeta>
+      <h3 className="font-semibold mb-1 flex items-center gap-2">
+        <Bike size={18} /> Datos de la prenda
+      </h3>
+      <p className="text-xs text-slate-500 mb-4">
+        Identificación de la moto que queda en garantía. La factura pre-llena
+        estos datos; verifica y confirma antes del desembolso.
+      </p>
+      <div className="grid sm:grid-cols-3 gap-3 text-sm">
+        {PRENDA_CAMPOS.map(({ campo, titulo }) => (
+          <label key={campo} className="block">
+            <span className="text-xs uppercase text-slate-500">{titulo}</span>
+            <input
+              className="input-base mt-1 w-full"
+              value={form[campo]}
+              disabled={!editable || guardando}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, [campo]: e.target.value }))
+              }
+            />
+          </label>
+        ))}
+      </div>
+      {editable ? (
+        <button
+          className="btn-primary mt-4"
+          disabled={guardando}
+          onClick={guardar}
+        >
+          {guardando ? 'Guardando…' : 'Guardar datos de la prenda'}
+        </button>
+      ) : (
+        <p className="mt-4 text-xs text-slate-400">
+          Solo se pueden confirmar con la solicitud en estado Facturada.
+        </p>
+      )}
+    </Tarjeta>
+  )
 }

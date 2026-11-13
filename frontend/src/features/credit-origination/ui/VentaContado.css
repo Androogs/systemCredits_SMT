@@ -1,0 +1,103 @@
+/* Hoja de negocio de la venta de contado: grid compacto de campos,
+   importes con prefijo $ y resumen de totales destacado. */
+
+/* Aire entre las tarjetas del formulario (identificación, vehículo,
+   liquidación) — el contenedor no es grid, así que van por margen. */
+.venta-contado .datos-cliente__seccion + .datos-cliente__seccion {
+  margin-top: 1.4rem;
+}
+
+.venta-contado .datos-cliente__seccion {
+  margin-bottom: 0.5rem;
+}
+
+.venta-contado__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem 1rem;
+}
+
+.venta-contado__grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.venta-contado__grid > * {
+  min-width: 0;
+}
+
+/* Elementos que ocupan más de una columna. */
+.venta-contado__span2 {
+  grid-column: span 2;
+}
+.venta-contado__span3 {
+  grid-column: 1 / -1;
+}
+
+/* Campos de dinero: el "$" va dentro del input, a la izquierda. */
+.venta-contado__money {
+  position: relative;
+}
+.venta-contado__money::after {
+  content: '$';
+  position: absolute;
+  left: 1rem;
+  bottom: 0.72rem;
+  font-size: 0.82rem;
+  color: var(--slate-soft, #667085);
+  pointer-events: none;
+}
+.venta-contado__money input {
+  padding-left: 1.8rem;
+}
+
+/* Resumen de la liquidación: VR. TOTAL y saldo destacados. */
+.venta-contado__totales {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.venta-contado__total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border, #d5dde5);
+  border-radius: 0.75rem;
+  background: var(--border-soft, #eef1f6);
+}
+.venta-contado__total small {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--slate-soft, #667085);
+}
+.venta-contado__total strong {
+  font-size: 1.05rem;
+  color: var(--slate-strong, #344054);
+}
+.venta-contado__total--saldo {
+  border-color: var(--border-tint, #bccde8);
+  background: rgb(var(--brand-rgb, 0 82 161) / 0.07);
+}
+.venta-contado__total--saldo strong {
+  color: var(--brand, #0052a1);
+}
+
+@media (max-width: 720px) {
+  .venta-contado__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .venta-contado__grid,
+  .venta-contado__grid--2,
+  .venta-contado__totales {
+    grid-template-columns: 1fr;
+  }
+  .venta-contado__span2 {
+    grid-column: 1 / -1;
+  }
+}

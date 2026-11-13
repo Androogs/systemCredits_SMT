@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     version: str = "1.0.0"
 
     # --- API / frontend ---
-    app_title: str = "Creditos API - SUMOTO (financiera aliada: Inversiones Pacifico)"
+    app_title: str = "Creditos API - SUMOTO S.A"
     app_version: str = "1.0.0"
     cors_origins: str = "http://localhost:5173"
     api_host: str = "0.0.0.0"
@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     # Roles con acceso al panel (cliente/contabilidad quedan fuera).
     # El orden es la prioridad cuando el usuario acumula roles: un
     # concesionario que también radica conserva la vista de su sede.
-    auth_roles_panel: str = "admin,concesionario,asesor,aliado"
+    auth_roles_panel: str = "admin,concesionario,asesor,aliado,contabilidad"
 
     def cors_origin_list(self) -> list[str]:
         return [
@@ -201,13 +201,31 @@ class Settings(BaseSettings):
     # Proveedor: "placapi" (hoy). Cuando el convenio de consulta
     # masiva con la FCM entregue el servicio oficial se agrega "fcm".
     simit_habilitado: bool = True
-    simit_proveedor: str = "placapi"
+    simit_proveedor: str = "portal"
     simit_base_url: str = "https://placapi.com"
     simit_api_key: str = ""
     simit_timeout_segundos: float = 15.0
+    # Proveedor "portal": API interna del portal ciudadano fcm.org.co/simit.
+    simit_portal_base_url: str = "https://consultasimit.fcm.org.co"
+    simit_portal_captcha_url: str = "https://qxcaptcha.fcm.org.co/api.php"
+    # Caché por documento (días); 0 = siempre en línea.
+    simit_cache_dias: int = 30
     # Si SIMIT no responde: False (default) = fail-open, la evaluación
     # sigue sin el pre-filtro; True = la evaluación se bloquea.
     simit_requerido: bool = False
+    # El mock por escenario solo aplica a la evaluación en demo; la
+    # consulta de la puerta SIMIT (paso 3) y el precache del
+    # consentimiento siempre son reales si hay proveedor configurado.
+    simit_mock_en_demo: bool = True
+
+    def simit_proveedor_configurado(self) -> bool:
+        """Hay un proveedor real utilizable: 'portal' no exige
+        credenciales; 'placapi' requiere SIMIT_API_KEY. Es el gate del
+        precache/puerta — independiente del ambiente."""
+        proveedor = (self.simit_proveedor or "").lower()
+        if proveedor == "placapi":
+            return bool(self.simit_api_key)
+        return proveedor == "portal"
 
     # --- Reuso de consulta a centrales (tabla consulta_buro) ---
     # La consulta a Experian es un recurso pago por persona: si hay un

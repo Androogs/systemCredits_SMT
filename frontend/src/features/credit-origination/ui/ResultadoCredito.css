@@ -333,6 +333,30 @@
   color: var(--white);
 }
 
+/* Retoma: celda del grid junto a "Aval %". Solo checkbox + texto —
+   el min-height replica la altura de los inputs para que la línea
+   quede centrada a la altura del campo vecino. */
+.resultado-credito__retoma {
+  display: grid;
+  align-content: end;
+}
+
+.resultado-credito__retoma-check {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.5rem;
+  color: var(--slate);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.resultado-credito__retoma-check input {
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
 .resultado-credito__plazo {
   display: grid;
   gap: 0.3rem;
@@ -892,4 +916,16 @@
   display: block;
   height: 1.6rem;
   width: auto;
+}
+
+/* Regreso al listado de precios tras "Otra referencia…". */
+.resultado-credito__listado-link {
+  margin-top: 0.3rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 0.78rem;
+  color: var(--brand-ink);
+  cursor: pointer;
+  text-decoration: underline;
 }

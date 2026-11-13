@@ -106,9 +106,10 @@ class DesembolsoService:
             self.db.flush()
             return self._response(desembolso)
 
-        # Formalización completa: la solicitud debe estar aprobada con
+        # Formalización completa: la solicitud debe estar aprobada (o
+        # facturada — el ciclo comercial sigue siendo "por girar") con
         # una oferta seleccionada por el cliente.
-        if solicitud.estado != "aprobada" or solicitud.decision != "aprobado":
+        if solicitud.estado not in ("aprobada", "facturada") or solicitud.decision != "aprobado":
             raise ValidacionError(
                 f"La solicitud {id_solicitud} no es elegible para desembolso "
                 f"(estado={solicitud.estado}, decisión={solicitud.decision})."
@@ -135,6 +136,91 @@ class DesembolsoService:
             self._marcar_desembolsada(solicitud)
         self.db.flush()
         return self._response(desembolso)
+
+    def desembolsar_masivo(
+        self, id_solicitudes: list[uuid.UUID]
+    ) -> list[dict]:
+        """Marca en bloque solicitudes 'facturada' como 'desembolsada'.
+
+        Lo usa la bandeja de operaciones tras radicar el cargue de
+        garantías en RUNT Pro. El registro del giro (cuenta del
+        concesionario + referencia) NO se pide aquí: llega después por
+        el webhook de tesorería o desde el detalle, y como aquí ya
+        queda formalizado el crédito (`credito_financiacion`), ese
+        registro solo tiene que crear la fila `desembolso`.
+
+        Cada solicitud corre en su propio SAVEPOINT: una factura sin
+        prenda o sin oferta falla sin revertir el resto del lote.
+        """
+        resultados: list[dict] = []
+        for id_solicitud in id_solicitudes:
+            try:
+                with self.db.begin_nested():
+                    self._desembolsar_una(id_solicitud)
+                resultados.append({"id_solicitud": id_solicitud, "ok": True})
+            except Exception as exc:  # noqa: BLE001 — el ítem falla, no el lote
+                resultados.append(
+                    {
+                        "id_solicitud": id_solicitud,
+                        "ok": False,
+                        "error": getattr(exc, "detail", str(exc)),
+                    }
+                )
+        return resultados
+
+    def _desembolsar_una(self, id_solicitud: uuid.UUID) -> None:
+        """Una facturada → desembolsada: exige oferta seleccionada y la
+        prenda identificada (motor/chasis/VIN) — lo que se registró en
+        el SGM. Garantiza la fila `credito_financiacion` para que el
+        giro posterior solo inserte `desembolso`."""
+        solicitud = (
+            self.db.query(SolicitudCredito)
+            .filter(SolicitudCredito.id_solicitud == id_solicitud)
+            .one_or_none()
+        )
+        if solicitud is None:
+            raise SolicitudNoEncontradaError(f"No existe la solicitud {id_solicitud}")
+        if solicitud.estado != "facturada":
+            raise ValidacionError(
+                f"Solo se desembolsan solicitudes facturadas "
+                f"(estado actual: {solicitud.estado})."
+            )
+        oferta = (
+            self.db.query(OfertaCredito)
+            .filter(
+                OfertaCredito.id_solicitud == id_solicitud,
+                OfertaCredito.seleccionada.is_(True),
+            )
+            .one_or_none()
+        )
+        if oferta is None or oferta.monto_aprobado is None:
+            raise ValidacionError(
+                "La solicitud no tiene una oferta seleccionada; no hay "
+                "monto aprobado que desembolsar."
+            )
+        vehiculo = (
+            self.db.query(ProductoVehiculo)
+            .filter(ProductoVehiculo.id_solicitud == id_solicitud)
+            .order_by(ProductoVehiculo.id_vehiculo.desc())
+            .first()
+        )
+        if vehiculo is None or not (
+            vehiculo.numero_motor or vehiculo.numero_chasis or vehiculo.vin
+        ):
+            raise ValidacionError(
+                "La solicitud no tiene la prenda identificada "
+                "(motor/chasis/VIN): la factura no la aportó y no hay "
+                "garantía que registrar en el SGM."
+            )
+        credito = (
+            self.db.query(CreditoFinanciacion)
+            .filter(CreditoFinanciacion.id_solicitud == id_solicitud)
+            .one_or_none()
+        )
+        if credito is None:
+            self._crear_credito(solicitud, oferta, vehiculo)
+        self._marcar_desembolsada(solicitud)
+        self.db.flush()
 
     def _cuenta_emisora(self) -> CuentaBancaria:
         cuenta = (

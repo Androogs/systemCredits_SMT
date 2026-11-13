@@ -28,6 +28,12 @@
            hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500/40
            disabled:opacity-50 disabled:cursor-not-allowed transition;
   }
+  .btn-secondary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white
+           px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm
+           hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-300/60
+           disabled:opacity-50 disabled:cursor-not-allowed transition;
+  }
   .btn-ghost {
     @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white
            px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 transition;
@@ -46,7 +52,40 @@
 }
 
 .route-enter {
-  animation: route-enter 180ms cubic-bezier(0.2, 0.75, 0.3, 1) both;
+  animation: route-enter 180ms cubic-bezier(0.2, 0.75, 0.3, 1) backwards;
+}
+
+@keyframes modal-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes modal-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.modal-sheet-enter {
+  animation: modal-sheet-in 260ms cubic-bezier(0.2, 0.9, 0.3, 1) backwards;
+}
+@media (min-width: 640px) {
+  .modal-sheet-enter {
+    animation-name: modal-pop-in;
+    animation-duration: 180ms;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-sheet-enter {
+    animation: none;
+  }
 }
 
 .skip-link {

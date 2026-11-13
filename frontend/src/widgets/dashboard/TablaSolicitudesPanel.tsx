@@ -6,6 +6,8 @@ import InsigniaEstado from '../../entities/credit/ui/InsigniaEstado'
 import { currency, dateShort } from '../../shared/lib/formatters'
 import {
   estadoParaVista,
+  esRetomado,
+  ESTADOS_POSITIVOS_VISTA,
   etiquetaSolicitud,
   numero,
   OCUPACION_LABELS,
@@ -141,12 +143,23 @@ export default function TablaSolicitudesPanel({
                     </td>
                   )}
                   <td className="py-3 pr-4 text-right tabular-nums">
-                    {cupo != null && estadoParaVista(s) === 'APROBADO'
+                    {cupo != null &&
+                    ESTADOS_POSITIVOS_VISTA.has(estadoParaVista(s))
                       ? currency(cupo)
                       : '—'}
                   </td>
                   <td className="py-3 pr-4">
-                    <InsigniaEstado status={estadoParaVista(s)} />
+                    <div className="flex items-center gap-1.5">
+                      <InsigniaEstado status={estadoParaVista(s)} />
+                      {esRetomado(s) && (
+                        <span
+                          title="Re-evaluada manualmente y aprobada"
+                          className="inline-flex items-center whitespace-nowrap rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700 ring-1 ring-violet-600/20"
+                        >
+                          Retomado
+                        </span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               )

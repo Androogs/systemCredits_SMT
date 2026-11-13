@@ -146,14 +146,15 @@ def test_login_registra_auditoria(client, usuarios_prueba):
 
 
 def test_login_rechaza_rol_sin_acceso_al_panel(client, usuarios_prueba):
-    """`cliente` y `contabilidad` no tienen vistas de panel: el login se
-    rechaza en vez de emitir un token que 403-ee todo."""
+    """`cliente` no tiene vistas de panel: el login se rechaza en vez de
+    emitir un token que 403-ee todo. (`contabilidad` sí entra: opera la
+    bandeja de desembolsos)."""
     with SessionLocal() as db:
         id_usuario = usuarios_prueba["asesor"]["id_usuario"]
         db.execute(
             text(
                 "UPDATE usuario_rol SET id_rol = ("
-                "  SELECT id_rol FROM rol WHERE nombre='contabilidad') "
+                "  SELECT id_rol FROM rol WHERE nombre='cliente') "
                 "WHERE id_usuario = :u"
             ),
             {"u": id_usuario},

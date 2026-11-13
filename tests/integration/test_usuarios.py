@@ -231,3 +231,73 @@ def test_cambiar_clave_requiere_sesion(client, client_sin_auth):
         json={"contrasena_actual": "x", "contrasena_nueva": "NuevaSegura2!"},
     )
     assert r.status_code == 401
+
+
+def test_marcas_multiples_crear_y_actualizar(client):
+    sede = client.get("/api/usuarios/opciones").json()["concesionarios"][0]
+    respuesta = client.post(
+        "/api/usuarios",
+        json={
+            "correo": "multimarca@sumoto.com.co",
+            "nombre": "Asesor Multimarca",
+            "contrasena": "ClaveSegura9!",
+            "roles": ["asesor"],
+            "id_concesionario": sede["id_concesionario"],
+            "cedula": "80000333",
+            "telefono": "3009998877",
+            "marcas": ["Suzuki", " akt ", "SUZUKI", "Bajaj"],
+        },
+    )
+    assert respuesta.status_code == 201, respuesta.text
+    creado = respuesta.json()
+    # Limpia espacios y deduplica case-insensitive; la primera del
+    # envío queda como marca principal en `marca`.
+    assert creado["marca"] == "Suzuki"
+    assert sorted(creado["marcas"], key=str.lower) == ["akt", "Bajaj", "Suzuki"]
+
+    # Edición: el conjunto completo se reemplaza y la principal sigue
+    # la primera del envío.
+    r = client.put(
+        f"/api/usuarios/{creado['id_usuario']}",
+        json={"marcas": ["Honda", "AKT"]},
+    )
+    assert r.status_code == 200, r.text
+    cuerpo = r.json()
+    assert cuerpo["marca"] == "Honda"
+    assert sorted(cuerpo["marcas"], key=str.lower) == ["AKT", "Honda"]
+
+    # Limpiar el conjunto: [] explícito borra marcas y principal.
+    r = client.put(
+        f"/api/usuarios/{creado['id_usuario']}", json={"marcas": []}
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["marcas"] == [] and r.json()["marca"] is None
+
+
+def test_marca_unica_legado_alimenta_el_conjunto(client):
+    """Compat: el campo singular `marca` sigue aceptándose y alimenta
+    `usuario_marca` como conjunto de un solo elemento."""
+    sede = client.get("/api/usuarios/opciones").json()["concesionarios"][0]
+    respuesta = client.post(
+        "/api/usuarios",
+        json={
+            "correo": "unimarca@sumoto.com.co",
+            "nombre": "Asesor Unimarca",
+            "contrasena": "ClaveSegura9!",
+            "roles": ["asesor"],
+            "id_concesionario": sede["id_concesionario"],
+            "cedula": "80000444",
+            "telefono": "3009998877",
+            "marca": "Hero",
+        },
+    )
+    assert respuesta.status_code == 201, respuesta.text
+    creado = respuesta.json()
+    assert creado["marca"] == "Hero" and creado["marcas"] == ["Hero"]
+
+    # Edición por el campo legado también reemplaza el conjunto.
+    r = client.put(
+        f"/api/usuarios/{creado['id_usuario']}", json={"marca": "Yamaha"}
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["marca"] == "Yamaha" and r.json()["marcas"] == ["Yamaha"]

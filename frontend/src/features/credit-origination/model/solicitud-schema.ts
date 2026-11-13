@@ -17,8 +17,8 @@ import type { DatosSolicitud } from '../ui/CrearSolicitud'
 
 export const solicitudSchema = z
   .object({
-    lineaCredito: z.string().min(1, 'Selecciona la línea de crédito.'),
-    destinoCredito: z.string().min(1, 'Selecciona el destino del crédito.'),
+    lineaCredito: z.string().min(1, 'Selecciona la forma de pago.'),
+    destinoCredito: z.string().min(1, 'Selecciona el destino.'),
     plazoMeses: z
       .number()
       .int('El plazo debe ser un número entero de meses.')

@@ -16,7 +16,9 @@ from backend.middlewares.rate_limit_middleware import RateLimitMiddleware
 from backend.routes import (
     auditoria_routes,
     auth_routes,
+    carga_routes,
     catalogo_routes,
+    comision_routes,
     evidencia_routes,
     health_routes,
     motor_routes,
@@ -97,8 +99,10 @@ def crear_app() -> FastAPI:
         auditoria_routes,
         parametros_routes,
         catalogo_routes,
+        carga_routes,
         evidencia_routes,
         usuario_routes,
+        comision_routes,
     ):
         app.include_router(modulo.router, prefix="/api")
     # El webhook vive fuera de /api: es una puerta externa del emisor

@@ -1,11 +1,19 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from 'react'
 import { ArrowLeft, ArrowRight } from 'lucide-react'
 import Boton from '../../../shared/ui/Boton'
 import { emitirToast } from '../../../shared/lib/toastBus'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
+import SelectorFecha from './SelectorFecha'
 import { contextoRadicacion } from '../../../shared/lib/sesion'
 import { datosPersonalesSchema } from '../schemas/persona'
 import type { CampoOCRApi, ResultadoOCRApi } from '../api/originacionApi'
+import { consultarSimit } from '../api/originacionApi'
 import {
   DOCUMENTOS_POR_NACIONALIDAD,
   NACIONALIDAD_API,
@@ -14,6 +22,8 @@ import {
   type DatosValidacion,
   type Nacionalidad,
 } from '../model/politicas-clave'
+import { tipoDocumentoApi } from '../model/mapeos-api'
+import { claveSimit, interpretarSimit } from '../model/simit-puerta'
 import './RevisionDatos.css'
 
 export interface DatosRevisados {
@@ -35,8 +45,18 @@ interface RevisionDatosProps {
   inicial?: Partial<DatosRevisados>
   /** Políticas ya capturadas; `nacionalidad` en su forma canónica (API). */
   inicialPoliticas?: Partial<
-    Pick<DatosValidacion, 'nacionalidad' | 'tipoDocumento' | 'multasPendientes'>
+    Pick<
+      DatosValidacion,
+      | 'nacionalidad'
+      | 'tipoDocumento'
+      | 'multasPendientes'
+      | 'simitDocumento'
+      | 'simitResumen'
+    >
   >
+  /** Consentimiento Habeas Data del paso 1: con él «Consultar» pega al
+   * backend; sin él el asesor verifica a mano en el portal del SIMIT. */
+  autorizoHabeas?: boolean
   /** Si es true, no renderiza header ni seguimiento (para usar dentro de otro paso). */
   compacto?: boolean
   /** Resultado del OCR de la cédula; si trae advertencias, se muestran aquí. */
@@ -312,6 +332,7 @@ function RevisionDatos({
   onBack,
   inicial,
   inicialPoliticas,
+  autorizoHabeas = false,
   compacto = false,
   ocr = null,
 }: RevisionDatosProps) {
@@ -349,7 +370,28 @@ function RevisionDatos({
     const previo = inicialPoliticas?.tipoDocumento || politicasOCR.tipoDocumento
     return documentos.some((d) => d.codigo === previo) ? previo! : ''
   })
-  const [simitConsultado, setSimitConsultado] = useState(false)
+  // La consulta SIMIT pertenece a una persona (tipo+documento del API):
+  // la dispara el asesor con «Consultar» y otra llave (otro
+  // documento/tipo/nacionalidad) la invalida. El borrador guarda la
+  // llave consultada.
+  const claveSimitActual = claveSimit(tipoDocumento, datos.numeroIdentificacion)
+  const simitRestaurado = Boolean(
+    inicialPoliticas?.simitDocumento &&
+    inicialPoliticas.simitDocumento === claveSimitActual,
+  )
+  const [simitDocumento, setSimitDocumento] = useState<string | null>(() =>
+    simitRestaurado ? (inicialPoliticas?.simitDocumento ?? null) : null,
+  )
+  const [simitConsultado, setSimitConsultado] = useState(simitRestaurado)
+  const [consultandoSimit, setConsultandoSimit] = useState(false)
+  const [simitInfo, setSimitInfo] = useState<string | null>(() =>
+    simitRestaurado
+      ? (inicialPoliticas?.simitResumen ??
+        (inicialPoliticas?.multasPendientes
+          ? 'SIMIT reporta deuda pendiente.'
+          : 'SIMIT: paz y salvo, sin deuda pendiente.'))
+      : null,
+  )
   const [multas, setMultas] = useState<'si' | 'no' | ''>(() =>
     inicialPoliticas?.multasPendientes === undefined
       ? ''
@@ -368,7 +410,7 @@ function RevisionDatos({
     ...(!multas && { multas: 'Selecciona una opción para continuar.' }),
     // La respuesta Sí/No debe salir de la consulta real en SIMIT.
     ...(!simitConsultado && {
-      simit: 'Marca "Consultar" y revisa el SIMIT antes de continuar.',
+      simit: 'Marca "Consultar" para verificar el estado de cuenta del SIMIT.',
     }),
   }
   const mostrarErrorPolitica = (campo: CampoPolitica) =>
@@ -454,8 +496,64 @@ function RevisionDatos({
     })
   }
 
+  const resetearSimit = useCallback(() => {
+    setSimitDocumento(null)
+    setSimitConsultado(false)
+    setSimitInfo(null)
+    setMultas('')
+  }, [])
+
+  // La consulta pide al backend el estado de cuenta SIMIT de la
+  // persona (caché por documento → portal FCM) y solo sale del clic
+  // del asesor en «Consultar»: el gesto del usuario autoriza también
+  // el popup de fallback cuando el proveedor no responde o no hay
+  // consentimiento Habeas Data. Con deuda real la respuesta se
+  // autocompleta en Sí; sin respuesta queda la vía manual del portal.
+  const consultarSimitBackend = useCallback(() => {
+    const clave = claveSimit(tipoDocumento, datos.numeroIdentificacion)
+    if (!clave || !autorizoHabeas) {
+      abrirSimit()
+      return
+    }
+    // La llave queda registrada desde el disparo: un re-render o un
+    // doble disparo no duplica la llamada (el caché la absorbe).
+    setSimitDocumento(clave)
+    setConsultandoSimit(true)
+    setSimitInfo(null)
+    consultarSimit({
+      tipo_documento: tipoDocumentoApi(tipoDocumento),
+      num_cedula: datos.numeroIdentificacion.replace(/\D/g, ''),
+      autorizo_habeas: true,
+    })
+      .then((res) => {
+        const estado = interpretarSimit(res)
+        if (estado.tipo === 'manual') {
+          abrirSimit()
+          return
+        }
+        setSimitConsultado(true)
+        setMultas(estado.tieneMultas ? 'si' : 'no')
+        setSimitInfo(estado.mensaje)
+        setPoliticasTocadas((prev) => ({ ...prev, multas: true }))
+      })
+      .catch(() => {
+        // 422 sin autorización u otro fallo: verificación manual.
+        abrirSimit()
+      })
+      .finally(() => setConsultandoSimit(false))
+  }, [tipoDocumento, datos.numeroIdentificacion, autorizoHabeas])
+
+  // Cambiar la llave de la persona (otro documento, tipo o
+  // nacionalidad) invalida la consulta hecha: el checkbox se desmarca
+  // y el asesor decide si la repite — nunca se dispara sola.
+  useEffect(() => {
+    if (simitDocumento && simitDocumento !== claveSimitActual) {
+      resetearSimit()
+    }
+  }, [claveSimitActual, simitDocumento, resetearSimit])
   const actualizar = (campo: CampoId, valor: string) => {
     setDatos((prev) => ({ ...prev, [campo]: valor }))
+    if (campo === 'numeroIdentificacion') resetearSimit()
     setRegistrado(false)
   }
 
@@ -482,6 +580,10 @@ function RevisionDatos({
       nacionalidad: NACIONALIDAD_API[nacionalidad],
       // Con multas el flujo radica la solicitud rechazada (R22) y termina.
       multasPendientes: multas === 'si',
+      // La llave dueña de la consulta SIMIT: si al volver al paso el
+      // documento difiere, la consulta queda invalidada.
+      simitDocumento: simitDocumento ?? undefined,
+      simitResumen: simitInfo ?? undefined,
     })
   }
 
@@ -694,6 +796,7 @@ function RevisionDatos({
                 onChange={(event) => {
                   setNacionalidad(event.target.value as Nacionalidad)
                   setTipoDocumento('')
+                  resetearSimit()
                   tocarPolitica('nacionalidad')
                   setRegistrado(false)
                 }}
@@ -736,6 +839,7 @@ function RevisionDatos({
                 aria-invalid={mostrarErrorPolitica('tipoDocumento')}
                 onChange={(event) => {
                   setTipoDocumento(event.target.value)
+                  resetearSimit()
                   tocarPolitica('tipoDocumento')
                   setRegistrado(false)
                 }}
@@ -820,6 +924,15 @@ function RevisionDatos({
                       ▾
                     </span>
                   </div>
+                ) : campo.tipo === 'date' ? (
+                  <SelectorFecha
+                    id={`rev-${campo.id}`}
+                    value={datos[campo.id]}
+                    disabled={esSoloLectura}
+                    invalid={error}
+                    onChange={(iso) => actualizar(campo.id, iso)}
+                    onBlur={() => marcarTocado(campo.id)}
+                  />
                 ) : (
                   <input
                     id={`rev-${campo.id}`}
@@ -894,9 +1007,14 @@ function RevisionDatos({
                 <input
                   type="checkbox"
                   checked={simitConsultado}
+                  disabled={consultandoSimit}
                   onChange={(event) => {
                     setSimitConsultado(event.target.checked)
-                    if (event.target.checked) abrirSimit()
+                    if (event.target.checked) {
+                      consultarSimitBackend()
+                    } else {
+                      setSimitInfo(null)
+                    }
                   }}
                 />
                 Consultar
@@ -912,6 +1030,7 @@ function RevisionDatos({
                     type="button"
                     role="radio"
                     aria-checked={multas === opcion}
+                    disabled={consultandoSimit || Boolean(simitInfo)}
                     className={`revision__toggle-option${multas === opcion ? ' is-active' : ''}`}
                     onClick={() => {
                       setMultas(opcion)
@@ -924,6 +1043,15 @@ function RevisionDatos({
                 ))}
               </div>
             </div>
+            {consultandoSimit ? (
+              <p className="revision__hint" role="status">
+                Consultando el SIMIT…
+              </p>
+            ) : simitInfo ? (
+              <p className="revision__hint" role="status">
+                {simitInfo}
+              </p>
+            ) : null}
             {mostrarErrorPolitica('simit') ? (
               <p className="revision__error" role="alert">
                 {erroresPoliticas.simit}

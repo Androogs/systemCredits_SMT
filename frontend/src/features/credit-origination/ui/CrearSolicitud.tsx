@@ -24,6 +24,10 @@ import {
 } from '../schemas/laboral'
 import SeguimientoOriginacion from './SeguimientoOriginacion/SeguimientoOriginacion'
 import { contextoRadicacion, useRol } from '../../../shared/lib/sesion'
+import {
+  LINEA_CONTADO,
+  LINEAS_CREDITO,
+} from '../../../shared/lib/lineas-credito'
 import './CrearSolicitud.css'
 
 export interface DatosSolicitud {
@@ -64,7 +68,7 @@ interface CrearSolicitudProps {
   idSolicitud?: string
 }
 
-const lineasCredito = ['Inversiones Pacífico', 'Credicontado']
+const lineasCredito = LINEAS_CREDITO
 
 const destinosCredito = [
   'El sueño de tener motocicleta',
@@ -183,6 +187,10 @@ function CrearSolicitud({
   const [registrado, setRegistrado] = useState(false)
   const [errorApi, setErrorApi] = useState<string | null>(null)
 
+  // Venta de contado: no hay financiación que estimar — el panel de
+  // capacidad de pago no aplica (las preguntas económicas sí se capturan).
+  const esContado = datos.lineaCredito === LINEA_CONTADO
+
   const errores = useMemo(() => erroresSolicitud(datos), [datos])
 
   const mostrarError = (campo: keyof DatosSolicitud) =>
@@ -272,7 +280,9 @@ function CrearSolicitud({
         <div className="solicitud__header-copy">
           <p className="solicitud__eyebrow">Originación Individual · Paso 4</p>
           <h1>Perfil económico del solicitante</h1>
-          <p className="solicitud__subtitle">Producto, ocupación y capacidad</p>
+          <p className="solicitud__subtitle">
+            Producto, ocupación y forma de pago
+          </p>
         </div>
 
         <aside
@@ -359,7 +369,9 @@ function CrearSolicitud({
             </span>
             <div>
               <h2 id="solicitud-sec-1">Configuración de Producto Financiero</h2>
-              <p>Línea y destino. El monto se sugiere tras la evaluación.</p>
+              <p>
+                Forma de pago y destino. El monto se sugiere tras la evaluación.
+              </p>
             </div>
           </header>
 
@@ -370,7 +382,7 @@ function CrearSolicitud({
               }`}
             >
               <label htmlFor="sol-linea">
-                Línea de Crédito{' '}
+                Forma de pago{' '}
                 <span className="solicitud__required" aria-hidden="true">
                   *
                 </span>
@@ -387,7 +399,7 @@ function CrearSolicitud({
                   onBlur={() => marcarTocado('lineaCredito')}
                 >
                   <option value="" disabled>
-                    Selecciona la línea…
+                    Selecciona la forma de pago…
                   </option>
                   {lineasCredito.map((opcion) => (
                     <option key={opcion} value={opcion}>
@@ -812,55 +824,59 @@ function CrearSolicitud({
             </div>
           </div>
 
-          {/* Panel de análisis económico */}
-          <aside
-            className="solicitud__analisis"
-            aria-label="Análisis económico"
-          >
-            <div className="solicitud__analisis-head">
-              <h3>Capacidad de pago estimada</h3>
-            </div>
-
-            <div className="solicitud__analisis-grid">
-              <div className="solicitud__analisis-card solicitud__analisis-card--destacado">
-                <span className="solicitud__analisis-label">Cupo estimado</span>
-                <strong className="solicitud__analisis-valor">
-                  {formatoCOP.format(capacidad.monto)}
-                </strong>
-                <small>Cupo máximo · se define tras la evaluación</small>
+          {/* Panel de análisis económico: no aplica en ventas de contado. */}
+          {!esContado && (
+            <aside
+              className="solicitud__analisis"
+              aria-label="Análisis económico"
+            >
+              <div className="solicitud__analisis-head">
+                <h3>Capacidad de pago estimada</h3>
               </div>
 
-              <div className="solicitud__analisis-card solicitud__analisis-card--primary">
-                <span className="solicitud__analisis-label">
-                  Capacidad de pago
-                </span>
-                <strong className="solicitud__analisis-valor">
-                  {formatoCOP.format(capacidad.capacidad)}
-                </strong>
-                <small>70% del disponible estimado</small>
-              </div>
+              <div className="solicitud__analisis-grid">
+                <div className="solicitud__analisis-card solicitud__analisis-card--destacado">
+                  <span className="solicitud__analisis-label">
+                    Cupo estimado
+                  </span>
+                  <strong className="solicitud__analisis-valor">
+                    {formatoCOP.format(capacidad.monto)}
+                  </strong>
+                  <small>Cupo máximo · se define tras la evaluación</small>
+                </div>
 
-              <div className="solicitud__analisis-card">
-                <span className="solicitud__analisis-label">
-                  Disponible estimado
-                </span>
-                <strong className="solicitud__analisis-valor">
-                  {formatoCOP.format(capacidad.disponible)}
-                </strong>
-                <small>Ingreso menos gastos personales</small>
-              </div>
+                <div className="solicitud__analisis-card solicitud__analisis-card--primary">
+                  <span className="solicitud__analisis-label">
+                    Capacidad de pago
+                  </span>
+                  <strong className="solicitud__analisis-valor">
+                    {formatoCOP.format(capacidad.capacidad)}
+                  </strong>
+                  <small>70% del disponible estimado</small>
+                </div>
 
-              <div className="solicitud__analisis-card">
-                <span className="solicitud__analisis-label">
-                  Gastos personales
-                </span>
-                <strong className="solicitud__analisis-valor">
-                  {formatoCOP.format(capacidad.gastosPersonales)}
-                </strong>
-                <small>Según bandas de SMMLV</small>
+                <div className="solicitud__analisis-card">
+                  <span className="solicitud__analisis-label">
+                    Disponible estimado
+                  </span>
+                  <strong className="solicitud__analisis-valor">
+                    {formatoCOP.format(capacidad.disponible)}
+                  </strong>
+                  <small>Ingreso menos gastos personales</small>
+                </div>
+
+                <div className="solicitud__analisis-card">
+                  <span className="solicitud__analisis-label">
+                    Gastos personales
+                  </span>
+                  <strong className="solicitud__analisis-valor">
+                    {formatoCOP.format(capacidad.gastosPersonales)}
+                  </strong>
+                  <small>Según bandas de SMMLV</small>
+                </div>
               </div>
-            </div>
-          </aside>
+            </aside>
+          )}
         </section>
 
         <div className="solicitud__actions">
