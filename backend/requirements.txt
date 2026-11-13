@@ -8,6 +8,7 @@ sqlalchemy>=2.0.30,<2.2
 httpx>=0.27
 pypdf>=4.0            # lectura de reportes Experian en PDF (CLI)
 python-dotenv>=1.0
+python-dateutil>=2.9  # relativedelta en el plano RNGM
 
 # OCR de cédula (paso 3 del wizard). Requiere el binario de Tesseract 4.1+
 # (recomendado 5.x) en el PATH, con los paquetes de idioma 'spa' y 'osd'.

@@ -3,7 +3,7 @@
  * del panel (D48: contrato de lectura del listado).
  */
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SolicitudResumenApi } from '../../../features/credit-origination/api/originacionApi'
 import { estadoVisual, etiquetaSolicitud, numero } from './solicitudesPanel'
 
@@ -24,10 +24,34 @@ const base: SolicitudResumenApi = {
 }
 
 describe('estadoVisual', () => {
-  it('mapea decision aprobado y estados positivos a APROBADO', () => {
-    expect(estadoVisual({ ...base, decision: 'aprobado' })).toBe('APROBADO')
-    expect(estadoVisual({ ...base, estado: 'aprobada' })).toBe('APROBADO')
-    expect(estadoVisual({ ...base, estado: 'desembolsada' })).toBe('APROBADO')
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('aprobada y firmada es APROBADO', () => {
+    const firmada = { ...base, fecha_hora_firma: '2026-10-07T10:00:00Z' }
+    expect(estadoVisual({ ...firmada, decision: 'aprobado' })).toBe('APROBADO')
+    expect(estadoVisual({ ...firmada, estado: 'aprobada' })).toBe('APROBADO')
+  })
+
+  it('aprobada sin firma es EN_PROCESO dentro del mes de radicación', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-15T12:00:00Z'))
+    expect(estadoVisual({ ...base, decision: 'aprobado' })).toBe('EN_PROCESO')
+    expect(estadoVisual({ ...base, estado: 'aprobada' })).toBe('EN_PROCESO')
+  })
+
+  it('aprobada sin firma pasado el último día hábil del mes es FINALIZADO', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-13T12:00:00Z'))
+    expect(estadoVisual({ ...base, decision: 'aprobado' })).toBe('FINALIZADO')
+  })
+
+  it('mapea los estados del ciclo comercial', () => {
+    expect(estadoVisual({ ...base, estado: 'desembolsada' })).toBe(
+      'DESEMBOLSADO',
+    )
+    expect(estadoVisual({ ...base, estado: 'facturada' })).toBe('FACTURADO')
   })
 
   it('mapea decision rechazado y estados negativos a RECHAZADO', () => {
